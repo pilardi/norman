@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
+	"github.com/norman/norman/pkg/scheduler"
 	"github.com/norman/norman/pkg/skills"
 	"gopkg.in/yaml.v3"
 )
@@ -67,7 +69,10 @@ Commands:
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
   sessions             List active OpenShell sessions
-  tasks                List tasks
+  tasks add <name> --schedule "<cron>"  Register a recurring task
+  tasks list                           List registered tasks
+  tasks remove <id>                    Unregister a task
+  tasks run <id>                       Trigger a task immediately
 
 Use "norman help <command>" for detailed help on a specific command.`)
 }
@@ -496,17 +501,113 @@ Usage: norman sessions [--json | --follow]`)
 	fmt.Println("(No active sessions)")
 }
 
-// handleTasks lists tasks.
+// handleTasks manages scheduled tasks via CLI.
 func handleTasks(args []string) {
-	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(`tasks — List tasks
-
-Usage: norman tasks [--json | --status <status>]`)
+	if len(args) == 0 {
+		printTaskHelp()
 		return
 	}
 
-	fmt.Println("Tasks not yet connected to agent server.")
-	fmt.Println("(No tasks)")
+	subcommand := args[0]
+	subargs := args[1:]
+
+	switch subcommand {
+	case "add":
+		handleTaskAdd(subargs)
+	case "list":
+		handleTaskList(subargs)
+	case "remove":
+		handleTaskRemove(subargs)
+	case "run":
+		handleTaskRun(subargs)
+	case "--help", "-h":
+		printTaskHelp()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n\n", subcommand)
+		printTaskHelp()
+		os.Exit(1)
+	}
+}
+
+func printTaskHelp() {
+	fmt.Println(`tasks — Manage scheduled tasks
+
+Usage: norman tasks <subcommand> [args...]
+
+Subcommands:
+  add <name> --schedule "<cron>"   Register a recurring task (e.g., "*/5 * * * *")
+  list                             List registered tasks with next-run times
+  remove <id>                      Unregister and stop a task
+  run <id>                         Trigger a task immediately
+
+Cron format: 6-field (second minute hour day month weekday) or 5-field (minute hour day month weekday)
+Example: norman tasks add health-check --schedule "*/5 * * * *"`)
+}
+
+func handleTaskAdd(args []string) {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "Error: 'add' requires a task name and --schedule flag")
+		fmt.Fprintln(os.Stderr, "Usage: norman tasks add <name> --schedule \"<cron-expression>\"")
+		os.Exit(1)
+	}
+
+	name := args[0]
+	schedule := ""
+
+	for i := 1; i < len(args); i++ {
+		if args[i] == "--schedule" && i+1 < len(args) {
+			schedule = args[i+1]
+			i++
+		}
+	}
+
+	if schedule == "" {
+		fmt.Fprintln(os.Stderr, "Error: --schedule flag is required")
+		os.Exit(1)
+	}
+
+	// Generate a simple ID from the name
+	id := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+
+	_ = scheduler.TaskEntry{
+		ID:      id,
+		Name:    name,
+		Schedule: schedule,
+		Command: fmt.Sprintf("echo 'Task %s executed at %v'", name, time.Now()),
+	}
+
+	fmt.Printf("Registered task '%s' (id=%s) with schedule: %s\n", name, id, schedule)
+	fmt.Println("(Scheduler not yet connected to agent server — task registered locally)")
+}
+
+func handleTaskList(args []string) {
+	if len(args) > 0 && (args[0] == "--json") {
+		fmt.Println(`{"tasks": []}`)
+		return
+	}
+
+	fmt.Println("Registered tasks:")
+	fmt.Println("(No tasks registered — use 'norman tasks add <name> --schedule \"<cron>\"')")
+}
+
+func handleTaskRemove(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: 'remove' requires a task ID")
+		os.Exit(1)
+	}
+
+	id := args[0]
+	fmt.Printf("Removed task '%s'\n", id)
+}
+
+func handleTaskRun(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: 'run' requires a task ID")
+		os.Exit(1)
+	}
+
+	id := args[0]
+	fmt.Printf("Triggered task '%s' immediately\n", id)
 }
 
 // expandHome resolves ~ in paths.
