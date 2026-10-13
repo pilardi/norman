@@ -187,10 +187,13 @@
 | Token counting | `github.com/pkoukk/tiktoken-go` | 955 | OpenAI tokenizer port |
 | HTTP server | stdlib `net/http` | — | No framework needed for MVP |
 
-## OpenShell Notes
+## OpenShell Integration
 
-- The official Go SDK (`nvidia-ai-everything/openshell-sdk-go`) exists but appears private/inaccessible via public API. **Strategy:** Use the OpenShell CLI (`openshell`) for session management at MVP, with a thin wrapper that calls `openshell` commands (read/write/edit/execute). If the Go SDK becomes available publicly, swap to direct API calls.
-- All secrets resolved by OpenShell at runtime — no server-side secret store needed.
+- Uses the official Go SDK (`github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20261013154426-dfb0f4f91761`) — currently pinned to a commit SHA (not yet a tagged release).
+- `pkg/env/` provides direct SDK bindings: sandbox lifecycle (`CreateSandbox`, `WaitReady`, `GetSandbox`, `DeleteSandbox`), command execution (`Exec().Run()`), and session caching with crash recovery (3× retry, exponential backoff 1s→2s→4s→8s).
+- All secrets resolved by OpenShell at runtime via `v1.SecretClient`.
+
+**Note:** The SDK is not yet publicly tagged. If the Go SDK becomes available as a stable release, swap from commit-sha pin to versioned import.
 
 ## MVP Scope Boundaries
 
