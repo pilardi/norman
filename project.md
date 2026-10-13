@@ -160,7 +160,7 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 ## Step 7 — Context budget & compression cycle
 
-> **Status: 🟢 7a+7b+7c COMPLETE** (budget types, compressor, Loop integration + session archival) — see [`docs/step7-plan.md`](docs/step7-plan.md).
+> **Status: ✅ Step 7 COMPLETE** (all sub-steps 7a-7d done; budget tracker, compressor, Loop integration, session archival + CLI endpoint) — see [`docs/step7-plan.md`](docs/step7-plan.md).
 
 **Acceptance:** Running a long conversation triggers automatic summarization when token budget hits 75%/90%; original transcripts archived in `memory/sessions/`.
 
