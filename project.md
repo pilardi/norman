@@ -103,15 +103,37 @@
 
 ---
 
-## Step 5 — Agent Server + Task API
+## Step 5 — Agent Server + Task API implementation
 
-**Acceptance:** `norman run "write a test file"` creates a task, executes it in the environment, and returns results via HTTP/WebSocket to the CLI.
+> **Status: Split into two sub-steps**
 
-- Single long-running process exposing HTTP API (`POST/GET /api/tasks`, `GET /api/tasks/{id}/log`) + WebSocket (`WS /ws`).
-- Stateless between invocations (rebuilds in-memory state from workspace `.norman/` files on startup).
-- Uses optimistic file-based writes with a lock file (`memory/.lock`) for concurrency safety.
+### Step 5a — Agent Server Skeleton & Protocol Wiring
 
-### API Spec → Code Generation
+> **Status: ✅ COMPLETE** (committed on `step5a-server` branch)
+
+- Bootstrap Echo server in `cmd/server/main.go`; register all generated handlers from `internal/api/handlers.go`
+- Add `/health` endpoint; start WebSocket hub at `/ws` for event broadcasting
+- Wire up `pkg/protocol/client.go` + `types.go` into server's internal state management
+- Add ephemeral in-memory task store (map keyed by task ID)
+
+**Acceptance:** `norman server --port 8080` starts; `curl /health` returns 200; WebSocket at `/ws` accepts connections and pushes mock events.
+
+---
+
+### Step 5b — Task API + Execution Engine
+
+> **Status: PENDING** (not yet started)
+
+- `pkg/agent/loop.go` — core agent loop: takes a prompt, resolves skills (from Step 4), executes commands via OpenShell session, collects output
+- `pkg/memory/store.go` — file-based state persistence (`workspace/.norman/state.json`) with optimistic locking
+- Update `internal/api/handlers.go` generated stubs to delegate to agent loop + memory store
+- WebSocket event push: `task_progress`, `task_complete`, `task_failed`
+
+**Acceptance:** `norman run "write a test file"` creates a task, executes in OpenShell sandbox, returns results via HTTP; connected WebSocket clients receive real-time progress events.
+
+---
+
+### API Spec → Code Generation (shared by 5a + 5b)
 
 The full client-server protocol is formalized in `api-spec.yaml` (OpenAPI 3.1). Both the **client protocol library** (`pkg/protocol/`) and **server handlers** (`internal/api/handlers.go`) are generated from this spec using `oapi-codegen`, rather than hand-written. The spec covers:
 
