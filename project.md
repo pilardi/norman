@@ -49,6 +49,8 @@
 
 ## Step 1.5 — API Spec & Generation (new)
 
+> **Status: ✅ COMPLETE** (api-spec.yaml valid, `make generate` produces compilable code, `go build ./...` passes)
+
 **Acceptance:** `api-spec.yaml` is valid OpenAPI 3.1; running oapi-codegen produces compilable Go code in `pkg/protocol/` and `internal/api/`.
 
 - The full client-server protocol is formalized in `api-spec.yaml` (OpenAPI 3.1).
