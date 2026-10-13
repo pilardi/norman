@@ -73,6 +73,8 @@
 
 ## Step 3 — OpenShell environment integration
 
+> **Status: ✅ COMPLETE** (OpenShell Go SDK v0.1.x: client, session, workspace manager with crash recovery + exponential backoff)
+
 **Acceptance:** `norman create my-workspace` creates a persistent OpenShell session; running `norman run "echo hello"` executes inside that session and returns output.
 
 - Create one persistent OpenShell session per workspace via the OpenShell CLI/API.
