@@ -1,6 +1,6 @@
 # Step 7 — Context Budget & Compression Cycle
 
-> **Status:** 📋 PLAN ONLY — awaiting approval before implementation.
+> **Status:** ✅ COMPLETE — all sub-steps implemented and merged to main.
 
 ---
 
