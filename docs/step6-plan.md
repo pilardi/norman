@@ -58,7 +58,7 @@ type WikiEntry struct {
 | # | Task | Status | Effort |
 |---|------|--------|--------|
 | 6a | `pkg/wiki/entry.go` — struct + frontmatter parser + classification helpers | ✅ COMPLETE | ~2h |
-| 6b | `pkg/wiki/engine.go` — Create/Update/Delete/List with decay/staleness rules | 📋 NEXT | ~3h |
+| 6b | `pkg/wiki/engine.go` — Create/Update/Delete/List with decay/staleness rules | ✅ COMPLETE | ~3h |
 | 6c | `pkg/wiki/index.go` — catalog rebuild on write | ⏳ PENDING | ~1h |
 | 6d | `pkg/wiki/log.go` — append-only journal | ⏳ PENDING | ~0.5h |
 | 6e | Git versioning hook + integration into agent loop | ⏳ PENDING | ~2h |
