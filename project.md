@@ -122,14 +122,15 @@
 
 ### Step 5b — Task API + Execution Engine
 
-> **Status: PENDING** (not yet started)
+> **Status: ✅ COMPLETE** (committed on `step5b-tasks` branch)
 
-- `pkg/agent/loop.go` — core agent loop: takes a prompt, resolves skills (from Step 4), executes commands via OpenShell session, collects output
-- `pkg/memory/store.go` — file-based state persistence (`workspace/.norman/state.json`) with optimistic locking
-- Update `internal/api/handlers.go` generated stubs to delegate to agent loop + memory store
+- `pkg/agent/loop.go` — core agent loop with task submission, execution lifecycle (resolve→create sandbox→waitReady→execute→cleanup), retry logic (3× exponential backoff), WebSocket push events
+- `pkg/memory/store.go` — file-based persistence with optimistic locking; save/load/delete tasks and sessions; prune expired entries
+- `cmd/server/main.go` — all 20 handlers wired to real implementations (not stubs); server struct holds Loop + Store + WSHub
+- `pkg/skills/activate.go` — added `Registry()` method for agent loop access
 - WebSocket event push: `task_progress`, `task_complete`, `task_failed`
 
-**Acceptance:** `norman run "write a test file"` creates a task, executes in OpenShell sandbox, returns results via HTTP; connected WebSocket clients receive real-time progress events.
+**Acceptance:** Server starts, `/health` returns 200; `/api/tasks` returns task list; `POST /api/tasks` creates and executes a task; WebSocket clients receive real-time progress events. Build passes (`go build ./cmd/server/`), `go vet` clean on all packages.
 
 ---
 

@@ -4,6 +4,7 @@ go 1.25.13
 
 require (
 	github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20261013154426-dfb0f4f91761
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/oapi-codegen/runtime v1.7.0
@@ -12,7 +13,6 @@ require (
 
 require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
