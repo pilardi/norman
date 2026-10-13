@@ -127,8 +127,8 @@ func (e *WikiEntry) ToMarkdown() string {
 		"type":      string(e.Type),
 		"tags":      e.Tags,
 		"pinned":    e.Pinned,
-		"updated":   e.Updated.Format("2006-01-02"),
-		"created_at": e.CreatedAt.Format("2006-01-02"),
+		"updated":   e.Updated.Format(time.RFC3339),
+		"created_at": e.CreatedAt.Format(time.RFC3339),
 	})
 
 	var sb strings.Builder
