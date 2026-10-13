@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/protocol"
@@ -39,6 +40,7 @@ type Loop struct {
 	openShell  OpenShellClient
 	wsHub      WSHubPublisher
 	maxRetries int
+	budget     *budget.SessionState // token budget tracker (nil if disabled)
 }
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
@@ -66,7 +68,14 @@ func New(cfg *config.Config, store *memory.Store, activator *skills.Activator, w
 		openShell:  client,
 		wsHub:      wsHub,
 		maxRetries: 3,
+		budget:     nil, // disabled by default; set via SetBudget()
 	}
+}
+
+// WithBudget configures the loop with a budget tracker. Returns the modified Loop.
+func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
+	l.budget = budget.NewSessionState(cfg)
+	return l
 }
 
 // Submit enqueues a task and begins execution.
@@ -188,6 +197,11 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		return
 	}
 
+	// Budget check after sandbox provisioning
+	if l.budget != nil {
+		l.checkAndCompress(ctx, task.ID)
+	}
+
 	// Phase 3: Wait for ready
 	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
@@ -229,6 +243,11 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	l.pushCompletion(task)
 
+	// Final budget check after task completion
+	if l.budget != nil {
+		l.checkAndCompress(ctx, task.ID)
+	}
+
 	// Cleanup sandbox
 	go func() {
 		if delErr := l.openShell.DeleteSandbox(context.Background(), task.Workspace, sandboxName); delErr != nil {
@@ -251,6 +270,59 @@ func (l *Loop) resolveSkills(prompt string) []string {
 		}
 	}
 
+	return result
+}
+
+// checkAndCompress checks budget thresholds and triggers archival + compression if needed.
+func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
+	if l.budget == nil {
+		return
+	}
+
+	flags := l.budget.CheckThresholds()
+	if flags == budget.ThresholdNone {
+		return
+	}
+
+	log.Printf("agent: budget threshold triggered [%s] for task %s (used %.0f%%)",
+		flags.String(), taskID, l.budget.UsedFraction()*100)
+
+	// Archive full transcript before compression
+	if err := l.store.ArchiveSession(taskID, turnsToInterface(l.budget.Turns)); err != nil {
+		log.Printf("agent: failed to archive session %s: %v", taskID, err)
+	}
+
+	// Broadcast notification
+	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		TaskId:  &taskID,
+		Message: strPtr(fmt.Sprintf("Context budget at %.0f%% — compressing session", l.budget.UsedFraction()*100)),
+	})
+
+	// Run compression (aggressive if critical threshold hit)
+	aggressive := flags.Is(budget.ThresholdCritical)
+	compressor := budget.NewCompressor(nil, l.budget.Budget) // nil client = no-op in tests
+	result, err := compressor.Summarize(l.budget, aggressive)
+	if err != nil {
+		log.Printf("agent: compression failed for task %s: %v", taskID, err)
+	} else {
+		log.Printf("agent: compressed %d turns → %d kept, saved ~%d tokens",
+			result.CompressedCount, result.KeptCount, result.TokensSaved)
+	}
+}
+
+// turnsToInterface converts budget.Turn slices to []interface{} for archival.
+func turnsToInterface(turns []budget.Turn) []interface{} {
+	result := make([]interface{}, len(turns))
+	for i, t := range turns {
+		result[i] = map[string]interface{}{
+			"role":      t.Role,
+			"content":   t.Content,
+			"tokens":    t.Tokens,
+			"pinned":    t.Pinned,
+			"created_at": t.CreatedAt.Format(time.RFC3339),
+		}
+	}
 	return result
 }
 

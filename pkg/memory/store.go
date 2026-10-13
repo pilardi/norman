@@ -31,6 +31,50 @@ func (s *Store) SaveTask(taskID string, data map[string]interface{}) error {
 
 	path := filepath.Join(s.base, "tasks", taskID+".json")
 
+	return s.saveFile(path, data)
+}
+
+// ArchiveSession writes a full transcript to the sessions directory as JSONL.
+func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "sessions")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create sessions dir: %w", err)
+	}
+
+	path := filepath.Join(dir, taskID+".jsonl")
+
+	// Append mode — allows multiple archival runs
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open session archive: %w", err)
+	}
+	defer file.Close()
+
+	for _, turn := range turns {
+		data, ok := turn.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		data["archived_at"] = time.Now().Format(time.RFC3339)
+		content, err := json.Marshal(data)
+		if err != nil {
+			return fmt.Errorf("marshal session turn: %w", err)
+		}
+		if _, err := file.Write(append(content, '\n')); err != nil {
+			return fmt.Errorf("write session turn: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *Store) saveFile(path string, data map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Write atomically via temp file + rename
 	tmp := path + ".tmp"
 	data["updated_at"] = time.Now().Format(time.RFC3339)
