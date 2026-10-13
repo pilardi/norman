@@ -146,6 +146,10 @@
 
 ## Step 6 — Memory engine (LTM wiki) + git versioning
 
+> **Status: ✅ COMPLETE** (merged to `main`)
+
+See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
+
 **Acceptance:** After running tasks, `.norman/memory/index.md` is auto-generated; `git log -- .norman/` shows history of state changes.
 
 - Flat markdown pages in `.norman/memory/` with frontmatter (`type: entity|source|trend|task`).
