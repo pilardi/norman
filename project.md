@@ -134,16 +134,15 @@
 
 ---
 
-### API Spec → Code Generation (shared by 5a + 5b)
+### API Spec & Code Generation (shared by 5a + 5b)
 
-The full client-server protocol is formalized in `api-spec.yaml` (OpenAPI 3.1). Both the **client protocol library** (`pkg/protocol/`) and **server handlers** (`internal/api/handlers.go`) are generated from this spec using `oapi-codegen`, rather than hand-written. The spec covers:
+> **Status: ✅ COMPLETE**
 
-- REST endpoints for workspace, session, task, skill, and scheduled-task management
-- WebSocket push event types (task_progress, task_complete, task_failed, notification, context_budget_warning)
-- Task completion message schema (Environment → Server contract)
-- Go struct definitions aligned with the generated types
+- `api-spec.yaml` (OpenAPI 3.1) is the single source of truth for all client-server protocol types, endpoints, and WebSocket event schemas.
+- Regenerated via `make generate` → produces `pkg/protocol/types.go`, `pkg/protocol/client.go`, and `internal/api/handlers.go`.
+- Verified: generated code is up-to-date with spec (zero diff).
 
-This ensures the spec is the **single source of truth** — any protocol change requires updating `api-spec.yaml`, and regeneration produces consistent client + server code.
+**Acceptance:** `make generate` + `go build ./...` succeeds; all 20 handlers match endpoints defined in the spec.
 
 ## Step 6 — Memory engine (LTM wiki) + git versioning
 
