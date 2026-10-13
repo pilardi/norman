@@ -2,13 +2,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/env"
 )
+
+var globalClient *env.Client
+var globalManager *env.WorkspaceManager
 
 func main() {
 	if len(os.Args) < 2 {
@@ -51,15 +56,15 @@ func printUsage() {
 Usage: norman <command> [args...]
 
 Commands:
-  create <name>        Create a new workspace directory + .openshell/ overlay
-  switch <name>        Switch to an existing workspace
-  run [prompt]         Start a task with optional prompt
-  list                 List available workspaces
+  create <name>        Create a new workspace + persistent OpenShell session
+  switch <name>        Switch to an existing workspace session
+  run [prompt]         Execute a prompt inside the workspace session
+  list                 List available workspaces and their sessions
   config               Show or edit current configuration
   skills list          List installed skills
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
-  sessions             List active sessions
+  sessions             List active OpenShell sessions
   tasks                List tasks
 
 Use "norman help <command>" for detailed help on a specific command.`)
@@ -136,7 +141,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  workspace_base:   %s\n", c.Workspaces.BaseDir)
 }
 
-// handleCreate creates a new workspace.
+// handleCreate creates a new workspace with a persistent OpenShell session.
 func handleCreate(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: norman create <name>")
@@ -144,38 +149,45 @@ func handleCreate(args []string) {
 	}
 
 	name := args[0]
-	c, err := config.LoadDefault()
+
+	// Initialize env client if not already done
+	if globalClient == nil {
+		var err error
+		globalClient, err = env.NewClient("127.0.0.1:8080")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error connecting to OpenShell gateway: %v\n", err)
+			os.Exit(1)
+		}
+		globalManager = env.NewWorkspaceManager(globalClient)
+		defer globalClient.Close()
+	}
+
+	ctx := context.Background()
+
+	// Create the workspace sandbox via OpenShell SDK
+	session, err := globalManager.CreateWorkspace(ctx, name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error creating workspace '%s': %v\n", name, err)
 		os.Exit(1)
 	}
 
-	baseDir, err := expandHome(c.Workspaces.BaseDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error expanding workspace base dir: %v\n", err)
-		os.Exit(1)
-	}
-
+	// Also create the local .openshell/ overlay directory for host-side tracking
+	c, _ := config.LoadDefault()
+	baseDir, _ := expandHome(c.Workspaces.BaseDir)
 	workspacePath := filepath.Join(baseDir, name)
 	overlayPath := filepath.Join(workspacePath, ".openshell")
 
-	// Create workspace directory
-	if err := os.MkdirAll(workspacePath, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating workspace: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Create .openshell/ overlay
 	if err := os.MkdirAll(overlayPath, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating .openshell/ overlay: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Warning: could not create overlay dir: %v\n", err)
 	}
 
-	fmt.Printf("Created workspace '%s' at %s\n", name, workspacePath)
-	fmt.Printf("  Overlay directory: %s\n", overlayPath)
+	fmt.Printf("Created workspace '%s'\n", name)
+	fmt.Printf("  Sandbox:   %s (persistent OpenShell session)\n", session.SandboxName())
+	fmt.Printf("  Overlay:   %s\n", overlayPath)
+	fmt.Printf("  Ready:     ✓\n")
 }
 
-// handleSwitch switches to an existing workspace.
+// handleSwitch switches to an existing workspace session.
 func handleSwitch(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: norman switch <name>")
@@ -183,51 +195,83 @@ func handleSwitch(args []string) {
 	}
 
 	name := args[0]
-	c, err := config.LoadDefault()
+
+	if globalClient == nil {
+		var err error
+		globalClient, err = env.NewClient("127.0.0.1:8080")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error connecting to OpenShell gateway: %v\n", err)
+			os.Exit(1)
+		}
+		globalManager = env.NewWorkspaceManager(globalClient)
+		defer globalClient.Close()
+	}
+
+	ctx := context.Background()
+
+	session, err := globalManager.GetSession(ctx, name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error switching to workspace '%s': %v\n", name, err)
 		os.Exit(1)
 	}
 
-	baseDir, err := expandHome(c.Workspaces.BaseDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error expanding workspace base dir: %v\n", err)
-		os.Exit(1)
-	}
-
+	c, _ := config.LoadDefault()
+	baseDir, _ := expandHome(c.Workspaces.BaseDir)
 	workspacePath := filepath.Join(baseDir, name)
-	overlayPath := filepath.Join(workspacePath, ".openshell")
-
-	if _, err := os.Stat(workspacePath); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Workspace '%s' not found at %s\n", name, workspacePath)
-		os.Exit(1)
-	}
 
 	fmt.Printf("Switched to workspace '%s'\n", name)
-	fmt.Printf("  Path: %s\n", workspacePath)
-	fmt.Printf("  Overlay: %s\n", overlayPath)
+	fmt.Printf("  Path:      %s\n", workspacePath)
+	fmt.Printf("  Sandbox:   %s\n", session.SandboxName())
+	fmt.Printf("  Status:    ready\n")
 }
 
-// handleRun starts a task with an optional prompt.
+// handleRun executes a prompt inside the workspace session.
 func handleRun(args []string) {
 	if len(args) < 1 {
-		fmt.Println(`run [prompt] — Start a task
+		fmt.Println(`run [prompt] — Execute a prompt in the workspace session
 
 Usage: norman run "your prompt here"
 
-The prompt is sent to the agent server for execution.`)
+The prompt is executed inside the OpenShell sandbox for the active workspace.`)
 		return
 	}
 
 	prompt := strings.Join(args, " ")
-	fmt.Printf("Starting task with prompt:\n  %s\n", prompt)
-	fmt.Println("(Agent server not yet implemented — this would connect via WebSocket)")
+
+	if globalClient == nil {
+		var err error
+		globalClient, err = env.NewClient("127.0.0.1:8080")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error connecting to OpenShell gateway: %v\n", err)
+			os.Exit(1)
+		}
+		globalManager = env.NewWorkspaceManager(globalClient)
+		defer globalClient.Close()
+	}
+
+	ctx := context.Background()
+
+	// Get or create the session for the current workspace (default: first one)
+	session, err := globalManager.GetSession(ctx, "default")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting session: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Execute the prompt as a command in the sandbox
+	output, err := session.Exec(ctx, []string{"sh", "-c", prompt})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error executing prompt: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Prompt output:\n%s\n", output)
 }
 
-// handleList lists available workspaces.
+// handleList lists available workspaces and their sessions.
 func handleList(args []string) {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(`list — List available workspaces
+		fmt.Println(`list — List available workspaces and sessions
 
 Usage: norman list [--json]
 
@@ -295,7 +339,7 @@ Subcommands:
 // handleSessions lists active sessions.
 func handleSessions(args []string) {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(`sessions — List active sessions
+		fmt.Println(`sessions — List active OpenShell sessions
 
 Usage: norman sessions [--json | --follow]`)
 		return
@@ -334,5 +378,3 @@ func expandHome(path string) (string, error) {
 func getConfigPath() string {
 	return filepath.Join(os.ExpandEnv("$HOME/.config/norman"), "config.yaml")
 }
-
-
