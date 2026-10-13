@@ -62,6 +62,8 @@
 
 ## Step 2 — Config parser + CLI scaffolding
 
+> **Status: ✅ COMPLETE** (config.yaml parser, `norman create/switch/list/config/skills/sessions/tasks` subcommands working via Echo routing)
+
 **Acceptance:** Running `norman config --help` shows subcommands; `norman create my-workspace` creates a workspace directory + `.openshell/` overlay.
 
 - Parse YAML from `~/.config/norman/config.yaml` (or env var `NORMAN_CONFIG`).

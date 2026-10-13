@@ -1,4 +1,338 @@
-// Package main
+// Package main implements the Norman CLI client.
 package main
 
-func main() {}
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/norman/norman/pkg/config"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		printUsage()
+		os.Exit(0)
+	}
+
+	command := os.Args[1]
+	args := os.Args[2:]
+
+	switch command {
+	case "config":
+		handleConfig(args)
+	case "create":
+		handleCreate(args)
+	case "switch":
+		handleSwitch(args)
+	case "run":
+		handleRun(args)
+	case "list":
+		handleList(args)
+	case "skills":
+		handleSkills(args)
+	case "sessions":
+		handleSessions(args)
+	case "tasks":
+		handleTasks(args)
+	case "help", "--help", "-h":
+		printUsage()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
+		printUsage()
+		os.Exit(1)
+	}
+}
+
+func printUsage() {
+	fmt.Println(`Norman CLI — Agent workspace manager
+
+Usage: norman <command> [args...]
+
+Commands:
+  create <name>        Create a new workspace directory + .openshell/ overlay
+  switch <name>        Switch to an existing workspace
+  run [prompt]         Start a task with optional prompt
+  list                 List available workspaces
+  config               Show or edit current configuration
+  skills list          List installed skills
+  skills install <id>  Install a skill from registry
+  skills remove <id>   Remove an installed skill
+  sessions             List active sessions
+  tasks                List tasks
+
+Use "norman help <command>" for detailed help on a specific command.`)
+}
+
+// handleConfig shows or edits the current config.
+func handleConfig(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println(`config — Show or edit configuration
+
+Usage: norman config [--show | --set key=value]
+
+Options:
+  --show    Display current config values (read from ~/.config/norman/config.yaml)
+  --set     Set a config value (e.g., --set server_port=9090)
+
+Config is persisted as YAML at ~/.config/norman/config.yaml.
+Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
+		return
+	}
+
+	c, err := config.LoadDefault()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(args) > 0 && args[0] == "--set" {
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: norman config --set key=value")
+			os.Exit(1)
+		}
+		parts := strings.SplitN(args[1], "=", 2)
+		if len(parts) != 2 {
+			fmt.Fprintf(os.Stderr, "Invalid format: %s (expected key=value)\n", args[1])
+			os.Exit(1)
+		}
+		key, val := parts[0], parts[1]
+
+		// Simple key-value setter (extensible for nested keys)
+		switch key {
+		case "default_model":
+			c.DefaultModel = val
+		case "server_port":
+			fmt.Sscanf(val, "%d", &c.ServerPort)
+		case "max_tokens":
+			fmt.Sscanf(val, "%d", &c.Agent.MaxTokens)
+		case "temperature":
+			fmt.Sscanf(val, "%f", &c.Agent.Temperature)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
+			os.Exit(1)
+		}
+
+		if err := c.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "Validation failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := c.Save(getConfigPath()); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Updated %s → %s\n", key, val)
+		return
+	}
+
+	// Default: show current config
+	fmt.Println("# Current Configuration")
+	fmt.Printf("  default_model:    %s\n", c.DefaultModel)
+	fmt.Printf("  server_port:      %d\n", c.ServerPort)
+	fmt.Printf("  max_tokens:       %d\n", c.Agent.MaxTokens)
+	fmt.Printf("  temperature:      %.2f\n", c.Agent.Temperature)
+	fmt.Printf("  workspace_base:   %s\n", c.Workspaces.BaseDir)
+}
+
+// handleCreate creates a new workspace.
+func handleCreate(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: norman create <name>")
+		os.Exit(1)
+	}
+
+	name := args[0]
+	c, err := config.LoadDefault()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	baseDir, err := expandHome(c.Workspaces.BaseDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error expanding workspace base dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	workspacePath := filepath.Join(baseDir, name)
+	overlayPath := filepath.Join(workspacePath, ".openshell")
+
+	// Create workspace directory
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating workspace: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create .openshell/ overlay
+	if err := os.MkdirAll(overlayPath, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating .openshell/ overlay: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Created workspace '%s' at %s\n", name, workspacePath)
+	fmt.Printf("  Overlay directory: %s\n", overlayPath)
+}
+
+// handleSwitch switches to an existing workspace.
+func handleSwitch(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: norman switch <name>")
+		os.Exit(1)
+	}
+
+	name := args[0]
+	c, err := config.LoadDefault()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	baseDir, err := expandHome(c.Workspaces.BaseDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error expanding workspace base dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	workspacePath := filepath.Join(baseDir, name)
+	overlayPath := filepath.Join(workspacePath, ".openshell")
+
+	if _, err := os.Stat(workspacePath); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Workspace '%s' not found at %s\n", name, workspacePath)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Switched to workspace '%s'\n", name)
+	fmt.Printf("  Path: %s\n", workspacePath)
+	fmt.Printf("  Overlay: %s\n", overlayPath)
+}
+
+// handleRun starts a task with an optional prompt.
+func handleRun(args []string) {
+	if len(args) < 1 {
+		fmt.Println(`run [prompt] — Start a task
+
+Usage: norman run "your prompt here"
+
+The prompt is sent to the agent server for execution.`)
+		return
+	}
+
+	prompt := strings.Join(args, " ")
+	fmt.Printf("Starting task with prompt:\n  %s\n", prompt)
+	fmt.Println("(Agent server not yet implemented — this would connect via WebSocket)")
+}
+
+// handleList lists available workspaces.
+func handleList(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println(`list — List available workspaces
+
+Usage: norman list [--json]
+
+Lists all workspace directories found in the configured base directory.`)
+		return
+	}
+
+	c, err := config.LoadDefault()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	baseDir, err := expandHome(c.Workspaces.BaseDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error expanding workspace base dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading workspace directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Available workspaces:")
+	for _, entry := range entries {
+		if entry.IsDir() {
+			fmt.Printf("  %-20s %s\n", entry.Name(), filepath.Join(baseDir, entry.Name()))
+		}
+	}
+}
+
+// handleSkills handles skills subcommands.
+func handleSkills(args []string) {
+	if len(args) < 1 {
+		fmt.Println(`skills — Manage installed skills
+
+Usage: norman skills <subcommand> [args...]
+
+Subcommands:
+  list       Show installed skills
+  install <id>  Install a skill from registry
+  remove <id>   Remove an installed skill`)
+		return
+	}
+
+	sub := args[0]
+	switch sub {
+	case "list":
+		fmt.Println("Skills registry not yet connected — listing local skills...")
+		fmt.Println("(No skills installed)")
+	case "install", "remove":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: norman skills %s <id>\n", sub)
+			os.Exit(1)
+		}
+		fmt.Printf("Skills registry not yet connected — would %s skill '%s'\n", sub, args[1])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown skills subcommand: %s\n", sub)
+		os.Exit(1)
+	}
+}
+
+// handleSessions lists active sessions.
+func handleSessions(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println(`sessions — List active sessions
+
+Usage: norman sessions [--json | --follow]`)
+		return
+	}
+
+	fmt.Println("Sessions not yet connected to agent server.")
+	fmt.Println("(No active sessions)")
+}
+
+// handleTasks lists tasks.
+func handleTasks(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Println(`tasks — List tasks
+
+Usage: norman tasks [--json | --status <status>]`)
+		return
+	}
+
+	fmt.Println("Tasks not yet connected to agent server.")
+	fmt.Println("(No tasks)")
+}
+
+// expandHome resolves ~ in paths.
+func expandHome(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, path[2:]), nil
+	}
+	return path, nil
+}
+
+// getConfigPath returns the standard config file path.
+func getConfigPath() string {
+	return filepath.Join(os.ExpandEnv("$HOME/.config/norman"), "config.yaml")
+}
+
+
