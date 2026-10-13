@@ -107,6 +107,7 @@ budget:
 |----------|-------------|------|--------|
 | **7a** | Create `pkg/budget` package skeleton + `BudgetConfig`, `Turn`, `SessionState` types. Add unit tests for token counting logic. | Low — pure data model | ✅ COMPLETE |
 | **7b** | Implement `Compressor.Summarize()` — turn selection, pinned retention, summary generation (calls LLM with a compression prompt). Tests with mock turns. | Medium — requires LLM integration | ✅ COMPLETE |
+| **7c** | Wire budget thresholds into `Loop.execute()` — inject `Check()` calls, trigger archive + compress at 75%/90%. Add session archival to `memory/store.go`. | Medium — integration point | ✅ COMPLETE |
 | **7c** | Wire budget thresholds into `Loop.execute()` — inject `Check()` calls, trigger archive + compress at 75%/90%. Add session archival to `memory/store.go`. | Medium — integration point |
 | **7d** | Add CLI command `norman sessions archive` for manual archival; add WebSocket event `session_compressed` for real-time notification. | Low — thin wrapper |
 
