@@ -8,6 +8,8 @@
 
 ## Step 1 — Project scaffolding & module setup
 
+> **Status: ✅ COMPLETE** (committed on `step1-scaffold` branch)
+
 **Acceptance:** `go mod init github.com/norman/norman` succeeds; package tree compiles with `go build ./...`.
 
 - Define package structure:
@@ -36,6 +38,14 @@
   ~/go/bin/oapi-codegen -package protocol -generate client api-spec.yaml > pkg/protocol/client.go
   ~/go/bin/oapi-codegen -package api -generate server api-spec.yaml > internal/api/handlers.go
   ```
+
+### Completion Notes
+- All 10 package directories created and scaffolded with `init.go` stubs.
+- Runtime dependencies declared: `yaml.v3`, `go-sdk/mcp`, `gorilla/websocket`, `tiktoken-go`, `go-git`.
+- `go build ./...` passes cleanly (exit 0).
+- Committed as `ef04176` on branch `step1-scaffold`.
+
+---
 
 ## Step 1.5 — API Spec & Generation (new)
 
