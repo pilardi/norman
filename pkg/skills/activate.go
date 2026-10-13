@@ -107,6 +107,11 @@ func MatchSkill(entry SkillEntry, taskKeywords []string) bool {
 	return false
 }
 
+// Registry returns the full skill registry map.
+func (a *Activator) Registry() map[string]SkillEntry {
+	return a.registry
+}
+
 // ToolRegistry is the interface that the agent loop uses to query available tools.
 type ToolRegistry interface {
 	// GetTools returns tool definitions for a specific skill by name.
