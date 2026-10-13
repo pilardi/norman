@@ -10,6 +10,8 @@ import (
 
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
+	"github.com/norman/norman/pkg/skills"
+	"gopkg.in/yaml.v3"
 )
 
 var globalClient *env.Client
@@ -314,26 +316,171 @@ Usage: norman skills <subcommand> [args...]
 
 Subcommands:
   list       Show installed skills
-  install <id>  Install a skill from registry
-  remove <id>   Remove an installed skill`)
+  install <path>  Install a skill from a directory path
+  remove <name>   Remove an installed skill by name`)
 		return
 	}
 
 	sub := args[0]
 	switch sub {
 	case "list":
-		fmt.Println("Skills registry not yet connected — listing local skills...")
-		fmt.Println("(No skills installed)")
-	case "install", "remove":
+		listSkills()
+	case "install":
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: norman skills %s <id>\n", sub)
+			fmt.Fprintf(os.Stderr, "Usage: norman skills install <path>\n")
 			os.Exit(1)
 		}
-		fmt.Printf("Skills registry not yet connected — would %s skill '%s'\n", sub, args[1])
+		installSkill(args[1])
+	case "remove":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: norman skills remove <name>\n")
+			os.Exit(1)
+		}
+		removeSkill(args[1])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown skills subcommand: %s\n", sub)
 		os.Exit(1)
 	}
+}
+
+// listSkills discovers and displays all available skills.
+func listSkills() {
+	paths := []string{
+		"~/.norman/skills/",
+		"/usr/share/norman/skills/",
+	}
+
+	result, err := skills.Discover(paths)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error discovering skills: %v\n", err)
+		os.Exit(1)
+	}
+
+	if result.Valid == 0 {
+		fmt.Println("No skills discovered.")
+		fmt.Println("Discovery paths scanned:")
+		for _, p := range paths {
+			fmt.Printf("  - %s (empty)\n", p)
+		}
+		return
+	}
+
+	fmt.Printf("Discovered %d skill(s):\n\n", result.Valid)
+	for _, entry := range result.Skills {
+		fmt.Printf("  📦 %s\n", entry.Name)
+		fmt.Printf("     %s\n", entry.Description)
+		if len(entry.Tools) > 0 {
+			fmt.Printf("     Tools: %s\n", strings.Join(entry.Tools, ", "))
+		}
+		fmt.Printf("     Path: %s\n", entry.Path)
+		fmt.Println()
+	}
+}
+
+// installSkill copies a skill directory into ~/.norman/skills/.
+func installSkill(sourcePath string) {
+	destBase := os.ExpandEnv("$HOME/.norman/skills")
+	if err := os.MkdirAll(destBase, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating skills dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Extract skill name from SKILL.md frontmatter; fall back to directory basename
+	name := filepath.Base(sourcePath)
+	skillFile := filepath.Join(sourcePath, "SKILL.md")
+	if data, err := os.ReadFile(skillFile); err == nil {
+		if fmName := extractFrontmatterName(data); fmName != "" {
+			name = fmName
+		}
+	}
+
+	destDir := filepath.Join(destBase, name)
+
+	if _, err := os.Stat(filepath.Join(sourcePath, "SKILL.md")); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: source path does not contain a SKILL.md file\n")
+		os.Exit(1)
+	}
+
+	if err := copyDir(sourcePath, destDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error installing skill: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Installed skill '%s' → %s\n", name, destDir)
+}
+
+// extractFrontmatterName reads the 'name' field from SKILL.md frontmatter.
+func extractFrontmatterName(data []byte) string {
+	content := string(data)
+	start := strings.Index(content, "---")
+	if start == -1 {
+		return ""
+	}
+	end := strings.Index(content[start+3:], "---")
+	if end == -1 {
+		return ""
+	}
+	end += 3
+	fm := content[start+3:end]
+
+	var meta struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal([]byte(fm), &meta); err != nil {
+		return ""
+	}
+	return meta.Name
+}
+
+// removeSkill removes a skill from ~/.norman/skills/.
+func removeSkill(name string) {
+	destBase := os.ExpandEnv("$HOME/.norman/skills")
+	skillPath := filepath.Join(destBase, name)
+
+	if _, err := os.Stat(skillPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: skill '%s' not found\n", name)
+		os.Exit(1)
+	}
+
+	if err := os.RemoveAll(skillPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error removing skill: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Removed skill '%s'\n", name)
+}
+
+// copyDir recursively copies a directory tree.
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			data, err := os.ReadFile(srcPath)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(dstPath, data, 0644); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // handleSessions lists active sessions.
