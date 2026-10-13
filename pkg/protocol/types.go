@@ -181,6 +181,7 @@ func (e TaskCreateRequestPriority) Valid() bool {
 const (
 	ContextBudgetWarning WebSocketEventEvent = "context_budget_warning"
 	Notification         WebSocketEventEvent = "notification"
+	SessionCompressed    WebSocketEventEvent = "session_compressed"
 	SessionEvent         WebSocketEventEvent = "session_event"
 	TaskComplete         WebSocketEventEvent = "task_complete"
 	TaskFailed           WebSocketEventEvent = "task_failed"
@@ -193,6 +194,8 @@ func (e WebSocketEventEvent) Valid() bool {
 	case ContextBudgetWarning:
 		return true
 	case Notification:
+		return true
+	case SessionCompressed:
 		return true
 	case SessionEvent:
 		return true
@@ -449,6 +452,11 @@ type WorkspaceCreateRequest struct {
 
 	// Path Absolute path to the workspace directory
 	Path string `json:"path"`
+}
+
+// ArchiveSessionRequest defines body for ArchiveSession for application/json ContentType.
+type ArchiveSessionRequest struct {
+	TaskId string `json:"task_id"`
 }
 
 // ListTasksParams defines parameters for ListTasks.

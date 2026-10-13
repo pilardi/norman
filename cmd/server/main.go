@@ -95,6 +95,9 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
+	// Session archive endpoint (Step 7d)
+	e.POST("/api/sessions/archive", srv.ArchiveSession)
+
 	// WebSocket hub for real-time push events
 	e.GET("/ws", func(c echo.Context) error {
 		conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
@@ -154,6 +157,35 @@ func (s *server) CreateSession(c echo.Context) error {
 	})
 
 	return c.NoContent(http.StatusCreated)
+}
+
+func (s *server) ArchiveSession(c echo.Context) error {
+	var req protocol.ArchiveSessionRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	// Read task data for archival
+	taskData, err := s.store.LoadTask(req.TaskId)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found: " + req.TaskId})
+	}
+
+	// Convert to []interface{} for ArchiveSession
+	sessions := []interface{}{taskData}
+
+	if err := s.store.ArchiveSession(req.TaskId, sessions); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Broadcast WebSocket event
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.SessionCompressed,
+		TaskId:  &req.TaskId,
+		Message: strPtr("Session archived for task " + req.TaskId),
+	})
+
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (s *server) GetSession(c echo.Context, id string) error {
