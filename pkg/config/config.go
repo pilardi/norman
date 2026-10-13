@@ -13,9 +13,15 @@ import (
 type Config struct {
 	DefaultModel string            `yaml:"default_model"`
 	ServerPort   int               `yaml:"server_port"`
-	Skills       []string          `yaml:"skills"`
+	Skills       SkillsConfig      `yaml:"skills"`
 	Workspaces   WorkspaceConfig   `yaml:"workspaces"`
 	Agent        AgentConfig       `yaml:"agent"`
+}
+
+// SkillsConfig holds skill-related settings.
+type SkillsConfig struct {
+	DiscoveryPaths []string `yaml:"discovery_paths"` // paths to scan for SKILL.md files
+	MaxActive      int      `yaml:"max_active"`     // max concurrent active skills (0 = unlimited)
 }
 
 // WorkspaceConfig holds workspace-related settings.
@@ -36,6 +42,7 @@ const (
 	DefaultBaseDir     = "~/workspaces"
 	DefaultMaxTokens   = 32000
 	DefaultTemperature = 0.7
+	DefaultMaxActive   = 3
 )
 
 // DefaultConfig returns a Config with sensible defaults applied.
@@ -43,7 +50,13 @@ func DefaultConfig() *Config {
 	return &Config{
 		DefaultModel: DefaultModel,
 		ServerPort:   DefaultServerPort,
-		Skills:       []string{},
+		Skills: SkillsConfig{
+			DiscoveryPaths: []string{
+				"~/.norman/skills/",
+				"/usr/share/norman/skills/",
+			},
+			MaxActive: DefaultMaxActive,
+		},
 		Workspaces: WorkspaceConfig{
 			BaseDir: DefaultBaseDir,
 		},
@@ -83,6 +96,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.Agent.Temperature == 0 {
 		c.Agent.Temperature = DefaultTemperature
+	}
+	if c.Skills.MaxActive == 0 {
+		c.Skills.MaxActive = DefaultMaxActive
 	}
 
 	return c, nil
@@ -127,6 +143,9 @@ func LoadDefault() (*Config, error) {
 	if c.Agent.Temperature == 0 {
 		c.Agent.Temperature = DefaultTemperature
 	}
+	if c.Skills.MaxActive == 0 {
+		c.Skills.MaxActive = DefaultMaxActive
+	}
 
 	return c, nil
 }
@@ -159,6 +178,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Agent.Temperature < 0 || c.Agent.Temperature > 2 {
 		return fmt.Errorf("temperature must be between 0 and 2, got %.2f", c.Agent.Temperature)
+	}
+	if c.Skills.MaxActive < 0 {
+		return fmt.Errorf("skills.max_active must be >= 0, got %d", c.Skills.MaxActive)
 	}
 	return nil
 }

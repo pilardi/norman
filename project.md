@@ -84,12 +84,24 @@
 
 ## Step 4 — Skill discovery & progressive activation
 
+> **Status: ✅ COMPLETE** (committed on `step4-skills` branch)
+
 **Acceptance:** Running `norman skills list` shows discovered skills; running `norman run "use docker to build an image"` activates the Docker skill's tools into context.
 
 - Scan configured discovery paths (`~/.norman/skills/`, `/usr/share/norman/skills/`, per-workspace `skills/`) for valid skill definitions (directory with `SKILL.md`).
 - Load **metadata only** at startup. Tools NOT loaded into context until needed.
 - On demand: planning loop determines a task needs a specific skill → inject that skill's tools into the active prompt.
 - Deactivate unused skills to reclaim token budget.
+
+### Completion Notes
+- `pkg/skills/discover.go` — scans paths, parses SKILL.md frontmatter, returns metadata-only results.
+- `pkg/skills/activate.go` — manages active/inactive skill state; injects tool definitions into context; auto-deactivates least-recently-used skills when at capacity.
+- `cmd/norman/main.go` — `skills list/install/remove` commands fully wired to discovery and file system operations.
+- `pkg/config/config.go` — added `SkillsConfig` struct with `DiscoveryPaths` and `MaxActive` fields; defaults applied in `DefaultConfig()`.
+- Installed skills use frontmatter `name` field for directory naming; falls back to basename if missing.
+- `go build ./...` passes cleanly (exit 0).
+
+---
 
 ## Step 5 — Agent Server + Task API
 
