@@ -1,0 +1,662 @@
+openapi: "3.1.0"
+info:
+  title: "Norman Agent Server API"
+  description: |
+    Client ↔ Agent Server communication protocol for the Norman agent system.
+    Designed to drive code generation for client protocol libraries and server handlers.
+  version: "0.1.0-mvp"
+  contact:
+    name: "norman project"
+
+servers:
+  - url: "http://localhost:8080"
+    description: "Default Agent Server endpoint"
+
+tags:
+  - name: workspace
+    description: Workspace lifecycle management
+  - name: session
+    description: OpenShell session management
+  - name: task
+    description: Task creation, status, and output
+  - name: skill
+    description: Skill discovery and management
+  - name: scheduled
+    description: Recurring/cron task registration
+  - name: websocket
+    description: Real-time push events to connected clients
+
+paths:
+  /api/workspaces:
+    post:
+      tags: [workspace]
+      summary: Create a new workspace
+      operationId: createWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceCreateRequest"
+      responses:
+        "201":
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "400":
+          description: Invalid request (e.g., duplicate name)
+        "409":
+          description: Workspace already exists
+
+    get:
+      tags: [workspace]
+      summary: List all workspaces
+      operationId: listWorkspaces
+      responses:
+        "200":
+          description: List of workspaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workspace"
+
+  /api/workspaces/{name}:
+    get:
+      tags: [workspace]
+      summary: Get workspace details
+      operationId: getWorkspace
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workspace details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: Workspace not found
+
+    delete:
+      tags: [workspace]
+      summary: Delete a workspace
+      operationId: deleteWorkspace
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Workspace deleted
+        "404":
+          description: Workspace not found
+
+  /api/sessions:
+    get:
+      tags: [session]
+      summary: List active sessions
+      operationId: listSessions
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+
+    post:
+      tags: [session]
+      summary: Create a new session for a workspace
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionCreateRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /api/sessions/{id}:
+    get:
+      tags: [session]
+      summary: Get session details
+      operationId: getSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Session not found
+
+  /api/tasks:
+    post:
+      tags: [task]
+      summary: Create a new task (user prompt)
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreateRequest"
+      responses:
+        "201":
+          description: Task created and started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Invalid request
+
+    get:
+      tags: [task]
+      summary: List active/scheduled tasks
+      operationId: listTasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [running, completed, failed, scheduled, cancelled]
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+
+  /api/tasks/{id}:
+    get:
+      tags: [task]
+      summary: Get task status and details
+      operationId: getTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Task not found
+
+    delete:
+      tags: [task]
+      summary: Cancel a running task
+      operationId: cancelTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task cancelled
+          content:
+            application/json:
+              $ref: "#/components/schemas/Task"
+
+  /api/tasks/{id}/log:
+    get:
+      tags: [task]
+      summary: Tail task output (for CLI polling)
+      operationId: tailTaskLog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: lines
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Task log output
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/skills:
+    get:
+      tags: [skill]
+      summary: List discovered skills (metadata only)
+      operationId: listSkills
+      responses:
+        "200":
+          description: List of discovered skills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Skill"
+
+  /api/skills/install:
+    post:
+      tags: [skill]
+      summary: Install a skill from discovery path
+      operationId: installSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillInstallRequest"
+      responses:
+        "201":
+          description: Skill installed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Skill"
+
+  /api/skills/{name}:
+    delete:
+      tags: [skill]
+      summary: Remove a skill
+      operationId: removeSkill
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Skill removed
+
+  /api/tasks/schedule:
+    post:
+      tags: [scheduled]
+      summary: Register a recurring task
+      operationId: scheduleTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledTaskRequest"
+      responses:
+        "201":
+          description: Scheduled task registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledTask"
+
+  /api/tasks/scheduled:
+    get:
+      tags: [scheduled]
+      summary: List scheduled tasks
+      operationId: listScheduledTasks
+      responses:
+        "200":
+          description: List of scheduled tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledTask"
+
+  /api/tasks/scheduled/{id}:
+    delete:
+      tags: [scheduled]
+      summary: Remove a scheduled task
+      operationId: unscheduleTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Scheduled task removed
+
+  /api/tasks/{id}/complete:
+    post:
+      tags: [task]
+      summary: Environment reports task completion (internal)
+      operationId: reportTaskComplete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCompletion"
+      responses:
+        "200":
+          description: Completion recorded, notifications dispatched
+        "404":
+          description: Task not found
+
+  /ws:
+    get:
+      tags: [websocket]
+      summary: WebSocket endpoint for real-time push events
+      operationId: connectWebSocket
+      responses:
+        "101":
+          description: WebSocket upgrade successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSocketEvent"
+
+components:
+  schemas:
+    WorkspaceCreateRequest:
+      type: object
+      required: [name, path]
+      properties:
+        name:
+          type: string
+          description: Unique workspace identifier
+          example: "my-project"
+        path:
+          type: string
+          description: Absolute path to the workspace directory
+          example: "/home/user/projects/my-project"
+
+    Workspace:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique workspace identifier
+        name:
+          type: string
+        path:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, archived]
+
+    SessionCreateRequest:
+      type: object
+      required: [workspace_id]
+      properties:
+        workspace_id:
+          type: string
+          description: ID of the workspace to create session for
+        client_type:
+          type: string
+          enum: [cli, web_ui, custom]
+          default: "cli"
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+        status:
+          type: string
+          enum: [active, crashed, recovered]
+        created_at:
+          type: string
+          format: date-time
+
+    TaskCreateRequest:
+      type: object
+      required: [workspace_id, prompt]
+      properties:
+        workspace_id:
+          type: string
+          description: Target workspace for this task
+        prompt:
+          type: string
+          description: Natural language task description
+        priority:
+          type: string
+          enum: [low, normal, high]
+          default: "normal"
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled, scheduled]
+        prompt:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        duration_ms:
+          type: integer
+          description: Execution time in milliseconds
+        output_path:
+          type: string
+          description: Path to task output file (if applicable)
+        error:
+          type: string
+          nullable: true
+        retry_count:
+          type: integer
+          default: 0
+
+    TaskCompletion:
+      type: object
+      required: [task_id, status]
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+          enum: [completed, failed]
+        duration_ms:
+          type: integer
+        output_path:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        retry_count:
+          type: integer
+          default: 0
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Arbitrary task-specific metadata
+
+    Skill:
+      type: object
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillTool"
+
+    SkillTool:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [built-in, mcp]
+        name:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+          nullable: true
+        endpoint:
+          type: string
+          nullable: true
+          description: MCP endpoint URL (for mcp type)
+        capabilities:
+          type: array
+          items:
+            type: string
+          nullable: true
+
+    SkillInstallRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Skill name to install from discovery paths
+
+    ScheduledTaskRequest:
+      type: object
+      required: [name, workspace_id, schedule, skill]
+      properties:
+        name:
+          type: string
+        workspace_id:
+          type: string
+        schedule:
+          type: string
+          description: Cron expression (5-field or 6-field)
+          example: "*/5 * * * *"
+        skill:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        on_success:
+          $ref: "#/components/schemas/NotificationConfig"
+        on_failure:
+          $ref: "#/components/schemas/NotificationConfig"
+
+    ScheduledTask:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        workspace_id:
+          type: string
+        schedule:
+          type: string
+        skill:
+          type: string
+        status:
+          type: string
+          enum: [active, paused, failed]
+
+    NotificationConfig:
+      type: object
+      properties:
+        channel:
+          type: string
+          description: Target channel (e.g., "slack", "#ops")
+        priority:
+          type: string
+          enum: [normal, high]
+          default: "normal"
+
+    WebSocketEvent:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: string
+          enum:
+            - task_progress
+            - task_complete
+            - task_failed
+            - notification
+            - session_event
+            - context_budget_warning
+        task_id:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        step:
+          type: integer
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [normal, high]
+          nullable: true
+        used_tokens:
+          type: integer
+          nullable: true
+        remaining_tokens:
+          type: integer
+          nullable: true
+        threshold:
+          type: string
+          nullable: true
+          description: Budget threshold that triggered the event (e.g., "75%")
