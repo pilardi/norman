@@ -530,6 +530,7 @@ func (s *server) DeleteNotification(c echo.Context, id string) error {
 
 // GetConfig returns the system config (with unresolved secret placeholders).
 // If workspace_id query param is provided, returns merged per-workspace config.
+// The response also includes the resolved OpenShell gateway address.
 func (s *server) GetConfig(c echo.Context) error {
 	workspaceID := c.QueryParam("workspace_id")
 
@@ -537,16 +538,29 @@ func (s *server) GetConfig(c echo.Context) error {
 		// Return merged config for a specific workspace
 		if ws, ok := s.cfg.Workspaces[workspaceID]; ok {
 			return c.JSON(http.StatusOK, map[string]interface{}{
-				"system":  s.cfg.System,
-				"workspace": ws,
-				"merged":  s.cfg.MergeWorkspaceConfig(workspaceID, ws),
+				"system":        s.cfg.System,
+				"workspace":     ws,
+				"merged":        s.cfg.MergeWorkspaceConfig(workspaceID, ws),
+				"openshell":     resolveGatewayAddress(),
 			})
 		}
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
 	}
 
-	// Return full system config
-	return c.JSON(http.StatusOK, s.cfg.System)
+	// Return full system config with resolved OpenShell gateway address
+	result := make(map[string]interface{})
+	result["system"] = s.cfg.System
+	result["openshell"] = resolveGatewayAddress()
+	return c.JSON(http.StatusOK, result)
+}
+
+// resolveGatewayAddress returns the currently-resolved OpenShell gateway address.
+func resolveGatewayAddress() string {
+	addr := os.Getenv("OPENSHELL_GATEWAY_ADDRESS")
+	if addr != "" {
+		return addr
+	}
+	return env.ResolveGatewayAddress()
 }
 
 // --- WSHub (moved from stub to real implementation) ---
