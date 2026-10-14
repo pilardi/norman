@@ -3,13 +3,14 @@
 # Targets:
 #   help      Show this help message
 #   generate  Generate protocol types, client library, and server handlers from api-spec.yaml
-#   build     Run generate + compile all packages
+#   build     Run generate + compile all packages (binaries in dist/)
 #   test      Run all unit tests
-#   clean     Remove generated files
+#   clean     Remove generated files and binaries in dist/
 
 .PHONY: help generate build test clean
 
 CODEGEN := ~/go/bin/oapi-codegen
+DIST    := dist
 
 help:
 	@echo "Norman Build System"
@@ -17,9 +18,9 @@ help:
 	@echo "Targets:"
 	@echo "  help      - Show this help message"
 	@echo "  generate  - Generate protocol types, client library, and server handlers from api-spec.yaml"
-	@echo "  build     - Run generate + compile all packages"
+	@echo "  build     - Run generate + compile all packages (binaries in $(DIST)/)"
 	@echo "  test      - Run all unit tests"
-	@echo "  clean     - Remove generated files"
+	@echo "  clean     - Remove generated files and binaries in $(DIST)/"
 
 generate:
 	@echo "Generating protocol types..."
@@ -35,12 +36,12 @@ generate:
 
 build: generate
 	go mod tidy
-	go build ./...
+	mkdir -p $(DIST)
+	go build -o $(DIST)/norman ./cmd/norman
+	go build -o $(DIST)/norman-server ./cmd/norman-server
 
 test:
 	go test ./...
 
 clean:
-	find . -name '*.exe' -delete 2>/dev/null || true
-	find . -type f -name 'norman' -delete 2>/dev/null || true
-	find . -type f -name 'norman-server' -delete 2>/dev/null || true
+	rm -rf $(DIST)
