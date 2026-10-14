@@ -8,20 +8,122 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/norman/norman/pkg/config"
-	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/scheduler"
-	"github.com/norman/norman/pkg/skills"
-	"gopkg.in/yaml.v3"
 )
 
-var globalClient *env.Client
-var globalManager *env.WorkspaceManager
+// serverURL returns the configured server base URL.
+func serverURL() string {
+	cfg, err := config.LoadDefault()
+	if err != nil {
+		return "http://localhost:8080"
+	}
+	return fmt.Sprintf("http://localhost:%d", cfg.ServerPort)
+}
+
+// httpGet performs a GET request to the server and returns JSON bytes.
+func httpGet(path string) ([]byte, error) {
+	url := serverURL() + path
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP GET %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return body, nil
+}
+
+// httpPost performs a POST request with JSON body to the server (no body return).
+func httpPost(path string, body interface{}) error {
+	url := serverURL() + path
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("POST %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
+
+// httpPostJSON performs a POST request with JSON body and returns the response body.
+func httpPostJSON(path string, body interface{}) ([]byte, error) {
+	url := serverURL() + path
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("POST %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// httpDelete performs a DELETE request to the server.
+func httpDelete(path string) error {
+	url := serverURL() + path
+	req, err := http.NewRequestWithContext(context.Background(), "DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("DELETE %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -153,7 +255,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  workspace_base:   %s\n", c.Workspaces.BaseDir)
 }
 
-// handleCreate creates a new workspace with a persistent OpenShell session.
+// handleCreate delegates workspace creation to the agent server.
 func handleCreate(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: norman create <name>")
@@ -162,44 +264,22 @@ func handleCreate(args []string) {
 
 	name := args[0]
 
-	// Initialize env client if not already done
-	if globalClient == nil {
-		var err error
-		globalClient, err = env.NewClient("127.0.0.1:8080")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error connecting to OpenShell gateway: %v\n", err)
-			os.Exit(1)
-		}
-		globalManager = env.NewWorkspaceManager(globalClient)
-		defer globalClient.Close()
+	// Submit workspace creation request to server
+	req := map[string]string{
+		"name":        name,
+		"client_type": "cli",
 	}
 
-	ctx := context.Background()
-
-	// Create the workspace sandbox via OpenShell SDK
-	session, err := globalManager.CreateWorkspace(ctx, name)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating workspace '%s': %v\n", name, err)
+	if err := httpPost("/api/workspaces", req); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating workspace: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Also create the local .openshell/ overlay directory for host-side tracking
-	c, _ := config.LoadDefault()
-	baseDir, _ := expandHome(c.Workspaces.BaseDir)
-	workspacePath := filepath.Join(baseDir, name)
-	overlayPath := filepath.Join(workspacePath, ".openshell")
-
-	if err := os.MkdirAll(overlayPath, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not create overlay dir: %v\n", err)
-	}
-
-	fmt.Printf("Created workspace '%s'\n", name)
-	fmt.Printf("  Sandbox:   %s (persistent OpenShell session)\n", session.SandboxName())
-	fmt.Printf("  Overlay:   %s\n", overlayPath)
-	fmt.Printf("  Ready:     ✓\n")
+	fmt.Printf("Created workspace '%s' (delegated to agent server)\n", name)
+	fmt.Println("(Server manages OpenShell sandbox lifecycle)")
 }
 
-// handleSwitch switches to an existing workspace session.
+// handleSwitch queries the server for workspace info and displays it.
 func handleSwitch(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: norman switch <name>")
@@ -208,112 +288,100 @@ func handleSwitch(args []string) {
 
 	name := args[0]
 
-	if globalClient == nil {
-		var err error
-		globalClient, err = env.NewClient("127.0.0.1:8080")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error connecting to OpenShell gateway: %v\n", err)
-			os.Exit(1)
-		}
-		globalManager = env.NewWorkspaceManager(globalClient)
-		defer globalClient.Close()
-	}
-
-	ctx := context.Background()
-
-	session, err := globalManager.GetSession(ctx, name)
+	body, err := httpGet("/api/workspaces/" + url.PathEscape(name))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error switching to workspace '%s': %v\n", name, err)
 		os.Exit(1)
 	}
 
-	c, _ := config.LoadDefault()
-	baseDir, _ := expandHome(c.Workspaces.BaseDir)
-	workspacePath := filepath.Join(baseDir, name)
+	var ws map[string]interface{}
+	if err := json.Unmarshal(body, &ws); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing workspace response: %v\n", err)
+		os.Exit(1)
+	}
+
+	path, _ := ws["path"].(string)
+	sandbox, _ := ws["sandbox"].(string)
+	status, _ := ws["status"].(string)
 
 	fmt.Printf("Switched to workspace '%s'\n", name)
-	fmt.Printf("  Path:      %s\n", workspacePath)
-	fmt.Printf("  Sandbox:   %s\n", session.SandboxName())
-	fmt.Printf("  Status:    ready\n")
+	fmt.Printf("  Path:      %s\n", path)
+	if sandbox != "" {
+		fmt.Printf("  Sandbox:   %s\n", sandbox)
+	}
+	fmt.Printf("  Status:    %s\n", status)
 }
 
-// handleRun executes a prompt inside the workspace session.
+// handleRun submits a prompt to the agent server for execution.
 func handleRun(args []string) {
 	if len(args) < 1 {
 		fmt.Println(`run [prompt] — Execute a prompt in the workspace session
 
 Usage: norman run "your prompt here"
 
-The prompt is executed inside the OpenShell sandbox for the active workspace.`)
+The prompt is submitted to the agent server which executes it inside an OpenShell sandbox.`)
 		return
 	}
 
 	prompt := strings.Join(args, " ")
 
-	if globalClient == nil {
-		var err error
-		globalClient, err = env.NewClient("127.0.0.1:8080")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error connecting to OpenShell gateway: %v\n", err)
-			os.Exit(1)
-		}
-		globalManager = env.NewWorkspaceManager(globalClient)
-		defer globalClient.Close()
+	// Submit task to server via REST API
+	taskReq := map[string]string{
+		"prompt":       prompt,
+		"workspace_id": "default",
 	}
 
-	ctx := context.Background()
-
-	// Get or create the session for the current workspace (default: first one)
-	session, err := globalManager.GetSession(ctx, "default")
+	body, err := httpPostJSON("/api/tasks", taskReq)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting session: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error submitting task: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Execute the prompt as a command in the sandbox
-	output, err := session.Exec(ctx, []string{"sh", "-c", prompt})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error executing prompt: %v\n", err)
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Prompt output:\n%s\n", output)
+	taskID, _ := result["id"].(string)
+	status, _ := result["status"].(string)
+	fmt.Printf("Task submitted (id=%s, status=%s)\n", taskID, status)
+	fmt.Println("(Poll /api/tasks/:id or watch WebSocket for results)")
 }
 
-// handleList lists available workspaces and their sessions.
+// handleList fetches workspace info from the server.
 func handleList(args []string) {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(`list — List available workspaces and sessions
 
 Usage: norman list [--json]
 
-Lists all workspace directories found in the configured base directory.`)
+Queries the agent server for workspace information.`)
 		return
 	}
 
-	c, err := config.LoadDefault()
+	body, err := httpGet("/api/workspaces")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
 		os.Exit(1)
 	}
 
-	baseDir, err := expandHome(c.Workspaces.BaseDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error expanding workspace base dir: %v\n", err)
+	var workspaces []map[string]interface{}
+	if err := json.Unmarshal(body, &workspaces); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing workspace response: %v\n", err)
 		os.Exit(1)
 	}
 
-	entries, err := os.ReadDir(baseDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading workspace directory: %v\n", err)
-		os.Exit(1)
+	if len(workspaces) == 0 {
+		fmt.Println("No workspaces found.")
+		return
 	}
 
 	fmt.Println("Available workspaces:")
-	for _, entry := range entries {
-		if entry.IsDir() {
-			fmt.Printf("  %-20s %s\n", entry.Name(), filepath.Join(baseDir, entry.Name()))
-		}
+	for _, w := range workspaces {
+		name, _ := w["name"].(string)
+		path, _ := w["path"].(string)
+		fmt.Printf("  %-20s %s\n", name, path)
 	}
 }
 
@@ -353,144 +421,66 @@ Subcommands:
 	}
 }
 
-// listSkills discovers and displays all available skills.
+// listSkills fetches installed skills from the server.
 func listSkills() {
-	paths := []string{
-		"~/.norman/skills/",
-		"/usr/share/norman/skills/",
-	}
-
-	result, err := skills.Discover(paths)
+	body, err := httpGet("/api/skills")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error discovering skills: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error fetching skills: %v\n", err)
 		os.Exit(1)
 	}
 
-	if result.Valid == 0 {
+	var skills []map[string]interface{}
+	if err := json.Unmarshal(body, &skills); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing skills response: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(skills) == 0 {
 		fmt.Println("No skills discovered.")
-		fmt.Println("Discovery paths scanned:")
-		for _, p := range paths {
-			fmt.Printf("  - %s (empty)\n", p)
-		}
 		return
 	}
 
-	fmt.Printf("Discovered %d skill(s):\n\n", result.Valid)
-	for _, entry := range result.Skills {
-		fmt.Printf("  📦 %s\n", entry.Name)
-		fmt.Printf("     %s\n", entry.Description)
-		if len(entry.Tools) > 0 {
-			fmt.Printf("     Tools: %s\n", strings.Join(entry.Tools, ", "))
+	fmt.Printf("Discovered %d skill(s):\n\n", len(skills))
+	for _, s := range skills {
+		name, _ := s["name"].(string)
+		desc, _ := s["description"].(string)
+		path, _ := s["path"].(string)
+		tools, _ := s["tools"].([]interface{})
+
+		fmt.Printf("  📦 %s\n", name)
+		fmt.Printf("     %s\n", desc)
+		if len(tools) > 0 {
+			toolNames := make([]string, len(tools))
+			for i, t := range tools {
+				if m, ok := t.(map[string]interface{}); ok {
+					if n, ok := m["name"].(string); ok {
+						toolNames[i] = n
+					}
+				}
+			}
+			fmt.Printf("     Tools: %s\n", strings.Join(toolNames, ", "))
 		}
-		fmt.Printf("     Path: %s\n", entry.Path)
+		fmt.Printf("     Path: %s\n", path)
 		fmt.Println()
 	}
 }
 
-// installSkill copies a skill directory into ~/.norman/skills/.
+// installSkill delegates to the server's /api/skills/install endpoint.
 func installSkill(sourcePath string) {
-	destBase := os.ExpandEnv("$HOME/.norman/skills")
-	if err := os.MkdirAll(destBase, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating skills dir: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Extract skill name from SKILL.md frontmatter; fall back to directory basename
-	name := filepath.Base(sourcePath)
-	skillFile := filepath.Join(sourcePath, "SKILL.md")
-	if data, err := os.ReadFile(skillFile); err == nil {
-		if fmName := extractFrontmatterName(data); fmName != "" {
-			name = fmName
-		}
-	}
-
-	destDir := filepath.Join(destBase, name)
-
-	if _, err := os.Stat(filepath.Join(sourcePath, "SKILL.md")); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: source path does not contain a SKILL.md file\n")
-		os.Exit(1)
-	}
-
-	if err := copyDir(sourcePath, destDir); err != nil {
+	if err := httpPost("/api/skills/install", map[string]string{"name": sourcePath}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error installing skill: %v\n", err)
 		os.Exit(1)
 	}
-
-	fmt.Printf("Installed skill '%s' → %s\n", name, destDir)
+	fmt.Printf("Requesting server to install skill from '%s'\n", sourcePath)
 }
 
-// extractFrontmatterName reads the 'name' field from SKILL.md frontmatter.
-func extractFrontmatterName(data []byte) string {
-	content := string(data)
-	start := strings.Index(content, "---")
-	if start == -1 {
-		return ""
-	}
-	end := strings.Index(content[start+3:], "---")
-	if end == -1 {
-		return ""
-	}
-	end += 3
-	fm := content[start+3:end]
-
-	var meta struct {
-		Name string `yaml:"name"`
-	}
-	if err := yaml.Unmarshal([]byte(fm), &meta); err != nil {
-		return ""
-	}
-	return meta.Name
-}
-
-// removeSkill removes a skill from ~/.norman/skills/.
+// removeSkill delegates to the server's /api/skills/:name endpoint.
 func removeSkill(name string) {
-	destBase := os.ExpandEnv("$HOME/.norman/skills")
-	skillPath := filepath.Join(destBase, name)
-
-	if _, err := os.Stat(skillPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: skill '%s' not found\n", name)
-		os.Exit(1)
-	}
-
-	if err := os.RemoveAll(skillPath); err != nil {
+	if err := httpDelete("/api/skills/" + url.PathEscape(name)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error removing skill: %v\n", err)
 		os.Exit(1)
 	}
-
-	fmt.Printf("Removed skill '%s'\n", name)
-}
-
-// copyDir recursively copies a directory tree.
-func copyDir(src, dst string) error {
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		dstPath := filepath.Join(dst, entry.Name())
-
-		if entry.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return err
-			}
-		} else {
-			data, err := os.ReadFile(srcPath)
-			if err != nil {
-				return err
-			}
-			if err := os.WriteFile(dstPath, data, 0644); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	fmt.Printf("Requesting server to remove skill '%s'\n", name)
 }
 
 // handleSessions manages sessions via CLI.
@@ -529,12 +519,38 @@ Subcommands:
 
 func handleSessionList(args []string) {
 	if len(args) > 0 && (args[0] == "--json") {
-		fmt.Println(`{"sessions": []}`)
+		body, err := httpGet("/api/sessions")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(body))
 		return
 	}
 
-	fmt.Println("Sessions not yet connected to agent server.")
-	fmt.Println("(No active sessions)")
+	body, err := httpGet("/api/sessions")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
+		os.Exit(1)
+	}
+
+	var sessions []map[string]interface{}
+	if err := json.Unmarshal(body, &sessions); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing sessions response: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(sessions) == 0 {
+		fmt.Println("No active sessions.")
+		return
+	}
+
+	fmt.Println("Active sessions:")
+	for _, s := range sessions {
+		name, _ := s["name"].(string)
+		status, _ := s["status"].(string)
+		fmt.Printf("  %-20s status=%s\n", name, status)
+	}
 }
 
 // handleSessionArchive archives a session for the given task ID via REST API.

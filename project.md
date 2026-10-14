@@ -205,6 +205,26 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 ---
 
+## Step 10 — Server rename + client-server communication review
+
+> **Status:** 🚧 IN PROGRESS (branch `step10-server-rename-and-client-review`)
+
+### Changes Made
+- Renamed `cmd/server/` → `cmd/norman-server/` to avoid naming clash with other applications
+- Refactored CLI client (`cmd/norman/main.go`) to be a **thin HTTP client** — delegates operations to the server instead of assuming local environment access:
+  - `listSkills()` → now uses `GET /api/skills` (was scanning host filesystem)
+  - `installSkill()` → now uses `POST /api/skills/install` (was copying files locally)
+  - `removeSkill()` → now uses `DELETE /api/skills/:name` (was removing locally)
+  - `handleList()` workspace listing → now uses `GET /api/workspaces` (was `os.ReadDir`)
+  - `handleRun()` → now uses `POST /api/tasks` (was direct OpenShell SDK exec)
+  - `handleCreate()` → now uses `POST /api/workspaces` (was creating local overlay dirs)
+  - `handleSwitch()` → now uses `GET /api/workspaces/:name` (was constructing local paths)
+
+### Design Rationale
+The CLI is a thin application. It should not assume access to the local environment (e.g., when running in a container or remote SSH session). All file I/O, sandbox lifecycle, and skill management should happen on the server side via REST/WebSocket endpoints.
+
+---
+
 ## Step 9 — Follow-up: real SDK, scheduler wiring, CLI archive, config tests
 
 > **Status:** ✅ COMPLETE (merged to `main`)
