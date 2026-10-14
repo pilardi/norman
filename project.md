@@ -262,6 +262,25 @@ All sub-steps implemented, tested, and merged. See [docs/step9-plan.md](docs/ste
 
 ---
 
+## Step 11 — Build system cleanup
+
+> **Status:** ✅ COMPLETE (merged to `main`)
+
+Replaced ad-hoc `go build` with a proper Makefile pipeline and cleaned up stale artifacts.
+
+| # | Item | Status |
+|---|------|--------|
+| 11a | Add `help` target documenting all make targets | ✅ Done |
+| 11b | Generate protocol types, client library, server handlers from `api-spec.yaml` via oapi-codegen | ✅ Done |
+| 11c | Add missing API schemas (`ArchiveSessionRequest`, `NotificationEntry`, `NotificationCreateRequest`) and `session_compressed` enum to spec; wire REST endpoints | ✅ Done |
+| 11d | Remove generated `.go` files from git tracking; use `.gitignore` + `make generate` | ✅ Done |
+| 11e | Output compiled binaries to `dist/` (not repo root); add `dist/` to `.gitignore` | ✅ Done |
+| 11f | Remove stale `server/` directory from previous rename refactor | ✅ Done |
+
+**Verification:** `make clean → make build → make test` full cycle works with clean working tree.
+
+---
+
 ## MVP Scope Boundaries
 
 **In scope:** CLI client → HTTP/WebSocket → Agent Server → OpenShell environment → task execution → results returned to client. One active workspace per session. Flat markdown wiki. Cron scheduling via OpenShell. Slack + terminal bell notifications.
