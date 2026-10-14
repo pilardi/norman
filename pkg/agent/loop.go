@@ -14,6 +14,7 @@ import (
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/memory"
+	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/skills"
 )
@@ -39,6 +40,7 @@ type Loop struct {
 	config     *config.Config
 	openShell  OpenShellClient
 	wsHub      WSHubPublisher
+	notifier   *notify.Notifier
 	maxRetries int
 	budget     *budget.SessionState // token budget tracker (nil if disabled)
 }
@@ -70,6 +72,12 @@ func New(cfg *config.Config, store *memory.Store, activator *skills.Activator, w
 		maxRetries: 3,
 		budget:     nil, // disabled by default; set via SetBudget()
 	}
+}
+
+// WithNotifier injects a notification notifier into the loop. Returns the modified Loop.
+func (l *Loop) WithNotifier(n *notify.Notifier) *Loop {
+	l.notifier = n
+	return l
 }
 
 // WithBudget configures the loop with a budget tracker. Returns the modified Loop.
@@ -326,7 +334,7 @@ func turnsToInterface(turns []budget.Turn) []interface{} {
 	return result
 }
 
-// pushCompletion sends completion/failure events via WebSocket.
+// pushCompletion sends completion/failure events via WebSocket and notifies.
 func (l *Loop) pushCompletion(task *Task) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -343,6 +351,28 @@ func (l *Loop) pushCompletion(task *Task) {
 	}
 
 	l.wsHub.BroadcastEvent(completionEvent)
+
+	// Push notification via notifier (if configured)
+	if l.notifier != nil {
+		severity := "info"
+		if task.Error != "" {
+			severity = "error"
+		} else if task.Status == protocol.TaskStatusCompleted {
+			severity = "info"
+		}
+
+		n := notify.Notification{
+			TaskID:    task.ID,
+			Title:     fmt.Sprintf("Task %s", task.ID[:8]),
+			Body:      string(task.Output),
+			Severity:  severity,
+			Timestamp: time.Now(),
+		}
+
+		if err := l.notifier.Notify(n); err != nil {
+			log.Printf("agent: notifier failed for task %s: %v", task.ID, err)
+		}
+	}
 }
 
 // extractKeywords breaks a prompt into candidate keywords for skill matching.

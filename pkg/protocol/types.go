@@ -431,6 +431,24 @@ type WebSocketEventEvent string
 // WebSocketEventPriority defines model for WebSocketEvent.Priority.
 type WebSocketEventPriority string
 
+// NotificationEntry represents a notification entry returned by the REST API.
+type NotificationEntry struct {
+	Id        *string     `json:"id,omitempty"`
+	TaskId    *string     `json:"task_id,omitempty"`
+	Title     *string     `json:"title,omitempty"`
+	Body      *string     `json:"body,omitempty"`
+	Severity  *string     `json:"severity,omitempty"`
+	CreatedAt *time.Time  `json:"created_at,omitempty"`
+}
+
+// NotificationCreateRequest defines model for NotificationCreateRequest.
+type NotificationCreateRequest struct {
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+	Severity string `json:"severity"` // "info", "warn", "error"
+	TaskId   string `json:"task_id,omitempty"`
+}
+
 // Workspace defines model for Workspace.
 type Workspace struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`

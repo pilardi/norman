@@ -172,7 +172,7 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 ## Step 8 — MCP integration + task scheduling + notifications
 
-> **Status:** 📋 PLAN ONLY — detailed plan at [docs/step8-plan.md](docs/step8-plan.md).
+> **Status:** ✅ COMPLETE — all sub-steps (8a-8d) implemented and tested. See [docs/step8-plan.md](docs/step8-plan.md) for details.
 
 **Acceptance:** A skill declares an MCP connection → tools appear in context; a recurring task registered via `norman tasks add --schedule "*/5 * * * *" health-check` fires automatically and pushes results to the CLI.
 

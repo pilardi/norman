@@ -1,0 +1,197 @@
+// Package notify provides real-time notification delivery for Norman.
+//
+// Notifiers push task results to connected WebSocket clients, ring a terminal bell,
+// and optionally post to a Slack webhook. Rate limiting is enforced via a token bucket (10/min).
+package notify
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/norman/norman/pkg/protocol"
+)
+
+// Notification represents a single notification to be delivered.
+type Notification struct {
+	TaskID    string `json:"task_id"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Severity  string `json:"severity"` // "info", "warn", "error"
+	Timestamp time.Time
+}
+
+// Notifier delivers notifications via multiple channels.
+type Notifier struct {
+	mu          sync.Mutex
+	// WS hub reference — push structured events to connected clients
+	wsHub WSHubPublisher
+	// Terminal bell enabled flag
+	bellEnabled bool
+	// Slack webhook URL (empty = disabled)
+	slackURL string
+	// Rate limiting: token bucket, 10 tokens per minute
+	rateLimit int
+	tokens    float64
+	lastRefill time.Time
+}
+
+// WSHubPublisher interface for pushing WebSocket events.
+type WSHubPublisher interface {
+	BroadcastEvent(event protocol.WebSocketEvent)
+}
+
+// New creates a Notifier with the given dependencies.
+func New(wsHub WSHubPublisher, bellEnabled bool, slackURL string, rateLimitPerMinute int) *Notifier {
+	if rateLimitPerMinute <= 0 {
+		rateLimitPerMinute = 10 // default
+	}
+	return &Notifier{
+		wsHub:       wsHub,
+		bellEnabled: bellEnabled,
+		slackURL:    slackURL,
+		rateLimit:   rateLimitPerMinute,
+		tokens:      float64(rateLimitPerMinute),
+		lastRefill:  time.Now(),
+	}
+}
+
+// Notify sends a notification through all configured channels.
+// Returns an error if the rate limit is exceeded or delivery fails.
+func (n *Notifier) Notify(notification Notification) error {
+	// Check rate limit (token bucket)
+	if !n.consumeToken() {
+		return fmt.Errorf("rate limit exceeded: max %d notifications/minute", n.rateLimit)
+	}
+
+	// 1. Push to WebSocket hub
+	n.pushWS(notification)
+
+	// 2. Ring terminal bell if enabled
+	if n.bellEnabled {
+		n.ringBell(notification.Title, notification.Body)
+	}
+
+	// 3. Post to Slack webhook if configured
+	if n.slackURL != "" {
+		go n.postSlack(notification) // non-blocking
+	}
+
+	return nil
+}
+
+// consumeToken implements the token bucket rate limiter.
+func (n *Notifier) consumeToken() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	now := time.Now()
+	// Refill tokens based on elapsed time (smooth leak)
+	elapsed := now.Sub(n.lastRefill).Seconds()
+	n.tokens += elapsed * float64(n.rateLimit) / 60.0
+	if n.tokens > float64(n.rateLimit) {
+		n.tokens = float64(n.rateLimit)
+	}
+	n.lastRefill = now
+
+	if n.tokens < 1.0 {
+		return false // no tokens available
+	}
+
+	n.tokens -= 1.0
+	return true
+}
+
+// pushWS sends a structured WebSocketEvent to all connected clients.
+func (n *Notifier) pushWS(notification Notification) {
+	if n.wsHub == nil {
+		return
+	}
+
+	event := protocol.WebSocketEvent{
+		Event:   protocol.Notification,
+		TaskId:  &notification.TaskID,
+		Message: strPtr(fmt.Sprintf("[%s] %s: %s", notification.Severity, notification.Title, notification.Body)),
+		Priority: priority(notification.Severity),
+	}
+
+	n.wsHub.BroadcastEvent(event)
+}
+
+// ringBell prints a bell character and brief text to stdout.
+func (n *Notifier) ringBell(title, body string) {
+	fmt.Print("\a") // ASCII bell character (0x07)
+	log.Printf("[bell] %s: %s", title, truncate(body, 80))
+}
+
+// postSlack sends a notification to a Slack webhook URL.
+func (n *Notifier) postSlack(notification Notification) {
+	payload := map[string]interface{}{
+		"blocks": []map[string]interface{}{
+			{
+				"type": "section",
+				"text": map[string]interface{}{
+					"type": "mrkdwn",
+					"text": fmt.Sprintf("*%s*\n%s", notification.Title, truncate(notification.Body, 200)),
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("notify: slack marshal error: %v", err)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		n.slackURL,
+		bytes.NewBuffer(data),
+	)
+	if err != nil {
+		log.Printf("notify: slack request error: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("notify: slack POST failed: %v (webhook may be unreachable)", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		log.Printf("notify: slack returned HTTP %d for task %s", resp.StatusCode, notification.TaskID)
+	} else {
+		log.Printf("notify: slack notification sent for task %s", notification.TaskID)
+	}
+}
+
+// strPtr returns a pointer to the string value.
+func strPtr(s string) *string { return &s }
+
+// priority maps severity to WebSocketEventPriority.
+func priority(severity string) *protocol.WebSocketEventPriority {
+	p := protocol.WebSocketEventPriorityNormal
+	switch severity {
+	case "error":
+		p = protocol.WebSocketEventPriorityHigh
+	}
+	return &p
+}
+
+// truncate limits a string to maxLen characters, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
