@@ -203,8 +203,24 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 **Note:** The SDK is not yet publicly tagged. If the Go SDK becomes available as a stable release, swap from commit-sha pin to versioned import.
 
+---
+
+## Pending / Follow-up Work
+
+These items were identified during implementation but remain unaddressed:
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Wire real OpenShell SDK into `OpenShellClient` interface (currently using `FakeOpenShellClient`) | ⏳ Pending |
+| 2 | Connect scheduler `Start()` to `main()` and inject results channel into agent loop's notification path | ⏳ Pending |
+| 3 | Add CLI command `norman sessions archive` for manual archival (REST endpoint exists, CLI missing) | ⏳ Pending |
+| 4 | Add unit tests for `pkg/config/config.go` — `NotifyConfig` defaults validation | ⏳ Pending |
+
+---
+
 ## MVP Scope Boundaries
 
 **In scope:** CLI client → HTTP/WebSocket → Agent Server → OpenShell environment → task execution → results returned to client. One active workspace per session. Flat markdown wiki. Cron scheduling via OpenShell. Slack + terminal bell notifications.
 
 **Deferred:** Multi-workspace parallel environments, vector search, automatic raw-source ingestion loop, multi-agent coordination, skill versioning/dependency resolution, IDE integration, email notifications.
+
