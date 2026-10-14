@@ -117,3 +117,32 @@ func TestNotifyConfigYAMLDefaults(t *testing.T) {
 		t.Errorf("expected empty SlackWebhook, got %q", cfg.Notify.SlackWebhook)
 	}
 }
+
+func TestDefaultHost(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Host != "127.0.0.1" {
+		t.Errorf("expected Host=127.0.0.1, got %q", cfg.Host)
+	}
+}
+
+func TestEnvVarPortOverride(t *testing.T) {
+	os.Setenv("PORT", "9090")
+	defer os.Unsetenv("PORT")
+
+	cfg := DefaultConfig()
+	overrideEnvVars(cfg)
+	if cfg.ServerPort != 9090 {
+		t.Errorf("expected ServerPort=9090 from env, got %d", cfg.ServerPort)
+	}
+}
+
+func TestEnvVarHostOverride(t *testing.T) {
+	os.Setenv("HOST", "0.0.0.0")
+	defer os.Unsetenv("HOST")
+
+	cfg := DefaultConfig()
+	overrideEnvVars(cfg)
+	if cfg.Host != "0.0.0.0" {
+		t.Errorf("expected Host=0.0.0.0 from env, got %q", cfg.Host)
+	}
+}

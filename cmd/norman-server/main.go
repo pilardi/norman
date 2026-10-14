@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -70,8 +71,14 @@ func main() {
 	wsHub := NewWSHub()
 	go wsHub.Run()
 
-	// Create real OpenShell SDK client and adapt it to the interface
-	openShellClient, err := env.NewClient("127.0.0.1:8080")
+	// Extract server address from config (used for both listen + OpenShell gateway).
+	port := cfg.ServerPort
+	host := cfg.Host
+
+	// Create real OpenShell SDK client and adapt it to the interface.
+	// Uses HOST:PORT from config (co-located with Norman server in dev).
+	openShellAddr := fmt.Sprintf("%s:%d", host, port)
+	openShellClient, err := env.NewClient(openShellAddr)
 	if err != nil {
 		log.Printf("[server] WARNING: OpenShell client init failed (using fallback): %v", err)
 	}
@@ -103,11 +110,6 @@ func main() {
 		loop:      loop,
 		wsHub:     wsHub,
 		notifier:  notifier,
-	}
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
 	}
 
 	e := echo.New()
@@ -149,13 +151,13 @@ func main() {
 	// Register all API handlers (real implementations now)
 	api.RegisterHandlers(e, srv)
 
-	log.Printf("Norman Agent Server starting on :%s", port)
+	log.Printf("Norman Agent Server starting on %s:%d", host, port)
 
 	// Start scheduler background goroutine
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	sched.Start(schedCtx)
 
-	if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
+	if err := e.Start(host + ":" + fmt.Sprintf("%d", port)); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
 
