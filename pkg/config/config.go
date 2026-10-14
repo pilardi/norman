@@ -1,4 +1,6 @@
-// Package config provides YAML-based configuration parsing, validation, and defaults for Norman.
+// Package config provides server-driven configuration parsing, validation,
+// and defaults for Norman. Configuration is now derived from server interaction
+// rather than assumed to exist on the local filesystem.
 package config
 
 import (
@@ -10,34 +12,40 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the top-level Norman configuration.
-type Config struct {
+// SystemConfig holds global defaults shared across all workspaces.
+type SystemConfig struct {
 	DefaultModel string            `yaml:"default_model"`
 	ServerPort   int               `yaml:"server_port"`
-	Host         string            `yaml:"host"`           // bind address for server (default 127.0.0.1)
+	Host         string            `yaml:"host"` // bind address for server (default 127.0.0.1)
 	Skills       SkillsConfig      `yaml:"skills"`
-	Workspaces   WorkspaceConfig   `yaml:"workspaces"`
-	Agent        AgentConfig       `yaml:"agent"`
 	Notify       NotifyConfig      `yaml:"notify"`
 	Logging      LoggingConfig     `yaml:"logging"`
+	Temperature    float64           `yaml:"temperature"` // global default temperature (0 = use default)
+	MaxTokens    int               `yaml:"max_tokens"`  // global default max tokens (0 = use system default)
+}
+
+// WorkspaceConfig holds per-workspace overrides.
+// Each workspace can override model, token budget, skill set, etc.
+type WorkspaceConfig struct {
+	BaseDir        string   `yaml:"base_dir"`         // e.g., "~/workspaces" or derived from environment
+	Model          string   `yaml:"model"`            // per-workspace model (empty = use system default)
+	MaxTokens      int      `yaml:"max_tokens"`       // per-workspace token budget
+	Temperature    float64  `yaml:"temperature"`      // per-workspace temperature
+	SkillOverrides []string `yaml:"skill_overrides"`  // per-workspace skill activation list
+	SystemPrompt   string   `yaml:"system_prompt"`    // per-workspace system prompt override
+}
+
+// Config is the top-level configuration returned by the server.
+// It merges SystemConfig defaults with per-workspace overrides.
+type Config struct {
+	System     *SystemConfig  `yaml:"system"`
+	Workspaces map[string]*WorkspaceConfig `yaml:"workspaces,omitempty"` // workspace_id -> WorkspaceConfig
 }
 
 // SkillsConfig holds skill-related settings.
 type SkillsConfig struct {
 	DiscoveryPaths []string `yaml:"discovery_paths"` // paths to scan for SKILL.md files
 	MaxActive      int      `yaml:"max_active"`     // max concurrent active skills (0 = unlimited)
-}
-
-// WorkspaceConfig holds workspace-related settings.
-type WorkspaceConfig struct {
-	BaseDir string `yaml:"base_dir"` // e.g., ~/workspaces or $HOME/workspaces
-}
-
-// AgentConfig holds agent-specific settings.
-type AgentConfig struct {
-	MaxTokens     int    `yaml:"max_tokens"`
-	Temperature   float64 `yaml:"temperature"`
-	SystemPrompt  string `yaml:"system_prompt"`
 }
 
 // NotifyConfig holds notification delivery settings.
@@ -64,26 +72,25 @@ const (
 	DefaultRateLimit   = 10
 )
 
-// DefaultConfig returns a Config with sensible defaults applied.
-func DefaultConfig() *Config {
-	return &Config{
-		DefaultModel: DefaultModel,
-		ServerPort:   DefaultServerPort,
-		Host:         DefaultHost,
+var (
+	defaultTemperature float64 = 0.7
+	defaultMaxTokens   int     = 32000
+)
+
+// DefaultSystemConfig returns a SystemConfig with sensible defaults applied.
+func DefaultSystemConfig() *SystemConfig {
+	return &SystemConfig{
+		DefaultModel:  DefaultModel,
+		ServerPort:    DefaultServerPort,
+		Host:          DefaultHost,
+		Temperature:     defaultTemperature,
+		MaxTokens:     defaultMaxTokens,
 		Skills: SkillsConfig{
 			DiscoveryPaths: []string{
 				"~/.norman/skills/",
 				"/usr/share/norman/skills/",
 			},
 			MaxActive: DefaultMaxActive,
-		},
-		Workspaces: WorkspaceConfig{
-			BaseDir: DefaultBaseDir,
-		},
-		Agent: AgentConfig{
-			MaxTokens:    DefaultMaxTokens,
-			Temperature:  DefaultTemperature,
-			SystemPrompt: "",
 		},
 		Notify: NotifyConfig{
 			BellEnabled:     DefaultBellEnabled,
@@ -92,6 +99,26 @@ func DefaultConfig() *Config {
 		Logging: LoggingConfig{
 			Verbose: false, // disabled by default; use --verbose flag or config
 		},
+	}
+}
+
+// DefaultWorkspaceConfig returns a WorkspaceConfig with defaults applied.
+func DefaultWorkspaceConfig() *WorkspaceConfig {
+	return &WorkspaceConfig{
+		BaseDir:        DefaultBaseDir,
+		Model:          "",             // empty = use system default
+		MaxTokens:      0,              // zero = use system default
+		Temperature:    0,              // zero = use system default
+		SkillOverrides: []string{},     // empty = use all discovered skills
+		SystemPrompt:   "",             // empty = use system default
+	}
+}
+
+// DefaultConfig returns a Config with sensible defaults applied.
+func DefaultConfig() *Config {
+	return &Config{
+		System:     DefaultSystemConfig(),
+		Workspaces: make(map[string]*WorkspaceConfig),
 	}
 }
 
@@ -108,24 +135,15 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse YAML: %w", err)
 	}
 
-	// Apply defaults for zero-valued fields
-	if c.DefaultModel == "" {
-		c.DefaultModel = DefaultModel
+	// Apply defaults for zero-valued fields in SystemConfig
+	if c.System.DefaultModel == "" {
+		c.System.DefaultModel = DefaultModel
 	}
-	if c.ServerPort == 0 {
-		c.ServerPort = DefaultServerPort
+	if c.System.ServerPort == 0 {
+		c.System.ServerPort = DefaultServerPort
 	}
-	if c.Workspaces.BaseDir == "" {
-		c.Workspaces.BaseDir = DefaultBaseDir
-	}
-	if c.Agent.MaxTokens == 0 {
-		c.Agent.MaxTokens = DefaultMaxTokens
-	}
-	if c.Agent.Temperature == 0 {
-		c.Agent.Temperature = DefaultTemperature
-	}
-	if c.Skills.MaxActive == 0 {
-		c.Skills.MaxActive = DefaultMaxActive
+	if c.System.Skills.MaxActive == 0 {
+		c.System.Skills.MaxActive = DefaultMaxActive
 	}
 
 	return c, nil
@@ -153,7 +171,7 @@ func LoadDefault() (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			c := DefaultConfig()
-			overrideEnvVars(c)
+			overrideEnvVars(c.System)
 			return c, nil
 		}
 		return nil, fmt.Errorf("read config file: %w", err)
@@ -165,43 +183,34 @@ func LoadDefault() (*Config, error) {
 	}
 
 	// Apply defaults for zero-valued fields
-	if c.DefaultModel == "" {
-		c.DefaultModel = DefaultModel
+	if c.System.DefaultModel == "" {
+		c.System.DefaultModel = DefaultModel
 	}
-	if c.ServerPort == 0 {
-		c.ServerPort = DefaultServerPort
+	if c.System.ServerPort == 0 {
+		c.System.ServerPort = DefaultServerPort
 	}
-	if c.Workspaces.BaseDir == "" {
-		c.Workspaces.BaseDir = DefaultBaseDir
-	}
-	if c.Agent.MaxTokens == 0 {
-		c.Agent.MaxTokens = DefaultMaxTokens
-	}
-	if c.Agent.Temperature == 0 {
-		c.Agent.Temperature = DefaultTemperature
-	}
-	if c.Skills.MaxActive == 0 {
-		c.Skills.MaxActive = DefaultMaxActive
+	if c.System.Skills.MaxActive == 0 {
+		c.System.Skills.MaxActive = DefaultMaxActive
 	}
 
-	overrideEnvVars(c)
+	overrideEnvVars(c.System)
 	return c, nil
 }
 
-// overrideEnvVars applies environment variable overrides to the config.
+// overrideEnvVars applies environment variable overrides to the system config.
 // Priority: env vars > YAML file > defaults.
-func overrideEnvVars(c *Config) {
+func overrideEnvVars(sc *SystemConfig) {
 	if port := os.Getenv("PORT"); port != "" {
-		n, err := fmt.Sscanf(port, "%d", &c.ServerPort)
+		n, err := fmt.Sscanf(port, "%d", &sc.ServerPort)
 		if n != 1 || err != nil {
 			fmt.Fprintf(os.Stderr, "[config] WARNING: invalid PORT value %q, ignoring\n", port)
 		}
 	}
 	if host := os.Getenv("HOST"); host != "" {
-		c.Host = host
+		sc.Host = host
 	}
 	if v := os.Getenv("LOGGING_VERBOSE"); v != "" {
-		c.Logging.Verbose = (v == "true" || v == "1")
+		sc.Logging.Verbose = (v == "true" || v == "1")
 	}
 }
 
@@ -222,23 +231,94 @@ func (c *Config) Save(path string) error {
 
 // Validate checks required fields and returns errors.
 func (c *Config) Validate() error {
-	if c.DefaultModel == "" {
-		return fmt.Errorf("default_model is required")
+	if c.System.DefaultModel == "" {
+		return fmt.Errorf("system.default_model is required")
 	}
-	if c.ServerPort < 1 || c.ServerPort > 65535 {
-		return fmt.Errorf("server_port must be between 1 and 65535, got %d", c.ServerPort)
+	if c.System.ServerPort < 1 || c.System.ServerPort > 65535 {
+		return fmt.Errorf("system.server_port must be between 1 and 65535, got %d", c.System.ServerPort)
 	}
-	if c.Agent.MaxTokens < 1024 {
-		return fmt.Errorf("max_tokens must be >= 1024, got %d", c.Agent.MaxTokens)
+	if c.System.Skills.MaxActive < 0 {
+		return fmt.Errorf("system.skills.max_active must be >= 0, got %d", c.System.Skills.MaxActive)
 	}
-	if c.Agent.Temperature < 0 || c.Agent.Temperature > 2 {
-		return fmt.Errorf("temperature must be between 0 and 2, got %.2f", c.Agent.Temperature)
+	if c.System.Notify.RateLimitPerMin < 1 {
+		return fmt.Errorf("system.notify.rate_limit_per_minute must be >= 1, got %d", c.System.Notify.RateLimitPerMin)
 	}
-	if c.Skills.MaxActive < 0 {
-		return fmt.Errorf("skills.max_active must be >= 0, got %d", c.Skills.MaxActive)
+
+	// Validate per-workspace configs
+	for wsID, ws := range c.Workspaces {
+		if ws.MaxTokens > 0 && ws.MaxTokens < 1024 {
+			return fmt.Errorf("workspace %s: max_tokens must be >= 1024, got %d", wsID, ws.MaxTokens)
+		}
+		if ws.Temperature != 0 && (ws.Temperature < 0 || ws.Temperature > 2) {
+			return fmt.Errorf("workspace %s: temperature must be between 0 and 2, got %.2f", wsID, ws.Temperature)
+		}
 	}
-	if c.Notify.RateLimitPerMin < 1 {
-		return fmt.Errorf("notify.rate_limit_per_minute must be >= 1, got %d", c.Notify.RateLimitPerMin)
-	}
+
 	return nil
+}
+
+// MergeWorkspaceConfig merges a workspace config into the system defaults.
+// Returns a resolved WorkspaceConfig with all zero-values filled from system defaults.
+func (c *Config) MergeWorkspaceConfig(workspaceID string, ws *WorkspaceConfig) *WorkspaceConfig {
+	result := DefaultWorkspaceConfig()
+
+	// System-level overrides (these are the global defaults)
+	if c.System.DefaultModel != "" && ws.Model == "" {
+		result.Model = c.System.DefaultModel
+	}
+	if ws.MaxTokens == 0 {
+		result.MaxTokens = c.System.MaxTokens
+	}
+	if ws.Temperature == 0 {
+		result.Temperature = c.System.Temperature
+	}
+
+	// Workspace-level overrides take precedence
+	if ws.Model != "" {
+		result.Model = ws.Model
+	}
+	if ws.MaxTokens > 0 {
+		result.MaxTokens = ws.MaxTokens
+	}
+	if ws.Temperature > 0 {
+		result.Temperature = ws.Temperature
+	}
+	if len(ws.SkillOverrides) > 0 {
+		result.SkillOverrides = ws.SkillOverrides
+	}
+	if ws.SystemPrompt != "" {
+		result.SystemPrompt = ws.SystemPrompt
+	}
+
+	return result
+}
+
+// SaveWorkspaceConfig writes a workspace config to the server-side registry.
+func (c *Config) SaveWorkspaceConfig(workspaceID string, path string) error {
+	data, err := yaml.Marshal(c.Workspaces[workspaceID])
+	if err != nil {
+		return fmt.Errorf("marshal workspace config: %w", err)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create parent dir: %w", err)
+	}
+
+	return os.WriteFile(path, data, 0644)
+}
+
+// LoadWorkspaceConfig reads a workspace config from the server-side registry.
+func LoadWorkspaceConfig(path string) (*WorkspaceConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read workspace config: %w", err)
+	}
+
+	ws := DefaultWorkspaceConfig()
+	if err := yaml.Unmarshal(data, ws); err != nil {
+		return nil, fmt.Errorf("parse workspace config: %w", err)
+	}
+
+	return ws, nil
 }

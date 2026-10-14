@@ -47,6 +47,29 @@ type Loop struct {
 	budget      *budget.SessionState // token budget tracker (nil if disabled)
 }
 
+// WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
+func (l *Loop) WorkspaceConfig(workspaceID string) *config.WorkspaceConfig {
+	return l.config.MergeWorkspaceConfig(workspaceID, nil)
+}
+
+// Model returns the resolved model name for a workspace (system default or override).
+func (l *Loop) Model(workspaceID string) string {
+	ws := l.WorkspaceConfig(workspaceID)
+	return ws.Model
+}
+
+// Temperature returns the resolved temperature for a workspace.
+func (l *Loop) Temperature(workspaceID string) float64 {
+	ws := l.WorkspaceConfig(workspaceID)
+	return ws.Temperature
+}
+
+// MaxTokens returns the resolved max tokens for a workspace.
+func (l *Loop) MaxTokens(workspaceID string) int {
+	ws := l.WorkspaceConfig(workspaceID)
+	return ws.MaxTokens
+}
+
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
 	CreateSandbox(ctx context.Context, workspace, name string) (string, error)
