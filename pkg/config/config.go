@@ -20,6 +20,8 @@ type SystemConfig struct {
 	Skills       SkillsConfig      `yaml:"skills"`
 	Notify       NotifyConfig      `yaml:"notify"`
 	Logging      LoggingConfig     `yaml:"logging"`
+	Temperature    float64           `yaml:"temperature"` // global default temperature (0 = use default)
+	MaxTokens    int               `yaml:"max_tokens"`  // global default max tokens (0 = use system default)
 }
 
 // WorkspaceConfig holds per-workspace overrides.
@@ -70,12 +72,19 @@ const (
 	DefaultRateLimit   = 10
 )
 
+var (
+	defaultTemperature float64 = 0.7
+	defaultMaxTokens   int     = 32000
+)
+
 // DefaultSystemConfig returns a SystemConfig with sensible defaults applied.
 func DefaultSystemConfig() *SystemConfig {
 	return &SystemConfig{
-		DefaultModel: DefaultModel,
-		ServerPort:   DefaultServerPort,
-		Host:         DefaultHost,
+		DefaultModel:  DefaultModel,
+		ServerPort:    DefaultServerPort,
+		Host:          DefaultHost,
+		Temperature:     defaultTemperature,
+		MaxTokens:     defaultMaxTokens,
 		Skills: SkillsConfig{
 			DiscoveryPaths: []string{
 				"~/.norman/skills/",
@@ -253,15 +262,15 @@ func (c *Config) Validate() error {
 func (c *Config) MergeWorkspaceConfig(workspaceID string, ws *WorkspaceConfig) *WorkspaceConfig {
 	result := DefaultWorkspaceConfig()
 
-	// System-level overrides
+	// System-level overrides (these are the global defaults)
 	if c.System.DefaultModel != "" && ws.Model == "" {
 		result.Model = c.System.DefaultModel
 	}
 	if ws.MaxTokens == 0 {
-		result.MaxTokens = c.System.ServerPort // placeholder; actual default from system
+		result.MaxTokens = c.System.MaxTokens
 	}
 	if ws.Temperature == 0 {
-		result.Temperature = DefaultTemperature
+		result.Temperature = c.System.Temperature
 	}
 
 	// Workspace-level overrides take precedence

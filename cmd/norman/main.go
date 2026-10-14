@@ -280,7 +280,12 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 		case "max_tokens":
 			fmt.Sscanf(val, "%d", &c.System.Skills.MaxActive)
 		case "temperature":
-			fmt.Sscanf(val, "%f", &c.System.Notify.BellEnabled) // placeholder
+			var t float64
+			if n, err := fmt.Sscanf(val, "%f", &t); n != 1 || err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid temperature value: %s\n", val)
+				os.Exit(1)
+			}
+			c.System.Temperature = t
 		case "logging.verbose":
 			c.System.Logging.Verbose = (val == "true" || val == "1")
 		default:
