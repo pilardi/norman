@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -24,7 +23,7 @@ const (
 func ResolveGatewayAddress() string {
 	// 1. Check explicit env var first
 	if addr := os.Getenv("OPENSHELL_GATEWAY_ADDRESS"); addr != "" {
-		return sanitizeAddress(addr)
+		return addr
 	}
 
 	// 2. Read metadata.json from the OpenShell config directory
@@ -42,20 +41,44 @@ func ResolveGatewayAddress() string {
 	}
 
 	if endpoint, ok := meta["gateway_endpoint"].(string); ok && endpoint != "" {
-		return sanitizeAddress(endpoint)
+		return endpoint
 	}
 
 	log.Printf("[env] ERROR: no gateway_endpoint found in metadata.json")
 	return ""
 }
 
-// sanitizeAddress strips protocol prefixes (e.g. "https://", "http://") from an address.
-// OpenShell's gRPC client does not support HTTPS for localhost; only host:port is valid.
-func sanitizeAddress(addr string) string {
-	// Strip common protocol prefixes
-	addr = strings.TrimPrefix(addr, "https://")
-	addr = strings.TrimPrefix(addr, "http://")
-	return addr
+// ResolveMTLSConfig returns TLS certificate paths from the mtls/ directory
+// alongside metadata.json, when auth_mode is "mtls". Returns nil if not applicable.
+func ResolveMTLSConfig(gatewayDir string) *v1.TLSConfig {
+	mtlsPath := filepath.Join(gatewayDir, "mtls")
+	caFile := filepath.Join(mtlsPath, "ca.crt")
+	certFile := filepath.Join(mtlsPath, "tls.crt")
+	keyFile := filepath.Join(mtlsPath, "tls.key")
+
+	// Check if mtls directory and required files exist
+	if _, err := os.Stat(mtlsPath); os.IsNotExist(err) {
+		return nil
+	}
+	if _, err := os.Stat(caFile); os.IsNotExist(err) {
+		log.Printf("[env] WARNING: ca.crt not found in %s; mTLS disabled", mtlsPath)
+		return nil
+	}
+	if _, err := os.Stat(certFile); os.IsNotExist(err) {
+		log.Printf("[env] WARNING: tls.crt not found in %s; mTLS disabled", mtlsPath)
+		return nil
+	}
+	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
+		log.Printf("[env] WARNING: tls.key not found in %s; mTLS disabled", mtlsPath)
+		return nil
+	}
+
+	return &v1.TLSConfig{
+		CertFile: certFile,
+		KeyFile:  keyFile,
+		CAFile:   caFile,
+		Insecure: false,
+	}
 }
 
 // Client wraps the OpenShell SDK client and manages sandbox lifecycle.
@@ -72,6 +95,33 @@ func NewClient(gateway string) (*Client, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create OpenShell client: %w", err)
+	}
+
+	// Verify gateway health
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	health, err := c.Health().Check(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("gateway health check failed: %w", err)
+	}
+
+	if !health.Healthy {
+		log.Printf("[env] WARNING: OpenShell gateway reports unhealthy")
+	}
+
+	return &Client{client: c, gateway: gateway}, nil
+}
+
+// NewClientWithTLS creates a new OpenShell client with optional mTLS configuration.
+func NewClientWithTLS(gateway string, tlsCfg *v1.TLSConfig) (*Client, error) {
+	c, err := v1.NewClient(v1.Config{
+		Address: gateway,
+		TLS:     tlsCfg,
+		Auth:    v1.NoAuth(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create OpenShell client with TLS: %w", err)
 	}
 
 	// Verify gateway health

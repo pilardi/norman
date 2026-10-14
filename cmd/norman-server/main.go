@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -80,15 +81,19 @@ func main() {
 	port := cfg.System.ServerPort
 	host := cfg.System.Host
 
-	// Resolve OpenShell gateway address: env var > metadata.json > localhost:8090.
+	// Resolve OpenShell gateway address: env var > metadata.json.
 	openShellAddr := cfg.System.OpenShell.Address
 	if openShellAddr == "" {
 		openShellAddr = env.ResolveGatewayAddress()
 	}
 
-	// Create real OpenShell SDK client and adapt it to the interface.
+	// Load mTLS certificates from the same gateway directory as metadata.json.
+	metadataPath := filepath.Join(os.ExpandEnv("$HOME"), ".config", "openshell", "gateways", "openshell")
+	tlsConfig := env.ResolveMTLSConfig(metadataPath)
+
+	// Create real OpenShell SDK client with TLS config if available.
 	// If the client fails to connect, the server refuses to start (no fake fallback).
-	openShellClient, err := env.NewClient(openShellAddr)
+	openShellClient, err := env.NewClientWithTLS(openShellAddr, tlsConfig)
 	if err != nil {
 		log.Fatalf("[server] FATAL: OpenShell gateway connection failed at %s: %v\nServer refusing to start.", openShellAddr, err)
 	}
