@@ -2,8 +2,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,7 +72,8 @@ Commands:
   skills list          List installed skills
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
-  sessions             List active OpenShell sessions
+  sessions list        List active OpenShell sessions
+  sessions archive <id> Archive a session for a given task
   tasks add <name> --schedule "<cron>"  Register a recurring task
   tasks list                           List registered tasks
   tasks remove <id>                    Unregister a task
@@ -488,17 +493,102 @@ func copyDir(src, dst string) error {
 	return nil
 }
 
-// handleSessions lists active sessions.
+// handleSessions manages sessions via CLI.
 func handleSessions(args []string) {
-	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(`sessions — List active OpenShell sessions
+	if len(args) == 0 {
+		printSessionHelp()
+		return
+	}
 
-Usage: norman sessions [--json | --follow]`)
+	subcommand := args[0]
+	subargs := args[1:]
+
+	switch subcommand {
+	case "list":
+		handleSessionList(subargs)
+	case "archive":
+		handleSessionArchive(subargs)
+	case "--help", "-h":
+		printSessionHelp()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown sessions subcommand: %s\n\n", subcommand)
+		printSessionHelp()
+		os.Exit(1)
+	}
+}
+
+func printSessionHelp() {
+	fmt.Println(`sessions — Manage OpenShell sessions
+
+Usage: norman sessions <subcommand> [args...]
+
+Subcommands:
+  list                 List active OpenShell sessions
+  archive <task_id>    Archive a session for a given task (POST /api/sessions/archive)`)
+}
+
+func handleSessionList(args []string) {
+	if len(args) > 0 && (args[0] == "--json") {
+		fmt.Println(`{"sessions": []}`)
 		return
 	}
 
 	fmt.Println("Sessions not yet connected to agent server.")
 	fmt.Println("(No active sessions)")
+}
+
+// handleSessionArchive archives a session for the given task ID via REST API.
+func handleSessionArchive(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: 'archive' requires a task_id argument")
+		fmt.Fprintln(os.Stderr, "Usage: norman sessions archive <task_id>")
+		os.Exit(1)
+	}
+
+	taskID := args[0]
+
+	// Load config to get server port
+	cfg, err := config.LoadDefault()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build request body
+	body := map[string]string{"task_id": taskID}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
+		os.Exit(1)
+	}
+
+	// POST to server archive endpoint
+	url := fmt.Sprintf("http://localhost:%d/api/sessions/archive", cfg.ServerPort)
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error calling archive endpoint: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		fmt.Printf("Session archived for task '%s'\n", taskID)
+	} else if resp.StatusCode == http.StatusNotFound {
+		fmt.Fprintf(os.Stderr, "Task '%s' not found\n", taskID)
+		os.Exit(1)
+	} else {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "Archive failed (HTTP %d): %s\n", resp.StatusCode, string(bodyBytes))
+		os.Exit(1)
+	}
 }
 
 // handleTasks manages scheduled tasks via CLI.
