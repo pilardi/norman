@@ -12,11 +12,15 @@ import (
 
 // SkillEntry represents a discovered skill with its metadata.
 type SkillEntry struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Path        string `json:"path"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Path        string   `json:"path"`
 	Tools       []string `json:"tools,omitempty"`
-	Activation  string `json:"activation,omitempty"` // "manual", "auto", "on-demand"
+	Activation  string   `json:"activation,omitempty"` // "manual", "auto", "on-demand"
+
+	// MCPConnection holds optional MCP endpoint configuration for this skill.
+	MCPEndpoint    string   `json:"mcp_endpoint,omitempty"`
+	MCPCapabilities []string `json:"mcp_capabilities,omitempty"`
 }
 
 // DiscoverResult holds the result of a discovery scan.
@@ -97,6 +101,10 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 		Description string   `yaml:"description"`
 		Tools       []string `yaml:"tools"`
 		Activation  string   `yaml:"activation"`
+
+		// MCP fields (optional)
+		MCPEndpoint    string   `yaml:"mcp_endpoint"`
+		MCPCapabilities []string `yaml:"mcp_capabilities"`
 	}
 
 	if err := yaml.Unmarshal([]byte(fmContent), &meta); err != nil {
@@ -112,11 +120,19 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 		meta.Activation = "on-demand" // default
 	}
 
-	return SkillEntry{
+	entry := SkillEntry{
 		Name:        meta.Name,
 		Description: meta.Description,
 		Path:        dir,
 		Tools:       meta.Tools,
 		Activation:  meta.Activation,
-	}, nil
+	}
+
+	// Only set MCP fields if endpoint is provided (optional)
+	if meta.MCPEndpoint != "" {
+		entry.MCPEndpoint = meta.MCPEndpoint
+		entry.MCPCapabilities = meta.MCPCapabilities
+	}
+
+	return entry, nil
 }

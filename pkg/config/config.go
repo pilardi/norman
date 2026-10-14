@@ -16,6 +16,7 @@ type Config struct {
 	Skills       SkillsConfig      `yaml:"skills"`
 	Workspaces   WorkspaceConfig   `yaml:"workspaces"`
 	Agent        AgentConfig       `yaml:"agent"`
+	Notify       NotifyConfig      `yaml:"notify"`
 }
 
 // SkillsConfig holds skill-related settings.
@@ -36,6 +37,13 @@ type AgentConfig struct {
 	SystemPrompt  string `yaml:"system_prompt"`
 }
 
+// NotifyConfig holds notification delivery settings.
+type NotifyConfig struct {
+	BellEnabled      bool    `yaml:"bell_enabled"`       // ring terminal bell on notifications
+	SlackWebhook     string  `yaml:"slack_webhook"`      // optional Slack webhook URL
+	RateLimitPerMin  int     `yaml:"rate_limit_per_minute"` // max notifications per minute (default 10)
+}
+
 const (
 	DefaultModel       = "gpt-4o"
 	DefaultServerPort  = 8080
@@ -43,6 +51,8 @@ const (
 	DefaultMaxTokens   = 32000
 	DefaultTemperature = 0.7
 	DefaultMaxActive   = 3
+	DefaultBellEnabled = true
+	DefaultRateLimit   = 10
 )
 
 // DefaultConfig returns a Config with sensible defaults applied.
@@ -64,6 +74,10 @@ func DefaultConfig() *Config {
 			MaxTokens:    DefaultMaxTokens,
 			Temperature:  DefaultTemperature,
 			SystemPrompt: "",
+		},
+		Notify: NotifyConfig{
+			BellEnabled:     DefaultBellEnabled,
+			RateLimitPerMin: DefaultRateLimit,
 		},
 	}
 }
@@ -181,6 +195,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Skills.MaxActive < 0 {
 		return fmt.Errorf("skills.max_active must be >= 0, got %d", c.Skills.MaxActive)
+	}
+	if c.Notify.RateLimitPerMin < 1 {
+		return fmt.Errorf("notify.rate_limit_per_minute must be >= 1, got %d", c.Notify.RateLimitPerMin)
 	}
 	return nil
 }

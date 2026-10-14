@@ -172,7 +172,7 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 ## Step 8 — MCP integration + task scheduling + notifications
 
-> **Status:** 📋 PLAN ONLY — detailed plan at [docs/step8-plan.md](docs/step8-plan.md).
+> **Status:** ✅ COMPLETE — all sub-steps (8a-8d) implemented and tested. See [docs/step8-plan.md](docs/step8-plan.md) for details.
 
 **Acceptance:** A skill declares an MCP connection → tools appear in context; a recurring task registered via `norman tasks add --schedule "*/5 * * * *" health-check` fires automatically and pushes results to the CLI.
 
@@ -203,8 +203,26 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 **Note:** The SDK is not yet publicly tagged. If the Go SDK becomes available as a stable release, swap from commit-sha pin to versioned import.
 
+---
+
+## Step 9 — Follow-up: real SDK, scheduler wiring, CLI archive, config tests
+
+> **Status:** 📋 PLAN ONLY — awaiting implementation
+
+These items were identified during Steps 8a–8d but remain unaddressed. This step consolidates them into a single implementation effort.
+
+| # | Item | Status |
+|---|------|--------|
+| 9a | Wire real OpenShell SDK into `OpenShellClient` interface (currently using `FakeOpenShellClient`) | ⏳ Pending |
+| 9b | Connect scheduler `Start()` to `main()` and inject results channel into agent loop's notification path | ⏳ Pending |
+| 9c | Add CLI command `norman sessions archive` for manual archival (REST endpoint exists, CLI missing) | ⏳ Pending |
+| 9d | Add unit tests for `pkg/config/config.go` — `NotifyConfig` defaults validation | ⏳ Pending |
+
+---
+
 ## MVP Scope Boundaries
 
 **In scope:** CLI client → HTTP/WebSocket → Agent Server → OpenShell environment → task execution → results returned to client. One active workspace per session. Flat markdown wiki. Cron scheduling via OpenShell. Slack + terminal bell notifications.
 
 **Deferred:** Multi-workspace parallel environments, vector search, automatic raw-source ingestion loop, multi-agent coordination, skill versioning/dependency resolution, IDE integration, email notifications.
+
