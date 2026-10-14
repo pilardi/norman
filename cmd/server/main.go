@@ -22,6 +22,7 @@ import (
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
+	"github.com/norman/norman/pkg/scheduler"
 	"github.com/norman/norman/pkg/skills"
 )
 
@@ -76,6 +77,11 @@ func main() {
 
 	// Initialize notification notifier from config
 	notifier := notify.New(wsHub, cfg.Notify.BellEnabled, cfg.Notify.SlackWebhook, cfg.Notify.RateLimitPerMin)
+
+	// Initialize scheduler and wire results into loop's notification path
+	resultsCh := make(chan scheduler.TaskResult, 100) // buffered to avoid blocking
+	sched := scheduler.NewScheduler(resultsCh)
+	loop = loop.WithNotifier(notifier).WithResultsChannel(resultsCh)
 
 	// Build server with all dependencies
 	srv := &server{
@@ -132,6 +138,11 @@ func main() {
 	api.RegisterHandlers(e, srv)
 
 	log.Printf("Norman Agent Server starting on :%s", port)
+
+	// Start scheduler background goroutine
+	schedCtx, schedCancel := context.WithCancel(context.Background())
+	sched.Start(schedCtx)
+
 	if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
@@ -141,6 +152,7 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		stop()
+		schedCancel() // stop scheduler goroutine
 		e.Logger.Info("shutting down...")
 		e.Shutdown(context.Background())
 	}()

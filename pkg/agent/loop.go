@@ -16,6 +16,7 @@ import (
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
+	"github.com/norman/norman/pkg/scheduler"
 	"github.com/norman/norman/pkg/skills"
 )
 
@@ -33,16 +34,17 @@ type Task struct {
 
 // Loop is the main agent loop managing task execution.
 type Loop struct {
-	mu         sync.Mutex
-	tasks      map[string]*Task // taskID -> Task state
-	store      *memory.Store    // persistent state
-	activator  *skills.Activator
-	config     *config.Config
-	openShell  OpenShellClient
-	wsHub      WSHubPublisher
-	notifier   *notify.Notifier
-	maxRetries int
-	budget     *budget.SessionState // token budget tracker (nil if disabled)
+	mu          sync.Mutex
+	tasks       map[string]*Task // taskID -> Task state
+	store       *memory.Store    // persistent state
+	activator   *skills.Activator
+	config      *config.Config
+	openShell   OpenShellClient
+	wsHub       WSHubPublisher
+	notifier    *notify.Notifier
+	resultsCh   chan scheduler.TaskResult // results from scheduler (nil if not wired)
+	maxRetries  int
+	budget      *budget.SessionState // token budget tracker (nil if disabled)
 }
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
@@ -77,6 +79,12 @@ func New(cfg *config.Config, store *memory.Store, activator *skills.Activator, w
 // WithNotifier injects a notification notifier into the loop. Returns the modified Loop.
 func (l *Loop) WithNotifier(n *notify.Notifier) *Loop {
 	l.notifier = n
+	return l
+}
+
+// WithResultsChannel injects a scheduler results channel into the loop for notification delivery.
+func (l *Loop) WithResultsChannel(ch chan scheduler.TaskResult) *Loop {
+	l.resultsCh = ch
 	return l
 }
 
@@ -371,6 +379,39 @@ func (l *Loop) pushCompletion(task *Task) {
 
 		if err := l.notifier.Notify(n); err != nil {
 			log.Printf("agent: notifier failed for task %s: %v", task.ID, err)
+		}
+	}
+
+	// Also drain scheduler results channel (non-blocking) to push notifications
+	if l.resultsCh != nil {
+		select {
+		case result := <-l.resultsCh:
+			if result.Err != nil {
+				severity := "warn"
+				n := notify.Notification{
+					TaskID:    result.TaskID,
+					Title:     fmt.Sprintf("Task %s", result.TaskID[:8]),
+					Body:      result.Err.Error(),
+					Severity:  severity,
+					Timestamp: time.Now(),
+				}
+				if l.notifier != nil {
+					l.notifier.Notify(n)
+				}
+			} else if result.Output != "" {
+				n := notify.Notification{
+					TaskID:    result.TaskID,
+					Title:     fmt.Sprintf("Task %s", result.TaskID[:8]),
+					Body:      result.Output,
+					Severity:  "info",
+					Timestamp: time.Now(),
+				}
+				if l.notifier != nil {
+					l.notifier.Notify(n)
+				}
+			}
+		default:
+			// No pending results — non-blocking drain complete
 		}
 	}
 }
