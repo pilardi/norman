@@ -20,6 +20,7 @@ import (
 	"github.com/norman/norman/pkg/agent"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/memory"
+	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
@@ -69,11 +70,22 @@ func main() {
 	wsHub := NewWSHub()
 	go wsHub.Run()
 
-	// Create fake OpenShell client (for now; real one wired in Step 6+)
-	fakeClient := agent.NewFakeOpenShellClient()
+	// Create real OpenShell SDK client and adapt it to the interface
+	openShellClient, err := env.NewClient("127.0.0.1:8080")
+	if err != nil {
+		log.Printf("[server] WARNING: OpenShell client init failed (using fallback): %v", err)
+	}
+
+	// Use real SDK client if available, otherwise fall back to fake client
+	var loopClient agent.OpenShellClient
+	if openShellClient != nil {
+		loopClient = env.NewSDKAdapter(openShellClient)
+	} else {
+		loopClient = agent.NewFakeOpenShellClient()
+	}
 
 	// Create agent loop
-	loop := agent.New(cfg, store, activator, wsHub, fakeClient)
+	loop := agent.New(cfg, store, activator, wsHub, loopClient)
 
 	// Initialize notification notifier from config
 	notifier := notify.New(wsHub, cfg.Notify.BellEnabled, cfg.Notify.SlackWebhook, cfg.Notify.RateLimitPerMin)
