@@ -27,6 +27,27 @@ func (e NotificationConfigPriority) Valid() bool {
 	}
 }
 
+// Defines values for NotificationCreateRequestSeverity.
+const (
+	Error NotificationCreateRequestSeverity = "error"
+	Info  NotificationCreateRequestSeverity = "info"
+	Warn  NotificationCreateRequestSeverity = "warn"
+)
+
+// Valid indicates whether the value is a known member of the NotificationCreateRequestSeverity enum.
+func (e NotificationCreateRequestSeverity) Valid() bool {
+	switch e {
+	case Error:
+		return true
+	case Info:
+		return true
+	case Warn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScheduledTaskStatus.
 const (
 	ScheduledTaskStatusActive ScheduledTaskStatus = "active"
@@ -273,6 +294,12 @@ func (e ListTasksParamsStatus) Valid() bool {
 	}
 }
 
+// ArchiveSessionRequest defines model for ArchiveSessionRequest.
+type ArchiveSessionRequest struct {
+	// TaskId ID of the task to archive
+	TaskId string `json:"task_id"`
+}
+
 // NotificationConfig defines model for NotificationConfig.
 type NotificationConfig struct {
 	// Channel Target channel (e.g., "slack", "#ops")
@@ -282,6 +309,34 @@ type NotificationConfig struct {
 
 // NotificationConfigPriority defines model for NotificationConfig.Priority.
 type NotificationConfigPriority string
+
+// NotificationCreateRequest defines model for NotificationCreateRequest.
+type NotificationCreateRequest struct {
+	// Body Notification body text
+	Body string `json:"body"`
+
+	// Severity Severity level
+	Severity NotificationCreateRequestSeverity `json:"severity"`
+
+	// TaskId Optional task ID associated with this notification
+	TaskId *string `json:"task_id,omitempty"`
+
+	// Title Notification title
+	Title string `json:"title"`
+}
+
+// NotificationCreateRequestSeverity Severity level
+type NotificationCreateRequestSeverity string
+
+// NotificationEntry defines model for NotificationEntry.
+type NotificationEntry struct {
+	Body      *string    `json:"body,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty"`
+	Severity  *string    `json:"severity,omitempty"`
+	TaskId    *string    `json:"task_id,omitempty"`
+	Title     *string    `json:"title,omitempty"`
+}
 
 // ScheduledTask defines model for ScheduledTask.
 type ScheduledTask struct {
@@ -431,24 +486,6 @@ type WebSocketEventEvent string
 // WebSocketEventPriority defines model for WebSocketEvent.Priority.
 type WebSocketEventPriority string
 
-// NotificationEntry represents a notification entry returned by the REST API.
-type NotificationEntry struct {
-	Id        *string     `json:"id,omitempty"`
-	TaskId    *string     `json:"task_id,omitempty"`
-	Title     *string     `json:"title,omitempty"`
-	Body      *string     `json:"body,omitempty"`
-	Severity  *string     `json:"severity,omitempty"`
-	CreatedAt *time.Time  `json:"created_at,omitempty"`
-}
-
-// NotificationCreateRequest defines model for NotificationCreateRequest.
-type NotificationCreateRequest struct {
-	Title    string `json:"title"`
-	Body     string `json:"body"`
-	Severity string `json:"severity"` // "info", "warn", "error"
-	TaskId   string `json:"task_id,omitempty"`
-}
-
 // Workspace defines model for Workspace.
 type Workspace struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`
@@ -472,11 +509,6 @@ type WorkspaceCreateRequest struct {
 	Path string `json:"path"`
 }
 
-// ArchiveSessionRequest defines body for ArchiveSession for application/json ContentType.
-type ArchiveSessionRequest struct {
-	TaskId string `json:"task_id"`
-}
-
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {
 	Status *ListTasksParamsStatus `form:"status,omitempty" json:"status,omitempty"`
@@ -490,8 +522,14 @@ type TailTaskLogParams struct {
 	Lines *int `form:"lines,omitempty" json:"lines,omitempty"`
 }
 
+// CreateNotificationJSONRequestBody defines body for CreateNotification for application/json ContentType.
+type CreateNotificationJSONRequestBody = NotificationCreateRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = SessionCreateRequest
+
+// ArchiveSessionJSONRequestBody defines body for ArchiveSession for application/json ContentType.
+type ArchiveSessionJSONRequestBody = ArchiveSessionRequest
 
 // InstallSkillJSONRequestBody defines body for InstallSkill for application/json ContentType.
 type InstallSkillJSONRequestBody = SkillInstallRequest

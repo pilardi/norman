@@ -90,6 +90,30 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// ListNotifications List notification entries
+	//
+	// Corresponds with GET /api/notifications (the `ListNotifications` operationId).
+	ListNotifications(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNotificationWithBody Create a new notification
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+	CreateNotificationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNotification Create a new notification
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+	CreateNotification(ctx context.Context, body CreateNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteNotification Delete a notification entry
+	//
+	// Corresponds with DELETE /api/notifications/{id} (the `DeleteNotification` operationId).
+	DeleteNotification(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSessions List active sessions
 	//
 	// Corresponds with GET /api/sessions (the `ListSessions` operationId).
@@ -108,6 +132,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/sessions (the `CreateSession` operationId).
 	CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveSessionWithBody Archive a session's task data for long-term storage
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+	ArchiveSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveSession Archive a session's task data for long-term storage
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+	ArchiveSession(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSession Get session details
 	//
@@ -245,6 +283,70 @@ type ClientInterface interface {
 	ConnectWebSocket(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
+// ListNotifications List notification entries
+//
+// Corresponds with GET /api/notifications (the `ListNotifications` operationId).
+func (c *Client) ListNotifications(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNotificationsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNotificationWithBody Create a new notification
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+func (c *Client) CreateNotificationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNotificationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNotification Create a new notification
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+func (c *Client) CreateNotification(ctx context.Context, body CreateNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNotificationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteNotification Delete a notification entry
+//
+// Corresponds with DELETE /api/notifications/{id} (the `DeleteNotification` operationId).
+func (c *Client) DeleteNotification(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteNotificationRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListSessions List active sessions
 //
 // Corresponds with GET /api/sessions (the `ListSessions` operationId).
@@ -284,6 +386,40 @@ func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, 
 // Corresponds with POST /api/sessions (the `CreateSession` operationId).
 func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateSessionRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ArchiveSessionWithBody Archive a session's task data for long-term storage
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+func (c *Client) ArchiveSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveSessionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ArchiveSession Archive a session's task data for long-term storage
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+func (c *Client) ArchiveSession(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveSessionRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -659,6 +795,107 @@ func (c *Client) ConnectWebSocket(ctx context.Context, reqEditors ...RequestEdit
 	return c.Client.Do(req)
 }
 
+// NewListNotificationsRequest constructs an http.Request for the ListNotifications method
+func NewListNotificationsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/notifications")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateNotificationRequest calls the generic CreateNotification builder with application/json body
+func NewCreateNotificationRequest(server string, body CreateNotificationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateNotificationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateNotificationRequestWithBody constructs an http.Request for the CreateNotification method, with any body, and a specified content type
+func NewCreateNotificationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/notifications")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteNotificationRequest constructs an http.Request for the DeleteNotification method
+func NewDeleteNotificationRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/notifications/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSessionsRequest constructs an http.Request for the ListSessions method
 func NewListSessionsRequest(server string) (*http.Request, error) {
 	var err error
@@ -707,6 +944,46 @@ func NewCreateSessionRequestWithBody(server string, contentType string, body io.
 	}
 
 	operationPath := fmt.Sprintf("/api/sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewArchiveSessionRequest calls the generic ArchiveSession builder with application/json body
+func NewArchiveSessionRequest(server string, body ArchiveSessionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewArchiveSessionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewArchiveSessionRequestWithBody constructs an http.Request for the ArchiveSession method, with any body, and a specified content type
+func NewArchiveSessionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/archive")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1438,6 +1715,34 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// ListNotificationsWithResponse List notification entries
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/notifications (the `ListNotifications` operationId).
+	ListNotificationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNotificationsResponse, error)
+
+	// CreateNotificationWithBodyWithResponse Create a new notification
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+	CreateNotificationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNotificationResponse, error)
+
+	// CreateNotificationWithResponse Create a new notification
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+	CreateNotificationWithResponse(ctx context.Context, body CreateNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNotificationResponse, error)
+
+	// DeleteNotificationWithResponse Delete a notification entry
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/notifications/{id} (the `DeleteNotification` operationId).
+	DeleteNotificationWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteNotificationResponse, error)
+
 	// ListSessionsWithResponse List active sessions
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -1458,6 +1763,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/sessions (the `CreateSession` operationId).
 	CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
+
+	// ArchiveSessionWithBodyWithResponse Archive a session's task data for long-term storage
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+	ArchiveSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error)
+
+	// ArchiveSessionWithResponse Archive a session's task data for long-term storage
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+	ArchiveSessionWithResponse(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error)
 
 	// GetSessionWithResponse Get session details
 	//
@@ -1621,6 +1940,130 @@ type ClientWithResponsesInterface interface {
 	ConnectWebSocketWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ConnectWebSocketResponse, error)
 }
 
+type ListNotificationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]NotificationEntry
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNotificationsResponse) GetJSON200() *[]NotificationEntry {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNotificationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNotificationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNotificationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNotificationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateNotificationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *struct {
+		Id       *int64  `json:"id,omitempty"`
+		Severity *string `json:"severity,omitempty"`
+		Title    *string `json:"title,omitempty"`
+	}
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateNotificationResponse) GetJSON201() *struct {
+	Id       *int64  `json:"id,omitempty"`
+	Severity *string `json:"severity,omitempty"`
+	Title    *string `json:"title,omitempty"`
+} {
+	return r.JSON201
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateNotificationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateNotificationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateNotificationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateNotificationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteNotificationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteNotificationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteNotificationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteNotificationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteNotificationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSessionsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1697,6 +2140,40 @@ func (r CreateSessionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ArchiveSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r ArchiveSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ArchiveSessionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2399,6 +2876,58 @@ func (r ConnectWebSocketResponse) ContentType() string {
 	return ""
 }
 
+// ListNotificationsWithResponse List notification entries
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/notifications (the `ListNotifications` operationId).
+func (c *ClientWithResponses) ListNotificationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNotificationsResponse, error) {
+	rsp, err := c.ListNotifications(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNotificationsResponse(rsp)
+}
+
+// CreateNotificationWithBodyWithResponse Create a new notification
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+func (c *ClientWithResponses) CreateNotificationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNotificationResponse, error) {
+	rsp, err := c.CreateNotificationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNotificationResponse(rsp)
+}
+
+// CreateNotificationWithResponse Create a new notification
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/notifications (the `CreateNotification` operationId).
+func (c *ClientWithResponses) CreateNotificationWithResponse(ctx context.Context, body CreateNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNotificationResponse, error) {
+	rsp, err := c.CreateNotification(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNotificationResponse(rsp)
+}
+
+// DeleteNotificationWithResponse Delete a notification entry
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/notifications/{id} (the `DeleteNotification` operationId).
+func (c *ClientWithResponses) DeleteNotificationWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteNotificationResponse, error) {
+	rsp, err := c.DeleteNotification(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteNotificationResponse(rsp)
+}
+
 // ListSessionsWithResponse List active sessions
 //
 // Returns a wrapper object for the known response body format(s).
@@ -2436,6 +2965,32 @@ func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, bod
 		return nil, err
 	}
 	return ParseCreateSessionResponse(rsp)
+}
+
+// ArchiveSessionWithBodyWithResponse Archive a session's task data for long-term storage
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+func (c *ClientWithResponses) ArchiveSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error) {
+	rsp, err := c.ArchiveSessionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveSessionResponse(rsp)
+}
+
+// ArchiveSessionWithResponse Archive a session's task data for long-term storage
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
+func (c *ClientWithResponses) ArchiveSessionWithResponse(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error) {
+	rsp, err := c.ArchiveSession(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveSessionResponse(rsp)
 }
 
 // GetSessionWithResponse Get session details
@@ -2737,6 +3292,78 @@ func (c *ClientWithResponses) ConnectWebSocketWithResponse(ctx context.Context, 
 	return ParseConnectWebSocketResponse(rsp)
 }
 
+// ParseListNotificationsResponse parses an HTTP response from a ListNotificationsWithResponse call
+func ParseListNotificationsResponse(rsp *http.Response) (*ListNotificationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNotificationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []NotificationEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateNotificationResponse parses an HTTP response from a CreateNotificationWithResponse call
+func ParseCreateNotificationResponse(rsp *http.Response) (*CreateNotificationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateNotificationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			Id       *int64  `json:"id,omitempty"`
+			Severity *string `json:"severity,omitempty"`
+			Title    *string `json:"title,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteNotificationResponse parses an HTTP response from a DeleteNotificationWithResponse call
+func ParseDeleteNotificationResponse(rsp *http.Response) (*DeleteNotificationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteNotificationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
 // ParseListSessionsResponse parses an HTTP response from a ListSessionsWithResponse call
 func ParseListSessionsResponse(rsp *http.Response) (*ListSessionsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -2784,6 +3411,22 @@ func ParseCreateSessionResponse(rsp *http.Response) (*CreateSessionResponse, err
 		}
 		response.JSON201 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseArchiveSessionResponse parses an HTTP response from a ArchiveSessionWithResponse call
+func ParseArchiveSessionResponse(rsp *http.Response) (*ArchiveSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil

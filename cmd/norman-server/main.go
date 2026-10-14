@@ -476,11 +476,13 @@ func (s *server) CreateNotification(c echo.Context) error {
 
 	// Push notification via notifier (WS + bell + Slack)
 	n := notify.Notification{
-		TaskID:   req.TaskId,
-		Title:    req.Title,
-		Body:     req.Body,
-		Severity: req.Severity,
+		Title:     req.Title,
+		Body:      req.Body,
+		Severity:  string(req.Severity),
 		Timestamp: time.Now(),
+	}
+	if req.TaskId != nil {
+		n.TaskID = *req.TaskId
 	}
 
 	if err := s.notifier.Notify(n); err != nil {
@@ -491,7 +493,7 @@ func (s *server) CreateNotification(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"id":       time.Now().UnixNano(),
 		"title":    req.Title,
-		"severity": req.Severity,
+		"severity": string(req.Severity),
 	})
 }
 

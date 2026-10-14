@@ -1,8 +1,25 @@
 # Norman — Build & Code Generation
+#
+# Targets:
+#   help      Show this help message
+#   generate  Generate protocol types, client library, and server handlers from api-spec.yaml
+#   build     Run generate + compile all packages
+#   test      Run all unit tests
+#   clean     Remove generated files
 
-.PHONY: generate build test clean
+.PHONY: help generate build test clean
 
 CODEGEN := ~/go/bin/oapi-codegen
+
+help:
+	@echo "Norman Build System"
+	@echo ""
+	@echo "Targets:"
+	@echo "  help      - Show this help message"
+	@echo "  generate  - Generate protocol types, client library, and server handlers from api-spec.yaml"
+	@echo "  build     - Run generate + compile all packages"
+	@echo "  test      - Run all unit tests"
+	@echo "  clean     - Remove generated files"
 
 generate:
 	@echo "Generating protocol types..."

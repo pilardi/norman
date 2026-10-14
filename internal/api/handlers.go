@@ -14,12 +14,24 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListNotifications List notification entries
+	// (GET /api/notifications)
+	ListNotifications(ctx echo.Context) error
+	// CreateNotification Create a new notification
+	// (POST /api/notifications)
+	CreateNotification(ctx echo.Context) error
+	// DeleteNotification Delete a notification entry
+	// (DELETE /api/notifications/{id})
+	DeleteNotification(ctx echo.Context, id string) error
 	// ListSessions List active sessions
 	// (GET /api/sessions)
 	ListSessions(ctx echo.Context) error
 	// CreateSession Create a new session for a workspace
 	// (POST /api/sessions)
 	CreateSession(ctx echo.Context) error
+	// ArchiveSession Archive a session's task data for long-term storage
+	// (POST /api/sessions/archive)
+	ArchiveSession(ctx echo.Context) error
 	// GetSession Get session details
 	// (GET /api/sessions/{id})
 	GetSession(ctx echo.Context, id string) error
@@ -81,6 +93,40 @@ type ServerInterfaceWrapper struct {
 	Handler ServerInterface
 }
 
+// ListNotifications converts echo context to params.
+func (w *ServerInterfaceWrapper) ListNotifications(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListNotifications(ctx)
+	return err
+}
+
+// CreateNotification converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateNotification(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateNotification(ctx)
+	return err
+}
+
+// DeleteNotification converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteNotification(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteNotification(ctx, id)
+	return err
+}
+
 // ListSessions converts echo context to params.
 func (w *ServerInterfaceWrapper) ListSessions(ctx echo.Context) error {
 	var err error
@@ -96,6 +142,15 @@ func (w *ServerInterfaceWrapper) CreateSession(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.CreateSession(ctx)
+	return err
+}
+
+// ArchiveSession converts echo context to params.
+func (w *ServerInterfaceWrapper) ArchiveSession(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ArchiveSession(ctx)
 	return err
 }
 
@@ -396,6 +451,10 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/api/sessions", wrapper.ListSessions, options.OperationMiddlewares["listSessions"]...)
 	router.POST(options.BaseURL+"/api/sessions", wrapper.CreateSession, options.OperationMiddlewares["createSession"]...)
 	router.GET(options.BaseURL+"/api/sessions/:id", wrapper.GetSession, options.OperationMiddlewares["getSession"]...)
+	router.POST(options.BaseURL+"/api/sessions/archive", wrapper.ArchiveSession, options.OperationMiddlewares["archiveSession"]...)
+	router.GET(options.BaseURL+"/api/notifications", wrapper.ListNotifications, options.OperationMiddlewares["listNotifications"]...)
+	router.POST(options.BaseURL+"/api/notifications", wrapper.CreateNotification, options.OperationMiddlewares["createNotification"]...)
+	router.DELETE(options.BaseURL+"/api/notifications/:id", wrapper.DeleteNotification, options.OperationMiddlewares["deleteNotification"]...)
 	router.GET(options.BaseURL+"/api/tasks", wrapper.ListTasks, options.OperationMiddlewares["listTasks"]...)
 	router.POST(options.BaseURL+"/api/tasks", wrapper.CreateTask, options.OperationMiddlewares["createTask"]...)
 	router.DELETE(options.BaseURL+"/api/tasks/:id", wrapper.CancelTask, options.OperationMiddlewares["cancelTask"]...)
