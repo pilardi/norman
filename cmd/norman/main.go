@@ -28,9 +28,17 @@ func serverURL() string {
 	return fmt.Sprintf("http://%s:%d", cfg.Host, cfg.ServerPort)
 }
 
+// logRequest prints debug info for a request when verbose mode is enabled.
+func logRequest(method, url string) {
+	fmt.Fprintf(os.Stderr, "[debug] %s %s\n", method, url)
+}
+
 // httpGet performs a GET request to the server and returns JSON bytes.
 func httpGet(path string) ([]byte, error) {
 	url := serverURL() + path
+	if verbose {
+		logRequest("GET", url)
+	}
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET %s: %w", url, err)
@@ -50,6 +58,9 @@ func httpGet(path string) ([]byte, error) {
 // httpPost performs a POST request with JSON body to the server (no body return).
 func httpPost(path string, body interface{}) error {
 	url := serverURL() + path
+	if verbose {
+		logRequest("POST", url)
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal body: %w", err)
@@ -78,6 +89,9 @@ func httpPost(path string, body interface{}) error {
 // httpPostJSON performs a POST request with JSON body and returns the response body.
 func httpPostJSON(path string, body interface{}) ([]byte, error) {
 	url := serverURL() + path
+	if verbose {
+		logRequest("POST", url)
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal body: %w", err)
@@ -107,6 +121,9 @@ func httpPostJSON(path string, body interface{}) ([]byte, error) {
 // httpDelete performs a DELETE request to the server.
 func httpDelete(path string) error {
 	url := serverURL() + path
+	if verbose {
+		logRequest("DELETE", url)
+	}
 	req, err := http.NewRequestWithContext(context.Background(), "DELETE", url, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
@@ -126,6 +143,19 @@ func httpDelete(path string) error {
 	return nil
 }
 
+// verbose controls whether debug output is printed to stderr.
+var verbose bool
+
+// isVerbose checks if verbose/debug mode was requested.
+func isVerbose() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == "-v" || arg == "--verbose" {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -134,6 +164,9 @@ func main() {
 
 	command := os.Args[1]
 	args := os.Args[2:]
+
+	// Check for -v/--verbose flag anywhere in args (before or after command)
+	verbose = isVerbose()
 
 	switch command {
 	case "config":
@@ -164,7 +197,10 @@ func main() {
 func printUsage() {
 	fmt.Println(`Norman CLI — Agent workspace manager
 
-Usage: norman <command> [args...]
+Usage: norman [-v|--verbose] <command> [args...]
+
+Flags:
+  -v, --verbose      Enable verbose/debug output (request details)
 
 Commands:
   create <name>        Create a new workspace + persistent OpenShell session
@@ -229,6 +265,8 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			fmt.Sscanf(val, "%d", &c.Agent.MaxTokens)
 		case "temperature":
 			fmt.Sscanf(val, "%f", &c.Agent.Temperature)
+		case "logging.verbose":
+			c.Logging.Verbose = (val == "true" || val == "1")
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
 			os.Exit(1)
@@ -254,6 +292,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  max_tokens:       %d\n", c.Agent.MaxTokens)
 	fmt.Printf("  temperature:      %.2f\n", c.Agent.Temperature)
 	fmt.Printf("  workspace_base:   %s\n", c.Workspaces.BaseDir)
+	fmt.Printf("  logging.verbose:  %v\n", c.Logging.Verbose)
 }
 
 // handleCreate delegates workspace creation to the agent server.

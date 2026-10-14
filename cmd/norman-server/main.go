@@ -114,7 +114,11 @@ func main() {
 
 	e := echo.New()
 	e.Use(middleware.Recover())
-	e.Use(middleware.Logger())
+
+	// Conditional logging: only log requests when verbose mode is enabled.
+	if cfg.Logging.Verbose {
+		e.Use(middleware.Logger())
+	}
 
 	// Health check endpoint
 	e.GET("/health", func(c echo.Context) error {

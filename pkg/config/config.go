@@ -19,6 +19,7 @@ type Config struct {
 	Workspaces   WorkspaceConfig   `yaml:"workspaces"`
 	Agent        AgentConfig       `yaml:"agent"`
 	Notify       NotifyConfig      `yaml:"notify"`
+	Logging      LoggingConfig     `yaml:"logging"`
 }
 
 // SkillsConfig holds skill-related settings.
@@ -44,6 +45,11 @@ type NotifyConfig struct {
 	BellEnabled      bool    `yaml:"bell_enabled"`       // ring terminal bell on notifications
 	SlackWebhook     string  `yaml:"slack_webhook"`      // optional Slack webhook URL
 	RateLimitPerMin  int     `yaml:"rate_limit_per_minute"` // max notifications per minute (default 10)
+}
+
+// LoggingConfig holds logging settings.
+type LoggingConfig struct {
+	Verbose bool `yaml:"verbose"` // enable verbose/debug output
 }
 
 const (
@@ -82,6 +88,9 @@ func DefaultConfig() *Config {
 		Notify: NotifyConfig{
 			BellEnabled:     DefaultBellEnabled,
 			RateLimitPerMin: DefaultRateLimit,
+		},
+		Logging: LoggingConfig{
+			Verbose: false, // disabled by default; use --verbose flag or config
 		},
 	}
 }
@@ -190,6 +199,9 @@ func overrideEnvVars(c *Config) {
 	}
 	if host := os.Getenv("HOST"); host != "" {
 		c.Host = host
+	}
+	if v := os.Getenv("LOGGING_VERBOSE"); v != "" {
+		c.Logging.Verbose = (v == "true" || v == "1")
 	}
 }
 

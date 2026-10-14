@@ -281,6 +281,41 @@ Replaced ad-hoc `go build` with a proper Makefile pipeline and cleaned up stale 
 
 ---
 
+## Step 13 — Logging verbosity
+
+> **Status:** 🚧 IN PROGRESS (on branch `step13-logging-config`)
+
+Made CLI and server logging configurable with a verbose mode for debugging. By default, the server's structured JSON log lines no longer leak into user output; verbose mode re-enables them plus prints request details to stderr.
+
+| # | Item | Status |
+|---|------|--------|
+| 13a | Add `LoggingConfig` struct (`Verbose bool`) to `pkg/config/config.go` | ✅ Done |
+| 13b | Add `-v` / `--verbose` flag to CLI client; print `[debug] METHOD URL` before each request in verbose mode | ✅ Done |
+| 13c | Server: conditionally apply `middleware.Logger()` based on `cfg.Logging.Verbose` | ✅ Done |
+| 13d | Add `LOGGING_VERBOSE` env var support (true/false or 1/0) | ✅ Done |
+| 13e | Update `.env.example` with new variables; update help text | ✅ Done |
+
+**Before:** Running `norman list` produced a confusing JSON log line followed by the actual output:
+```
+{"time":"2026-10-14T15:56:06.468839413-04:00","id":"","remote_ip":"127.0.0.1",...}
+No workspaces found.
+```
+
+**After (default):** Clean output — no JSON noise:
+```
+Available workspaces:
+  my-project        /home/user/workspaces/my-project
+```
+
+**After (`norman -v list`):** Debug info printed to stderr:
+```
+[debug] GET http://127.0.0.1:8080/api/workspaces
+Available workspaces:
+  my-project        /home/user/workspaces/my-project
+```
+
+---
+
 ## MVP Scope Boundaries
 
 **In scope:** CLI client → HTTP/WebSocket → Agent Server → OpenShell environment → task execution → results returned to client. One active workspace per session. Flat markdown wiki. Cron scheduling via OpenShell. Slack + terminal bell notifications.
