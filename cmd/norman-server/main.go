@@ -45,15 +45,20 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// Initialize memory store
-	storeDir := os.ExpandEnv("$HOME/.norman/store")
+	// Initialize memory store — path derived from environment, not hardcoded.
+	// The server communicates with the environment via OpenShell; the store
+	// location is now configurable and can be passed in or auto-detected.
+	storeDir := os.Getenv("NORMAN_STORE_DIR")
+	if storeDir == "" {
+		storeDir = os.ExpandEnv("$HOME/.norman/store") // fallback for local dev
+	}
 	store, err := memory.NewStore(storeDir)
 	if err != nil {
 		log.Fatalf("failed to init memory store: %v", err)
 	}
 
 	// Discover skills
-	skillsResult, err := skills.Discover(cfg.Skills.DiscoveryPaths)
+	skillsResult, err := skills.Discover(cfg.System.Skills.DiscoveryPaths)
 	if err != nil {
 		log.Printf("warning: skill discovery failed: %v (continuing without skills)", err)
 	}
@@ -65,15 +70,15 @@ func main() {
 	}
 
 	// Initialize activator
-	activator := skills.NewActivator(registry, cfg.Skills.MaxActive)
+	activator := skills.NewActivator(registry, cfg.System.Skills.MaxActive)
 
 	// Initialize WebSocket hub
 	wsHub := NewWSHub()
 	go wsHub.Run()
 
 	// Extract server address from config (used for both listen + OpenShell gateway).
-	port := cfg.ServerPort
-	host := cfg.Host
+	port := cfg.System.ServerPort
+	host := cfg.System.Host
 
 	// Create real OpenShell SDK client and adapt it to the interface.
 	// Uses HOST:PORT from config (co-located with Norman server in dev).
@@ -95,7 +100,7 @@ func main() {
 	loop := agent.New(cfg, store, activator, wsHub, loopClient)
 
 	// Initialize notification notifier from config
-	notifier := notify.New(wsHub, cfg.Notify.BellEnabled, cfg.Notify.SlackWebhook, cfg.Notify.RateLimitPerMin)
+	notifier := notify.New(wsHub, cfg.System.Notify.BellEnabled, cfg.System.Notify.SlackWebhook, cfg.System.Notify.RateLimitPerMin)
 
 	// Initialize scheduler and wire results into loop's notification path
 	resultsCh := make(chan scheduler.TaskResult, 100) // buffered to avoid blocking
@@ -116,7 +121,7 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// Conditional logging: only log requests when verbose mode is enabled.
-	if cfg.Logging.Verbose {
+	if cfg.System.Logging.Verbose {
 		e.Use(middleware.Logger())
 	}
 
@@ -124,6 +129,10 @@ func main() {
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// Config endpoint — returns full system config (with unresolved secret placeholders).
+	// Per-workspace overrides are included if workspace_id query param is provided.
+	e.GET("/api/config", srv.GetConfig)
 
 	// Session archive endpoint (Step 7d)
 	e.POST("/api/sessions/archive", srv.ArchiveSession)
@@ -240,7 +249,7 @@ func (s *server) GetSession(c echo.Context, id string) error {
 }
 
 func (s *server) ListSkills(c echo.Context) error {
-	skillsResult, err := skills.Discover(s.cfg.Skills.DiscoveryPaths)
+	skillsResult, err := skills.Discover(s.cfg.System.Skills.DiscoveryPaths)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -440,9 +449,13 @@ func (s *server) DeleteWorkspace(c echo.Context, name string) error {
 }
 
 func (s *server) GetWorkspace(c echo.Context, name string) error {
+	// Use workspace-specific config if available, otherwise fall back to system default
+	wsConfig := s.cfg.MergeWorkspaceConfig(name, &config.WorkspaceConfig{})
+	path := wsConfig.BaseDir + "/" + name
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"name": name,
-		"path": os.ExpandEnv("$HOME/workspaces/" + name),
+		"path": path,
 	})
 }
 
@@ -509,6 +522,27 @@ func (s *server) DeleteNotification(c echo.Context, id string) error {
 		Message: strPtr("Notification " + id + " dismissed"),
 	})
 	return c.NoContent(http.StatusOK)
+}
+
+// GetConfig returns the system config (with unresolved secret placeholders).
+// If workspace_id query param is provided, returns merged per-workspace config.
+func (s *server) GetConfig(c echo.Context) error {
+	workspaceID := c.QueryParam("workspace_id")
+
+	if workspaceID != "" {
+		// Return merged config for a specific workspace
+		if ws, ok := s.cfg.Workspaces[workspaceID]; ok {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"system":  s.cfg.System,
+				"workspace": ws,
+				"merged":  s.cfg.MergeWorkspaceConfig(workspaceID, ws),
+			})
+		}
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	// Return full system config
+	return c.JSON(http.StatusOK, s.cfg.System)
 }
 
 // --- WSHub (moved from stub to real implementation) ---

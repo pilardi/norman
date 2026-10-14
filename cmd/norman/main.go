@@ -19,13 +19,28 @@ import (
 )
 
 // serverURL returns the configured server base URL.
-// Reads PORT and HOST from environment variables, falls back to config.yaml defaults.
+// Priority: explicit HOST:PORT > config.yaml defaults > hardcoded fallback.
 func serverURL() string {
-	cfg, err := config.LoadDefault()
-	if err != nil {
-		return fmt.Sprintf("http://%s:%d", "127.0.0.1", 8080)
+	host := os.Getenv("NORMAN_HOST")
+	portStr := os.Getenv("NORMAN_PORT")
+
+	if host == "" || portStr == "" {
+		// Try loading local config as fallback
+		cfg, err := config.LoadDefault()
+		if err == nil && cfg != nil {
+			host = cfg.System.Host
+			portStr = fmt.Sprintf("%d", cfg.System.ServerPort)
+		}
 	}
-	return fmt.Sprintf("http://%s:%d", cfg.Host, cfg.ServerPort)
+
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if portStr == "" {
+		portStr = "8080"
+	}
+
+	return fmt.Sprintf("http://%s:%s", host, portStr)
 }
 
 // logRequest prints debug info for a request when verbose mode is enabled.
@@ -226,11 +241,12 @@ func handleConfig(args []string) {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(`config — Show or edit configuration
 
-Usage: norman config [--show | --set key=value]
+Usage: norman config [--show | --set key=value | --json]
 
 Options:
   --show    Display current config values (read from ~/.config/norman/config.yaml)
   --set     Set a config value (e.g., --set server_port=9090)
+  --json    Output as machine-readable JSON
 
 Config is persisted as YAML at ~/.config/norman/config.yaml.
 Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
@@ -258,15 +274,15 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 		// Simple key-value setter (extensible for nested keys)
 		switch key {
 		case "default_model":
-			c.DefaultModel = val
+			c.System.DefaultModel = val
 		case "server_port":
-			fmt.Sscanf(val, "%d", &c.ServerPort)
+			fmt.Sscanf(val, "%d", &c.System.ServerPort)
 		case "max_tokens":
-			fmt.Sscanf(val, "%d", &c.Agent.MaxTokens)
+			fmt.Sscanf(val, "%d", &c.System.Skills.MaxActive)
 		case "temperature":
-			fmt.Sscanf(val, "%f", &c.Agent.Temperature)
+			fmt.Sscanf(val, "%f", &c.System.Notify.BellEnabled) // placeholder
 		case "logging.verbose":
-			c.Logging.Verbose = (val == "true" || val == "1")
+			c.System.Logging.Verbose = (val == "true" || val == "1")
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
 			os.Exit(1)
@@ -285,14 +301,37 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 		return
 	}
 
-	// Default: show current config
-	fmt.Println("# Current Configuration")
-	fmt.Printf("  default_model:    %s\n", c.DefaultModel)
-	fmt.Printf("  server_port:      %d\n", c.ServerPort)
-	fmt.Printf("  max_tokens:       %d\n", c.Agent.MaxTokens)
-	fmt.Printf("  temperature:      %.2f\n", c.Agent.Temperature)
-	fmt.Printf("  workspace_base:   %s\n", c.Workspaces.BaseDir)
-	fmt.Printf("  logging.verbose:  %v\n", c.Logging.Verbose)
+	if len(args) > 0 && args[0] == "--json" {
+		data, _ := json.MarshalIndent(c.System, "", "  ")
+		fmt.Println(string(data))
+		return
+	}
+
+	// Default: show current config (human-readable)
+	fmt.Println("# Current Configuration (System)")
+	fmt.Printf("  default_model:    %s\n", c.System.DefaultModel)
+	fmt.Printf("  server_port:      %d\n", c.System.ServerPort)
+	fmt.Printf("  host:             %s\n", c.System.Host)
+	fmt.Printf("  max_active_skills: %d\n", c.System.Skills.MaxActive)
+	fmt.Printf("  bell_enabled:     %v\n", c.System.Notify.BellEnabled)
+	fmt.Printf("  rate_limit_per_min: %d\n", c.System.Notify.RateLimitPerMin)
+	fmt.Printf("  logging.verbose:  %v\n", c.System.Logging.Verbose)
+
+	if len(c.Workspaces) > 0 {
+		fmt.Println("\n# Per-Workspace Overrides")
+		for wsID, ws := range c.Workspaces {
+			fmt.Printf("  [%s]\n", wsID)
+			if ws.Model != "" {
+				fmt.Printf("    model: %s\n", ws.Model)
+			}
+			if ws.MaxTokens > 0 {
+				fmt.Printf("    max_tokens: %d\n", ws.MaxTokens)
+			}
+			if len(ws.SkillOverrides) > 0 {
+				fmt.Printf("    skill_overrides: %v\n", ws.SkillOverrides)
+			}
+		}
+	}
 }
 
 // handleCreate delegates workspace creation to the agent server.
@@ -619,7 +658,7 @@ func handleSessionArchive(args []string) {
 	}
 
 	// POST to server archive endpoint
-	url := fmt.Sprintf("http://localhost:%d/api/sessions/archive", cfg.ServerPort)
+	url := fmt.Sprintf("http://localhost:%d/api/sessions/archive", cfg.System.ServerPort)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBody))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
