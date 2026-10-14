@@ -76,25 +76,24 @@ func main() {
 	wsHub := NewWSHub()
 	go wsHub.Run()
 
-	// Extract server address from config (used for both listen + OpenShell gateway).
+	// Extract server address from config (used for listen only).
 	port := cfg.System.ServerPort
 	host := cfg.System.Host
 
-	// Create real OpenShell SDK client and adapt it to the interface.
-	// Uses HOST:PORT from config (co-located with Norman server in dev).
-	openShellAddr := fmt.Sprintf("%s:%d", host, port)
-	openShellClient, err := env.NewClient(openShellAddr)
-	if err != nil {
-		log.Printf("[server] WARNING: OpenShell client init failed (using fallback): %v", err)
+	// Resolve OpenShell gateway address: env var > metadata.json > localhost:8090.
+	openShellAddr := cfg.System.OpenShell.Address
+	if openShellAddr == "" {
+		openShellAddr = env.ResolveGatewayAddress()
 	}
 
-	// Use real SDK client if available, otherwise fall back to fake client
-	var loopClient agent.OpenShellClient
-	if openShellClient != nil {
-		loopClient = env.NewSDKAdapter(openShellClient)
-	} else {
-		loopClient = agent.NewFakeOpenShellClient()
+	// Create real OpenShell SDK client and adapt it to the interface.
+	// If the client fails to connect, the server refuses to start (no fake fallback).
+	openShellClient, err := env.NewClient(openShellAddr)
+	if err != nil {
+		log.Fatalf("[server] FATAL: OpenShell gateway connection failed at %s: %v\nServer refusing to start.", openShellAddr, err)
 	}
+
+	loopClient := env.NewSDKAdapter(openShellClient)
 
 	// Create agent loop
 	loop := agent.New(cfg, store, activator, wsHub, loopClient)

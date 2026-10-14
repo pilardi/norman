@@ -22,6 +22,7 @@ type SystemConfig struct {
 	Logging      LoggingConfig     `yaml:"logging"`
 	Temperature    float64           `yaml:"temperature"` // global default temperature (0 = use default)
 	MaxTokens    int               `yaml:"max_tokens"`  // global default max tokens (0 = use system default)
+	OpenShell    OpenShellConfig   `yaml:"openshell"`   // OpenShell gateway connection config
 }
 
 // WorkspaceConfig holds per-workspace overrides.
@@ -60,6 +61,11 @@ type LoggingConfig struct {
 	Verbose bool `yaml:"verbose"` // enable verbose/debug output
 }
 
+// OpenShellConfig holds OpenShell gateway connection settings.
+type OpenShellConfig struct {
+	Address string `yaml:"address"` // explicit gateway address (e.g., "127.0.0.1:8090")
+}
+
 const (
 	DefaultModel       = "gpt-4o"
 	DefaultServerPort  = 8080
@@ -85,6 +91,9 @@ func DefaultSystemConfig() *SystemConfig {
 		Host:          DefaultHost,
 		Temperature:     defaultTemperature,
 		MaxTokens:     defaultMaxTokens,
+		OpenShell: OpenShellConfig{
+			Address: "", // empty = auto-resolve from env var or metadata.json
+		},
 		Skills: SkillsConfig{
 			DiscoveryPaths: []string{
 				"~/.norman/skills/",

@@ -3,8 +3,11 @@ package env
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -13,6 +16,40 @@ import (
 const (
 	defaultProvider = "default"
 )
+
+// ResolveGatewayAddress returns the OpenShell gateway address to connect to.
+// Priority: OPENSHELL_GATEWAY_ADDRESS env var > metadata.json from ~/.config/openshell/gateways/openshell/metadata.json
+func ResolveGatewayAddress() string {
+	// 1. Check explicit env var first
+	if addr := os.Getenv("OPENSHELL_GATEWAY_ADDRESS"); addr != "" {
+		return addr
+	}
+
+	// 2. Fall back to metadata.json from the OpenShell config directory
+	metadataPath := filepath.Join(os.ExpandEnv("$HOME"), ".config", "openshell", "gateways", "openshell", "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("[env] WARNING: OpenShell metadata.json not found at %s; using localhost:8090 as fallback", metadataPath)
+			return "localhost:8090"
+		}
+		log.Printf("[env] WARNING: failed to read OpenShell metadata.json: %v; using localhost:8090 as fallback", err)
+		return "localhost:8090"
+	}
+
+	var meta map[string]interface{}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		log.Printf("[env] WARNING: failed to parse OpenShell metadata.json: %v; using localhost:8090 as fallback", err)
+		return "localhost:8090"
+	}
+
+	if endpoint, ok := meta["gateway_endpoint"].(string); ok && endpoint != "" {
+		return endpoint
+	}
+
+	log.Printf("[env] WARNING: no gateway_endpoint found in metadata.json; using localhost:8090 as fallback")
+	return "localhost:8090"
+}
 
 // Client wraps the OpenShell SDK client and manages sandbox lifecycle.
 type Client struct {
