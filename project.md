@@ -111,7 +111,7 @@
 
 > **Status: ✅ COMPLETE** (committed on `step5a-server` branch)
 
-- Bootstrap Echo server in `cmd/server/main.go`; register all generated handlers from `internal/api/handlers.go`
+- Bootstrap Echo server in `cmd/norman-server/main.go`; register all generated handlers from `internal/api/handlers.go`
 - Add `/health` endpoint; start WebSocket hub at `/ws` for event broadcasting
 - Wire up `pkg/protocol/client.go` + `types.go` into server's internal state management
 - Add ephemeral in-memory task store (map keyed by task ID)
@@ -126,11 +126,11 @@
 
 - `pkg/agent/loop.go` — core agent loop with task submission, execution lifecycle (resolve→create sandbox→waitReady→execute→cleanup), retry logic (3× exponential backoff), WebSocket push events
 - `pkg/memory/store.go` — file-based persistence with optimistic locking; save/load/delete tasks and sessions; prune expired entries
-- `cmd/server/main.go` — all 20 handlers wired to real implementations (not stubs); server struct holds Loop + Store + WSHub
+- `cmd/norman-server/main.go` — all 20 handlers wired to real implementations (not stubs); server struct holds Loop + Store + WSHub
 - `pkg/skills/activate.go` — added `Registry()` method for agent loop access
 - WebSocket event push: `task_progress`, `task_complete`, `task_failed`
 
-**Acceptance:** Server starts, `/health` returns 200; `/api/tasks` returns task list; `POST /api/tasks` creates and executes a task; WebSocket clients receive real-time progress events. Build passes (`go build ./cmd/server/`), `go vet` clean on all packages.
+**Acceptance:** Server starts, `/health` returns 200; `/api/tasks` returns task list; `POST /api/tasks` creates and executes a task; WebSocket clients receive real-time progress events. Build passes (`go build ./cmd/norman-server/`), `go vet` clean on all packages.
 
 ---
 
