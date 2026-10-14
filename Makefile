@@ -41,4 +41,6 @@ test:
 	go test ./...
 
 clean:
-	rm -f pkg/protocol/types.go pkg/protocol/client.go internal/api/handlers.go
+	find . -name '*.exe' -delete 2>/dev/null || true
+	find . -type f -name 'norman' -delete 2>/dev/null || true
+	find . -type f -name 'norman-server' -delete 2>/dev/null || true
