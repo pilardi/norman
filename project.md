@@ -111,7 +111,7 @@
 
 > **Status: ✅ COMPLETE** (committed on `step5a-server` branch)
 
-- Bootstrap Echo server in `cmd/server/main.go`; register all generated handlers from `internal/api/handlers.go`
+- Bootstrap Echo server in `cmd/norman-server/main.go`; register all generated handlers from `internal/api/handlers.go`
 - Add `/health` endpoint; start WebSocket hub at `/ws` for event broadcasting
 - Wire up `pkg/protocol/client.go` + `types.go` into server's internal state management
 - Add ephemeral in-memory task store (map keyed by task ID)
@@ -126,11 +126,11 @@
 
 - `pkg/agent/loop.go` — core agent loop with task submission, execution lifecycle (resolve→create sandbox→waitReady→execute→cleanup), retry logic (3× exponential backoff), WebSocket push events
 - `pkg/memory/store.go` — file-based persistence with optimistic locking; save/load/delete tasks and sessions; prune expired entries
-- `cmd/server/main.go` — all 20 handlers wired to real implementations (not stubs); server struct holds Loop + Store + WSHub
+- `cmd/norman-server/main.go` — all 20 handlers wired to real implementations (not stubs); server struct holds Loop + Store + WSHub
 - `pkg/skills/activate.go` — added `Registry()` method for agent loop access
 - WebSocket event push: `task_progress`, `task_complete`, `task_failed`
 
-**Acceptance:** Server starts, `/health` returns 200; `/api/tasks` returns task list; `POST /api/tasks` creates and executes a task; WebSocket clients receive real-time progress events. Build passes (`go build ./cmd/server/`), `go vet` clean on all packages.
+**Acceptance:** Server starts, `/health` returns 200; `/api/tasks` returns task list; `POST /api/tasks` creates and executes a task; WebSocket clients receive real-time progress events. Build passes (`go build ./cmd/norman-server/`), `go vet` clean on all packages.
 
 ---
 
@@ -202,6 +202,42 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 - All secrets resolved by OpenShell at runtime via `v1.SecretClient`.
 
 **Note:** The SDK is not yet publicly tagged. If the Go SDK becomes available as a stable release, swap from commit-sha pin to versioned import.
+
+---
+
+## Step 10 — Server rename + client-server communication review
+
+> **Status:** ✅ COMPLETE (merged to `main`)
+
+### Changes Made
+- Renamed `cmd/server/` → `cmd/norman-server/` to avoid naming clash with other applications
+- Refactored CLI client (`cmd/norman/main.go`) to be a **thin HTTP client** — delegates operations to the server instead of assuming local environment access:
+  - `listSkills()` → now uses `GET /api/skills` (was scanning host filesystem)
+  - `installSkill()` → now uses `POST /api/skills/install` (was copying files locally)
+  - `removeSkill()` → now uses `DELETE /api/skills/:name` (was removing locally)
+  - `handleList()` workspace listing → now uses `GET /api/workspaces` (was `os.ReadDir`)
+  - `handleRun()` → now uses `POST /api/tasks` (was direct OpenShell SDK exec)
+  - `handleCreate()` → now uses `POST /api/workspaces` (was creating local overlay dirs)
+  - `handleSwitch()` → now uses `GET /api/workspaces/:name` (was constructing local paths)
+
+### Design Rationale
+The CLI is a thin application. It should not assume access to the local environment (e.g., when running in a container or remote SSH session). All file I/O, sandbox lifecycle, and skill management should happen on the server side via REST/WebSocket endpoints.
+
+---
+
+### Changes Made
+- Renamed `cmd/server/` → `cmd/norman-server/` to avoid naming clash with other applications
+- Refactored CLI client (`cmd/norman/main.go`) to be a **thin HTTP client** — delegates operations to the server instead of assuming local environment access:
+  - `listSkills()` → now uses `GET /api/skills` (was scanning host filesystem)
+  - `installSkill()` → now uses `POST /api/skills/install` (was copying files locally)
+  - `removeSkill()` → now uses `DELETE /api/skills/:name` (was removing locally)
+  - `handleList()` workspace listing → now uses `GET /api/workspaces` (was `os.ReadDir`)
+  - `handleRun()` → now uses `POST /api/tasks` (was direct OpenShell SDK exec)
+  - `handleCreate()` → now uses `POST /api/workspaces` (was creating local overlay dirs)
+  - `handleSwitch()` → now uses `GET /api/workspaces/:name` (was constructing local paths)
+
+### Design Rationale
+The CLI is a thin application. It should not assume access to the local environment (e.g., when running in a container or remote SSH session). All file I/O, sandbox lifecycle, and skill management should happen on the server side via REST/WebSocket endpoints.
 
 ---
 

@@ -158,7 +158,7 @@ type Notifier struct {
 | `pkg/skills/activate.go` | On `Activate()`: connect MCP client, discover tools; on `Deactivate()`: close connection. |
 | `cmd/norman/main.go` | Add `tasks add`, `tasks list`, `tasks remove`, `tasks run` subcommands with cron parsing. |
 | `pkg/agent/loop.go` | Inject `*scheduler.Scheduler` and `*notify.Notifier`; call notifier on task completion. |
-| `cmd/server/main.go` | Add `POST /api/tasks` (register), `GET /api/tasks` (list), `DELETE /api/tasks/:id` endpoints. Extend WSHub to push notifications. |
+| `cmd/norman-server/main.go` | Add `POST /api/tasks` (register), `GET /api/tasks` (list), `DELETE /api/tasks/:id` endpoints. Extend WSHub to push notifications. |
 | `pkg/config/config.go` | Add `NotifyConfig` struct with Slack URL, bell flag, rate limit. |
 
 ---
