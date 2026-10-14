@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -13,6 +14,7 @@ import (
 type Config struct {
 	DefaultModel string            `yaml:"default_model"`
 	ServerPort   int               `yaml:"server_port"`
+	Host         string            `yaml:"host"`           // bind address for server (default 127.0.0.1)
 	Skills       SkillsConfig      `yaml:"skills"`
 	Workspaces   WorkspaceConfig   `yaml:"workspaces"`
 	Agent        AgentConfig       `yaml:"agent"`
@@ -47,6 +49,7 @@ type NotifyConfig struct {
 const (
 	DefaultModel       = "gpt-4o"
 	DefaultServerPort  = 8080
+	DefaultHost        = "127.0.0.1"
 	DefaultBaseDir     = "~/workspaces"
 	DefaultMaxTokens   = 32000
 	DefaultTemperature = 0.7
@@ -60,6 +63,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		DefaultModel: DefaultModel,
 		ServerPort:   DefaultServerPort,
+		Host:         DefaultHost,
 		Skills: SkillsConfig{
 			DiscoveryPaths: []string{
 				"~/.norman/skills/",
@@ -120,7 +124,15 @@ func Load(path string) (*Config, error) {
 
 // LoadDefault reads from the standard config path (~/.config/norman/config.yaml).
 // If the file does not exist, returns DefaultConfig() instead of an error.
+// Also loads .env files from the current directory and $HOME/.norman/.env as fallbacks.
 func LoadDefault() (*Config, error) {
+	// Try loading .env files (current dir first, then home dir)
+	envDir := os.Getenv("HOME")
+	if envDir == "" {
+		envDir = "."
+	}
+	godotenv.Load(".env", filepath.Join(envDir, ".norman", ".env"))
+
 	configDir := os.ExpandEnv("$HOME/.config/norman")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return nil, fmt.Errorf("create config dir: %w", err)
@@ -131,7 +143,9 @@ func LoadDefault() (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return DefaultConfig(), nil
+			c := DefaultConfig()
+			overrideEnvVars(c)
+			return c, nil
 		}
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
@@ -161,7 +175,22 @@ func LoadDefault() (*Config, error) {
 		c.Skills.MaxActive = DefaultMaxActive
 	}
 
+	overrideEnvVars(c)
 	return c, nil
+}
+
+// overrideEnvVars applies environment variable overrides to the config.
+// Priority: env vars > YAML file > defaults.
+func overrideEnvVars(c *Config) {
+	if port := os.Getenv("PORT"); port != "" {
+		n, err := fmt.Sscanf(port, "%d", &c.ServerPort)
+		if n != 1 || err != nil {
+			fmt.Fprintf(os.Stderr, "[config] WARNING: invalid PORT value %q, ignoring\n", port)
+		}
+	}
+	if host := os.Getenv("HOST"); host != "" {
+		c.Host = host
+	}
 }
 
 // Save writes the Config back to a file path.

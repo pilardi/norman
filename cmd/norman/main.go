@@ -19,12 +19,13 @@ import (
 )
 
 // serverURL returns the configured server base URL.
+// Reads PORT and HOST from environment variables, falls back to config.yaml defaults.
 func serverURL() string {
 	cfg, err := config.LoadDefault()
 	if err != nil {
-		return "http://localhost:8080"
+		return fmt.Sprintf("http://%s:%d", "127.0.0.1", 8080)
 	}
-	return fmt.Sprintf("http://localhost:%d", cfg.ServerPort)
+	return fmt.Sprintf("http://%s:%d", cfg.Host, cfg.ServerPort)
 }
 
 // httpGet performs a GET request to the server and returns JSON bytes.

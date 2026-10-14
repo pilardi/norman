@@ -6,6 +6,7 @@ require (
 	github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20261013154426-dfb0f4f91761
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/oapi-codegen/runtime v1.7.0
