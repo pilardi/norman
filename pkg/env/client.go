@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -18,37 +19,43 @@ const (
 )
 
 // ResolveGatewayAddress returns the OpenShell gateway address to connect to.
-// Priority: OPENSHELL_GATEWAY_ADDRESS env var > metadata.json from ~/.config/openshell/gateways/openshell/metadata.json
+// Priority: OPENSHELL_GATEWAY_ADDRESS env var > metadata.json from ~/.config/openshell/gateways/openshell/metadata.json.
+// Returns an empty string if no valid address can be resolved (caller should fail).
 func ResolveGatewayAddress() string {
 	// 1. Check explicit env var first
 	if addr := os.Getenv("OPENSHELL_GATEWAY_ADDRESS"); addr != "" {
-		return addr
+		return sanitizeAddress(addr)
 	}
 
-	// 2. Fall back to metadata.json from the OpenShell config directory
+	// 2. Read metadata.json from the OpenShell config directory
 	metadataPath := filepath.Join(os.ExpandEnv("$HOME"), ".config", "openshell", "gateways", "openshell", "metadata.json")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			log.Printf("[env] WARNING: OpenShell metadata.json not found at %s; using localhost:8090 as fallback", metadataPath)
-			return "localhost:8090"
-		}
-		log.Printf("[env] WARNING: failed to read OpenShell metadata.json: %v; using localhost:8090 as fallback", err)
-		return "localhost:8090"
+		log.Printf("[env] ERROR: OpenShell metadata.json not found at %s; cannot resolve gateway address", metadataPath)
+		return ""
 	}
 
 	var meta map[string]interface{}
 	if err := json.Unmarshal(data, &meta); err != nil {
-		log.Printf("[env] WARNING: failed to parse OpenShell metadata.json: %v; using localhost:8090 as fallback", err)
-		return "localhost:8090"
+		log.Printf("[env] ERROR: failed to parse OpenShell metadata.json: %v", err)
+		return ""
 	}
 
 	if endpoint, ok := meta["gateway_endpoint"].(string); ok && endpoint != "" {
-		return endpoint
+		return sanitizeAddress(endpoint)
 	}
 
-	log.Printf("[env] WARNING: no gateway_endpoint found in metadata.json; using localhost:8090 as fallback")
-	return "localhost:8090"
+	log.Printf("[env] ERROR: no gateway_endpoint found in metadata.json")
+	return ""
+}
+
+// sanitizeAddress strips protocol prefixes (e.g. "https://", "http://") from an address.
+// OpenShell's gRPC client does not support HTTPS for localhost; only host:port is valid.
+func sanitizeAddress(addr string) string {
+	// Strip common protocol prefixes
+	addr = strings.TrimPrefix(addr, "https://")
+	addr = strings.TrimPrefix(addr, "http://")
+	return addr
 }
 
 // Client wraps the OpenShell SDK client and manages sandbox lifecycle.
