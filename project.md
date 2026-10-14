@@ -205,16 +205,18 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 ---
 
-## Pending / Follow-up Work
+## Step 9 — Follow-up: real SDK, scheduler wiring, CLI archive, config tests
 
-These items were identified during implementation but remain unaddressed:
+> **Status:** 📋 PLAN ONLY — awaiting implementation
+
+These items were identified during Steps 8a–8d but remain unaddressed. This step consolidates them into a single implementation effort.
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | Wire real OpenShell SDK into `OpenShellClient` interface (currently using `FakeOpenShellClient`) | ⏳ Pending |
-| 2 | Connect scheduler `Start()` to `main()` and inject results channel into agent loop's notification path | ⏳ Pending |
-| 3 | Add CLI command `norman sessions archive` for manual archival (REST endpoint exists, CLI missing) | ⏳ Pending |
-| 4 | Add unit tests for `pkg/config/config.go` — `NotifyConfig` defaults validation | ⏳ Pending |
+| 9a | Wire real OpenShell SDK into `OpenShellClient` interface (currently using `FakeOpenShellClient`) | ⏳ Pending |
+| 9b | Connect scheduler `Start()` to `main()` and inject results channel into agent loop's notification path | ⏳ Pending |
+| 9c | Add CLI command `norman sessions archive` for manual archival (REST endpoint exists, CLI missing) | ⏳ Pending |
+| 9d | Add unit tests for `pkg/config/config.go` — `NotifyConfig` defaults validation | ⏳ Pending |
 
 ---
 
