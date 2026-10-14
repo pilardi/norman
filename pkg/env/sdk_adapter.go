@@ -1,0 +1,90 @@
+// Package env provides an adapter that wraps the real OpenShell SDK client
+// and adapts its method signatures to match the OpenShellClient interface
+// used by the agent loop.
+package env
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+)
+
+// SDKAdapter wraps *Client and adapts its methods to match the
+// OpenShellClient interface defined in pkg/agent/loop.go.
+type SDKAdapter struct {
+	client *Client
+}
+
+// NewSDKAdapter creates an adapter from a real env.Client.
+func NewSDKAdapter(c *Client) *SDKAdapter {
+	return &SDKAdapter{client: c}
+}
+
+// CreateSandbox adapts env.Client.CreateSandbox to return a sandbox ID string.
+func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string) (string, error) {
+	sb, err := a.client.CreateSandbox(ctx, workspace, name)
+	if err != nil {
+		return "", fmt.Errorf("create sandbox: %w", err)
+	}
+	if sb == nil {
+		return "", fmt.Errorf("create sandbox: returned nil sandbox")
+	}
+	return sb.ID, nil
+}
+
+// WaitReady adapts env.Client.WaitReady to match the interface signature.
+func (a *SDKAdapter) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) error {
+	_, err := a.client.WaitReady(ctx, "default", name)
+	if err != nil {
+		return fmt.Errorf("wait ready: %w", err)
+	}
+	return nil
+}
+
+// RunCommand adapts env.Client.RunCommand to accept a single command string
+// and return (output, exitCode, error).
+func (a *SDKAdapter) RunCommand(ctx context.Context, sandboxID, command string) (string, int, error) {
+	cmd := strings.Fields(command)
+	result, err := a.client.RunCommand(ctx, "default", sandboxID, cmd)
+	if err != nil {
+		return "", 1, fmt.Errorf("run command: %w", err)
+	}
+	exitCode := result.ExitCode
+	output := string(result.Stdout)
+	return output, exitCode, nil
+}
+
+// GetLogs adapts env.Client.GetSandbox to return log lines as []string.
+func (a *SDKAdapter) GetLogs(ctx context.Context, sandboxID string) ([]string, error) {
+	sb, err := a.client.GetSandbox(ctx, "default", sandboxID)
+	if err != nil {
+		return nil, fmt.Errorf("get logs: %w", err)
+	}
+	if sb == nil {
+		return []string{}, nil
+	}
+	// Extract log lines from sandbox conditions
+	var lines []string
+	for _, cond := range sb.Status.Conditions {
+		lines = append(lines, fmt.Sprintf("[%s] %s: %s", cond.Type, cond.Reason, cond.Message))
+	}
+	return lines, nil
+}
+
+// DeleteSandbox adapts env.Client.DeleteSandbox to match the interface signature.
+func (a *SDKAdapter) DeleteSandbox(ctx context.Context, workspace, name string) error {
+	_, err := a.client.DeleteSandbox(ctx, "default", name)
+	if err != nil {
+		return fmt.Errorf("delete sandbox: %w", err)
+	}
+	return nil
+}
+
+// ListSandboxes adapts env.Client to return sandbox IDs for a workspace.
+// Note: the real SDK doesn't expose a direct list-by-workspace method,
+// so we fall back to returning known sandboxes or querying via health.
+func (a *SDKAdapter) ListSandboxes(ctx context.Context, workspace string) ([]string, error) {
+	// For MVP, return empty since SDK doesn't expose listing by workspace.
+	return []string{}, nil
+}

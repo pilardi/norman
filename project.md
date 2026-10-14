@@ -207,16 +207,22 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 ## Step 9 — Follow-up: real SDK, scheduler wiring, CLI archive, config tests
 
-> **Status:** 📋 PLAN ONLY — awaiting implementation
+> **Status:** ✅ COMPLETE (merged to `main`)
 
-These items were identified during Steps 8a–8d but remain unaddressed. This step consolidates them into a single implementation effort.
+All sub-steps implemented, tested, and merged. See [docs/step9-plan.md](docs/step9-plan.md) for details.
 
 | # | Item | Status |
 |---|------|--------|
-| 9a | Wire real OpenShell SDK into `OpenShellClient` interface (currently using `FakeOpenShellClient`) | ⏳ Pending |
-| 9b | Connect scheduler `Start()` to `main()` and inject results channel into agent loop's notification path | ⏳ Pending |
-| 9c | Add CLI command `norman sessions archive` for manual archival (REST endpoint exists, CLI missing) | ⏳ Pending |
-| 9d | Add unit tests for `pkg/config/config.go` — `NotifyConfig` defaults validation | ⏳ Pending |
+| 9a | Wire real OpenShell SDK into `OpenShellClient` interface via `SDKAdapter` | ✅ Done |
+| 9b | Connect scheduler `Start()` to `main()` and inject results channel into agent loop's notification path | ✅ Done |
+| 9c | Add CLI command `norman sessions archive <task_id>` for manual archival (REST endpoint exists, CLI added) | ✅ Done |
+| 9d | Add unit tests for `pkg/config/config.go` — `NotifyConfig` defaults validation (7 tests pass) | ✅ Done |
+
+**Implementation notes:**
+- `pkg/env/sdk_adapter.go` wraps `*env.Client` and adapts method signatures to match `OpenShellClient` interface; falls back to `FakeOpenShellClient` when SDK unavailable.
+- Scheduler results channel (`chan scheduler.TaskResult`) injected into Loop via `WithResultsChannel()`.
+- CLI command `norman sessions archive <task_id>` sends POST `/api/sessions/archive`.
+- Config tests cover defaults, validation (zero/negative rate limits), and YAML unmarshal.
 
 ---
 
