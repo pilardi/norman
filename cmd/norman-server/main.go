@@ -53,6 +53,14 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
+	// --verbose CLI flag overrides config.yaml Logging.Verbose (server-side debug output).
+	for _, arg := range os.Args[1:] {
+		if arg == "--verbose" || arg == "-v" {
+			cfg.System.Logging.Verbose = true
+			break
+		}
+	}
+
 	// Initialize memory store — path derived from environment, not hardcoded.
 	// The server communicates with the environment via OpenShell; the store
 	// location is now configurable and can be passed in or auto-detected.
