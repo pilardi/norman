@@ -26,6 +26,7 @@ type Task struct {
 	Prompt    string
 	Status    protocol.TaskStatus
 	Workspace string
+	SessionId string
 	Output    []byte
 	Error     string
 	RetryCount int
@@ -120,7 +121,7 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 }
 
 // Submit enqueues a task and begins execution.
-func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string) (*Task, error) {
+func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, sessionID string) (*Task, error) {
 	taskID := uuid.New().String()
 
 	task := &Task{
@@ -128,6 +129,7 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string) (*
 		Prompt:    prompt,
 		Status:    protocol.TaskStatusPending,
 		Workspace: workspaceID,
+		SessionId: sessionID,
 		CreatedAt: time.Now(),
 	}
 

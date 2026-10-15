@@ -35,6 +35,9 @@ type ServerInterface interface {
 	// GetSession Get session details
 	// (GET /api/sessions/{id})
 	GetSession(ctx echo.Context, id string) error
+	// DeleteSession Delete a session
+	// (DELETE /api/sessions/{id})
+	DeleteSession(ctx echo.Context, id string) error
 	// ListSkills List discovered skills (metadata only)
 	// (GET /api/skills)
 	ListSkills(ctx echo.Context) error
@@ -167,6 +170,22 @@ func (w *ServerInterfaceWrapper) GetSession(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetSession(ctx, id)
+	return err
+}
+
+// DeleteSession converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteSession(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteSession(ctx, id)
 	return err
 }
 

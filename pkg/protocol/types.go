@@ -460,6 +460,10 @@ type TaskCreateRequest struct {
 
 	// WorkspaceId Target workspace for this task
 	WorkspaceId string `json:"workspace_id"`
+
+	// SessionId Binds the task to a session for conversation continuity.
+	// If omitted, the task is stateless (no conversation context shared).
+	SessionId *string `json:"session_id,omitempty"`
 }
 
 // TaskCreateRequestPriority defines model for TaskCreateRequest.Priority.

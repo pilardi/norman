@@ -364,6 +364,20 @@ func (s *server) GetSession(c echo.Context, id string) error {
 	return c.JSON(http.StatusOK, data)
 }
 
+func (s *server) DeleteSession(c echo.Context, id string) error {
+	err := s.store.DeleteSession(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.SessionEvent,
+		Message: strPtr("Session " + id[:8] + " closed"),
+	})
+
+	return c.NoContent(http.StatusOK)
+}
+
 func (s *server) ListSkills(c echo.Context) error {
 	skillsResult, err := skills.Discover(s.cfg.System.Skills.DiscoveryPaths)
 	if err != nil {
@@ -463,17 +477,68 @@ func (s *server) CreateTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId)
+	// If no session_id provided, auto-create a session for this workspace
+	sessionID := ""
+	if req.SessionId == nil || *req.SessionId == "" {
+		sessions := s.store.ListSessions()
+		for _, sess := range sessions {
+			if wsID, ok := sess["workspace_id"].(string); ok && wsID == req.WorkspaceId {
+				sessionID = sess["id"].(string)
+				break
+			}
+		}
+		if sessionID == "" {
+			// Auto-create a new session
+			sess, err := s.createSessionInternal(req.WorkspaceId, "custom")
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			sessionID = sess.Id.String()
+		}
+	} else {
+		sessionID = *req.SessionId
+	}
+
+	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId, sessionID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"id":          task.ID,
-		"status":      string(task.Status),
-		"prompt":      task.Prompt,
+		"id":           task.ID,
+		"status":       string(task.Status),
+		"prompt":       task.Prompt,
 		"workspace_id": task.Workspace,
+		"session_id":   sessionID,
 	})
+}
+
+// createSessionInternal creates a new session bound to a workspace.
+func (s *server) createSessionInternal(workspaceID string, clientType string) (*protocol.Session, error) {
+	id := uuid.New()
+	now := time.Now()
+	status := protocol.SessionStatus("active")
+	session := &protocol.Session{
+		Id:        &id,
+		WorkspaceId: strPtr(workspaceID),
+		Status:    &status,
+		CreatedAt: &now,
+	}
+
+	s.store.SaveSession(id.String(), map[string]interface{}{
+		"id":           id.String(),
+		"workspace_id": workspaceID,
+		"client_type":  clientType,
+		"status":       "active",
+		"created_at":   now.Format(time.RFC3339),
+	})
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.SessionEvent,
+		Message: strPtr("Session created for workspace " + workspaceID),
+	})
+
+	return session, nil
 }
 
 func (s *server) ScheduleTask(c echo.Context) error {
