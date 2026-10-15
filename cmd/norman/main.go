@@ -387,7 +387,13 @@ func putConfig(updates map[string]interface{}) error {
 		return fmt.Errorf("marshal updates: %w", err)
 	}
 
-	resp, err := http.Post(serverURL()+"/api/config", "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("PUT", serverURL()+"/api/config", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create PUT request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("PUT /api/config: %w", err)
 	}

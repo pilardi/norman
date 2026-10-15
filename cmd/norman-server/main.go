@@ -45,6 +45,8 @@ type server struct {
 }
 
 func main() {
+	fmt.Fprintf(os.Stderr, "Norman agent server starting...\n")
+
 	// Load configuration
 	cfg, err := config.LoadDefault()
 	if err != nil {
@@ -118,12 +120,13 @@ func main() {
 
 	// Build server with all dependencies
 	srv := &server{
-		cfg:       cfg,
-		store:     store,
-		activator: activator,
-		loop:      loop,
-		wsHub:     wsHub,
-		notifier:  notifier,
+		cfg:        cfg,
+		store:      store,
+		activator:  activator,
+		loop:       loop,
+		wsHub:      wsHub,
+		notifier:   notifier,
+		workspaces: make(map[string]*protocol.Workspace),
 	}
 
 	e := echo.New()
