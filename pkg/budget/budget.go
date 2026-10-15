@@ -53,6 +53,8 @@ type SessionState struct {
 	Compressed   bool      // flag: has a compression cycle run?
 	LastCheck    time.Time // when budget was last checked
 	TokenCount   int       // cumulative tokens used so far
+	PlanID       string    // optional plan identifier for this session
+	PlanContent  string    // optional plan content (preserved across compression)
 }
 
 // NewSessionState creates a new session state with the given budget config.

@@ -181,6 +181,31 @@ Workspace-level overrides (per-workspace in config.yaml):
 		workspaces: make(map[string]*protocol.Workspace),
 	}
 
+	// Load persisted workspaces from disk on startup
+	if loaded, err := store.ListWorkspaces(); err != nil {
+		log.Printf("server: failed to load workspaces from disk: %v", err)
+	} else {
+		for _, wsMap := range loaded {
+			if name, ok := wsMap["name"].(string); ok {
+				ws := &protocol.Workspace{
+					Id:        nil,
+					Name:      strPtr(name),
+					Path:      strPtr(wsMap["path"].(string)),
+					Status:    (*protocol.WorkspaceStatus)(strPtr(wsMap["status"].(string))),
+					CreatedAt: nil,
+				}
+				if idStr, ok := wsMap["id"].(string); ok {
+					id, err := uuid.Parse(idStr)
+					if err == nil {
+						ws.Id = &id
+					}
+				}
+				srv.workspaces[name] = ws
+			}
+		}
+		log.Printf("server: loaded %d persisted workspaces from disk", len(srv.workspaces))
+	}
+
 	e := echo.New()
 	e.Use(middleware.Recover())
 
@@ -218,6 +243,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 	e.DELETE("/api/workspaces/:name", func(c echo.Context) error {
 		return srv.DeleteWorkspace(c, c.Param("name"))
 	})
+
+	// Skill discovery path management (Step 14i)
+	e.POST("/api/skills/paths", srv.AddDiscoveryPaths)
 
 	// WebSocket hub for real-time push events
 	e.GET("/ws", func(c echo.Context) error {
@@ -363,6 +391,36 @@ func (s *server) RemoveSkill(c echo.Context, name string) error {
 	})
 
 	return c.NoContent(http.StatusOK)
+}
+
+// AddDiscoveryPaths adds new paths to the skill discovery configuration.
+// Accepts a JSON body with "paths" array of strings.
+func (s *server) AddDiscoveryPaths(c echo.Context) error {
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if len(req.Paths) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "paths array must not be empty"})
+	}
+
+	if err := s.loop.AddDiscoveryPaths(req.Paths); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr(fmt.Sprintf("Added %d discovery path(s) for skill scanning", len(req.Paths))),
+		Step:    intPtr(0),
+	})
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"added": len(req.Paths),
+		"paths": req.Paths,
+	})
 }
 
 func (s *server) ListTasks(c echo.Context, params protocol.ListTasksParams) error {
@@ -532,6 +590,18 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	}
 	s.workspaces[req.Name] = ws
 
+	// Persist workspace to disk
+	wsMap := map[string]interface{}{
+		"id":         id.String(),
+		"name":       req.Name,
+		"path":       wsPath,
+		"status":     string(status),
+		"created_at": now.Format(time.RFC3339),
+	}
+	if err := s.store.SaveWorkspace(req.Name, wsMap); err != nil {
+		log.Printf("server: failed to persist workspace %s: %v", req.Name, err)
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Workspace created: " + req.Name),
@@ -549,6 +619,11 @@ func (s *server) DeleteWorkspace(c echo.Context, name string) error {
 	}
 
 	delete(s.workspaces, name)
+
+	// Delete workspace file from disk
+	if err := s.store.DeleteWorkspace(name); err != nil {
+		log.Printf("server: failed to delete workspace %s from disk: %v", name, err)
+	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
@@ -838,3 +913,4 @@ func (h *WSHub) writeLoop() {
 }
 
 func strPtr(s string) *string { return &s }
+func intPtr(i int) *int        { return &i }

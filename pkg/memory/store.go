@@ -34,12 +34,17 @@ func (s *Store) SaveTask(taskID string, data map[string]interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	dir := filepath.Join(s.base, "tasks")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create tasks dir: %w", err)
+	}
+
 	path := filepath.Join(s.base, "tasks", taskID+".json")
 
 	return s.saveFile(path, data)
 }
 
-// ArchiveSession writes a full transcript to the sessions directory as JSONL.
+// ArchiveSession writes a full transcript to the sessions directory as JSON.
 func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -49,37 +54,38 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 		return fmt.Errorf("create sessions dir: %w", err)
 	}
 
-	path := filepath.Join(dir, taskID+".jsonl")
+	path := filepath.Join(dir, taskID+".json")
 
-	// Append mode — allows multiple archival runs
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("open session archive: %w", err)
-	}
-	defer file.Close()
-
+	// Collect turns into a single JSON array with metadata
+	var entries []map[string]interface{}
 	for _, turn := range turns {
 		data, ok := turn.(map[string]interface{})
 		if !ok {
 			continue
 		}
 		data["archived_at"] = time.Now().Format(time.RFC3339)
-		content, err := json.Marshal(data)
-		if err != nil {
-			return fmt.Errorf("marshal session turn: %w", err)
-		}
-		if _, err := file.Write(append(content, '\n')); err != nil {
-			return fmt.Errorf("write session turn: %w", err)
-		}
+		entries = append(entries, data)
 	}
 
+	content, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal session archive: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		return fmt.Errorf("write session archive: %w", err)
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename session archive: %w", err)
+	}
 	return nil
 }
 
+// saveFile writes data to a JSON file atomically (caller must hold s.mu).
 func (s *Store) saveFile(path string, data map[string]interface{}) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Write atomically via temp file + rename
 	tmp := path + ".tmp"
 	data["updated_at"] = time.Now().Format(time.RFC3339)
@@ -182,6 +188,11 @@ func (s *Store) SaveSession(sessionID string, data map[string]interface{}) error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	dir := filepath.Join(s.base, "sessions")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create sessions dir: %w", err)
+	}
+
 	path := filepath.Join(s.base, "sessions", sessionID+".json")
 
 	data["updated_at"] = time.Now().Format(time.RFC3339)
@@ -277,13 +288,246 @@ func (s *Store) Prune(maxAge time.Duration) int {
 	return pruned
 }
 
+// SavePlan persists a plan's content to disk as JSON.
+func (s *Store) SavePlan(planID string, content string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "plans")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create plans dir: %w", err)
+	}
+
+	path := filepath.Join(dir, planID+".json")
+
+	data := map[string]interface{}{
+		"id":          planID,
+		"content":     content,
+		"created_at":  time.Now().Format(time.RFC3339),
+		"updated_at":  time.Now().Format(time.RFC3339),
+	}
+
+	contentBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal plan data: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, contentBytes, 0644); err != nil {
+		return fmt.Errorf("write plan file: %w", err)
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename plan file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadPlan reads a plan's content from disk.
+func (s *Store) LoadPlan(planID string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "plans", planID+".json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("plan %s not found", planID)
+		}
+		return "", fmt.Errorf("read plan file: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("parse plan data: %w", err)
+	}
+
+	content, ok := result["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("plan content not a string")
+	}
+
+	return content, nil
+}
+
+// DeletePlan removes a plan's persisted state.
+func (s *Store) DeletePlan(planID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.base, "plans", planID+".json")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil // already gone
+		}
+		return fmt.Errorf("delete plan file: %w", err)
+	}
+
+	return nil
+}
+
+// ListPlans returns all stored plans.
+func (s *Store) ListPlans() ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	plans := make([]map[string]interface{}, 0)
+
+	dir := filepath.Join(s.base, "plans")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return plans, nil // no plans yet
+		}
+		return nil, fmt.Errorf("read plans dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue // skip unreadable files
+		}
+
+		var plan map[string]interface{}
+		if err := json.Unmarshal(data, &plan); err != nil {
+			continue // skip corrupt files
+		}
+
+		plans = append(plans, plan)
+	}
+
+	return plans, nil
+}
+
+// SaveWorkspace persists a workspace to disk as JSON.
+func (s *Store) SaveWorkspace(name string, ws interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "workspaces")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create workspaces dir: %w", err)
+	}
+
+	path := filepath.Join(dir, name+".json")
+
+	data, ok := ws.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("workspace must be a map[string]interface{}")
+	}
+
+	data["updated_at"] = time.Now().Format(time.RFC3339)
+
+	contentBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal workspace data: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, contentBytes, 0644); err != nil {
+		return fmt.Errorf("write workspace file: %w", err)
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename workspace file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadWorkspace reads a workspace from disk.
+func (s *Store) LoadWorkspace(name string) (map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "workspaces", name+".json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("workspace %s not found", name)
+		}
+		return nil, fmt.Errorf("read workspace file: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("parse workspace data: %w", err)
+	}
+
+	return result, nil
+}
+
+// DeleteWorkspace removes a workspace's persisted state.
+func (s *Store) DeleteWorkspace(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.base, "workspaces", name+".json")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil // already gone
+		}
+		return fmt.Errorf("delete workspace file: %w", err)
+	}
+
+	return nil
+}
+
+// ListWorkspaces returns all stored workspaces.
+func (s *Store) ListWorkspaces() ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	workspaces := make([]map[string]interface{}, 0)
+
+	dir := filepath.Join(s.base, "workspaces")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return workspaces, nil // no workspaces yet
+		}
+		return nil, fmt.Errorf("read workspaces dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue // skip unreadable files
+		}
+
+		var ws map[string]interface{}
+		if err := json.Unmarshal(data, &ws); err != nil {
+			continue // skip corrupt files
+		}
+
+		workspaces = append(workspaces, ws)
+	}
+
+	return workspaces, nil
+}
+
 // Stats returns store statistics.
-func (s *Store) Stats() (taskCount, sessionCount int, err error) {
+func (s *Store) Stats() (taskCount, sessionCount int, planCount int, workspaceCount int, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	taskDir := filepath.Join(s.base, "tasks")
 	sessionDir := filepath.Join(s.base, "sessions")
+	planDir := filepath.Join(s.base, "plans")
+	workspaceDir := filepath.Join(s.base, "workspaces")
 
 	entries, err := os.ReadDir(taskDir)
 	if err == nil {
@@ -303,5 +547,23 @@ func (s *Store) Stats() (taskCount, sessionCount int, err error) {
 		}
 	}
 
-	return taskCount, sessionCount, nil
+	entries, err = os.ReadDir(planDir)
+	if err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {
+				planCount++
+			}
+		}
+	}
+
+	entries, err = os.ReadDir(workspaceDir)
+	if err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {
+				workspaceCount++
+			}
+		}
+	}
+
+	return taskCount, sessionCount, planCount, workspaceCount, nil
 }

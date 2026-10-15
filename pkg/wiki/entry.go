@@ -56,8 +56,10 @@ func (e *WikiEntry) HasTag(tag string) bool {
 	return false
 }
 
-// TitleToSlug converts a title into a filesystem-safe slug.
-func TitleToSlug(title string) string {
+// TitleToSlug converts a title into a filesystem-safe slug, appending the entry type
+// as a suffix to avoid collisions between entries of different types with the same title.
+// Example: "Docker" + entity → "docker-entity"; "Docker" + task → "docker-task".
+func TitleToSlug(title string, entryType EntryType) string {
 	slug := strings.ToLower(strings.TrimSpace(title))
 	slug = strings.ReplaceAll(slug, " ", "-")
 	slug = strings.ReplaceAll(slug, "_", "-")
@@ -69,7 +71,7 @@ func TitleToSlug(title string) string {
 		}
 	}
 	slug = b.String()
-	return filepath.Clean(slug)
+	return filepath.Clean(slug + "-" + string(entryType))
 }
 
 // ParseFrontmatter parses the YAML frontmatter from a markdown string.
@@ -139,4 +141,26 @@ func (e *WikiEntry) ToMarkdown() string {
 		sb.WriteString(e.Content)
 	}
 	return sb.String()
+}
+
+// ParseSchemaBody extracts the markdown body from a schema file (after frontmatter).
+// Unlike ParseFrontmatter, it does not validate entry type — suitable for schema files.
+func ParseSchemaBody(markdown string) (string, error) {
+	trimmed := strings.TrimSpace(markdown)
+	if !strings.HasPrefix(trimmed, "---") {
+		return "", fmt.Errorf("no frontmatter delimiter found")
+	}
+
+	// Find closing delimiter
+	endIdx := strings.Index(trimmed[3:], "\n---\n")
+	if endIdx == -1 {
+		// Try without trailing newline (edge case)
+		endIdx = strings.Index(trimmed[3:], "\n---")
+		if endIdx == -1 {
+			return "", fmt.Errorf("no closing frontmatter delimiter found")
+		}
+	}
+
+	body := strings.TrimSpace(markdown[3+endIdx+4:])
+	return body, nil
 }

@@ -28,7 +28,7 @@ func TestBuildIndex(t *testing.T) {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}
 	// Newest first
-	if entries[0].Page != "beta" || entries[1].Page != "alpha" {
+	if entries[0].Page != "beta-trend" || entries[1].Page != "alpha-entity" {
 		t.Errorf("unexpected order: %v", entries)
 	}
 }
