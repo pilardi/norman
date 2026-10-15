@@ -340,7 +340,7 @@ Available workspaces:
 | 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low | ✅ DONE — type suffix appended to slug |
 | 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium | ✅ DONE — WriteSchema/ReadSchema added; GitDiff/GitCommit wired via exec.Command |
 | 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium | ✅ DONE — SavePlan/LoadPlan added; budget compression preserves plan state |
-| 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Deferred |
+| 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Low | ✅ DONE — pkg/memory/raw_sources.go implements read-only snapshot store; context injection ready |
 | 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low | ✅ DONE — threshold check at cycle start; notify path logging; idempotent compression |
 | 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low | ✅ DONE — workspaces persisted to disk; loaded on startup; deleted on removal |
 | 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Deferred |
@@ -378,10 +378,10 @@ Available workspaces:
 - [x] Budget compression flow now persists plan state before truncation
 - [x] `Store.Stats()` updated to include plan count
 
-#### 14f — Raw Sources layer (DEFERRED)
-- [ ] Design: distinct abstraction between environment reads and wiki entries
-- [ ] Implement `pkg/memory/raw_sources.go` as read-only snapshot store
-- [ ] Wire into agent loop for context injection
+#### 14f ✅ DONE — Raw Sources layer
+- [x] Design: distinct abstraction between environment reads (raw JSON snapshots) and wiki entries (structured markdown with frontmatter types)
+- [x] Implement `pkg/memory/raw_sources.go` as read-only snapshot store (`Snapshot()`, `Query()`, `ListAll()`, `QueryByCategory()`)
+- [x] Context injection ready: `RawSources` integrates into agent loop via `Loop.rawSources` field; supports category-based filtering and TTL expiry
 
 #### 14g ✅ DONE — Budget threshold integration into planning loop
 - [x] Check thresholds at start of each planning cycle (before skill resolution)
