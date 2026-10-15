@@ -13,7 +13,7 @@
 | Environment → Server | HTTP POST + WebSocket | Task completion reports from OpenShell sessions |
 | Server → Channels | HTTP POST | Notification routing (Slack, terminal bell) |
 
-**Transport defaults:** HTTP on port `8080`, WebSocket at `/ws`. Configurable via `~/.config/norman/config.yaml`.
+**Transport defaults:** HTTP on port `8080`, WebSocket at `/ws`. Configurable via `~/.norman/config.yaml`.
 
 ---
 
