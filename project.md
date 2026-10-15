@@ -341,7 +341,7 @@ Available workspaces:
 | 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium | ✅ DONE — WriteSchema/ReadSchema added; GitDiff/GitCommit wired via exec.Command |
 | 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium | ✅ DONE — SavePlan/LoadPlan added; budget compression preserves plan state |
 | 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Deferred |
-| 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low |
+| 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low | ✅ DONE — threshold check at cycle start; notify path logging; idempotent compression |
 | 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low | ✅ DONE — workspaces persisted to disk; loaded on startup; deleted on removal |
 | 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Deferred |
 
@@ -383,10 +383,10 @@ Available workspaces:
 - [ ] Implement `pkg/memory/raw_sources.go` as read-only snapshot store
 - [ ] Wire into agent loop for context injection
 
-#### 14g — Budget threshold integration into planning loop (LOW PRIORITY)
-- [ ] Check thresholds at start of each planning cycle (not just after API calls)
-- [ ] Trigger summarization when `WarnThreshold` hit, not just on budget tracker
-- [ ] Log threshold events to notification path
+#### 14g ✅ DONE — Budget threshold integration into planning loop
+- [x] Check thresholds at start of each planning cycle (before skill resolution)
+- [x] Trigger summarization when `WarnThreshold` hit, not just on budget tracker
+- [x] Log threshold events to notification path via `pushThresholdNotification()`
 
 #### 14h ✅ DONE — Workspace registry disk persistence
 - [x] `Store.SaveWorkspace(name, data)` added — persists workspace as `.json` in `workspaces/` dir

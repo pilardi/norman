@@ -194,6 +194,13 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		}
 	}()
 
+	// Budget threshold check at planning cycle start (before skill resolution).
+	// This ensures early detection of budget breaches and triggers summarization
+	// when WarnThreshold is hit, not just after API calls.
+	if l.budget != nil {
+		l.checkAndCompress(ctx, task.ID)
+	}
+
 	// Phase 1: Skill resolution and activation
 	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
@@ -236,7 +243,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		return
 	}
 
-	// Budget check after sandbox provisioning
+	// Budget check after sandbox provisioning (post-provisioning re-check)
 	if l.budget != nil {
 		l.checkAndCompress(ctx, task.ID)
 	}
@@ -313,6 +320,7 @@ func (l *Loop) resolveSkills(prompt string) []string {
 }
 
 // checkAndCompress checks budget thresholds and triggers archival + compression if needed.
+// It is idempotent: if already compressed, it skips re-compression but still logs.
 func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 	if l.budget == nil {
 		return
@@ -325,6 +333,13 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 
 	log.Printf("agent: budget threshold triggered [%s] for task %s (used %.0f%%)",
 		flags.String(), taskID, l.budget.UsedFraction()*100)
+
+	// Idempotency: skip compression if already compressed; still log and notify.
+	if l.budget.Compressed {
+		log.Printf("agent: session already compressed for task %s — skipping re-compression", taskID[:8])
+		l.pushThresholdNotification(taskID, flags)
+		return
+	}
 
 	// Archive full transcript before compression
 	if err := l.store.ArchiveSession(taskID, turnsToInterface(l.budget.Turns)); err != nil {
@@ -344,12 +359,15 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 		}
 	}
 
-	// Broadcast notification
+	// Broadcast WebSocket notification
 	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &taskID,
 		Message: strPtr(fmt.Sprintf("Context budget at %.0f%% — compressing session", l.budget.UsedFraction()*100)),
 	})
+
+	// Push notification via notifier path (threshold event logging)
+	l.pushThresholdNotification(taskID, flags)
 
 	// Run compression (aggressive if critical threshold hit)
 	aggressive := flags.Is(budget.ThresholdCritical)
@@ -360,6 +378,34 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 	} else {
 		log.Printf("agent: compressed %d turns → %d kept, saved ~%d tokens",
 			result.CompressedCount, result.KeptCount, result.TokensSaved)
+	}
+}
+
+// pushThresholdNotification sends a threshold event notification via the notifier path.
+func (l *Loop) pushThresholdNotification(taskID string, flags budget.ThresholdFlags) {
+	if l.notifier == nil {
+		return
+	}
+
+	severity := "info"
+	switch {
+	case flags.Is(budget.ThresholdCritical):
+		severity = "error"
+	case flags.Is(budget.ThresholdWarn):
+		severity = "warn"
+	}
+
+	n := notify.Notification{
+		TaskID:    taskID,
+		Title:     fmt.Sprintf("Budget threshold [%s]", flags.String()),
+		Body:      fmt.Sprintf("Token usage at %.0f%% of budget (%d/%d tokens). Threshold triggered.",
+			l.budget.UsedFraction()*100, l.budget.TokenCount, l.budget.Budget.MaxTokens),
+		Severity:  severity,
+		Timestamp: time.Now(),
+	}
+
+	if err := l.notifier.Notify(n); err != nil {
+		log.Printf("agent: notifier failed for threshold event task %s: %v", taskID[:8], err)
 	}
 }
 
