@@ -244,19 +244,13 @@ func handleConfig(args []string) {
 Usage: norman config [--show | --set key=value | --json]
 
 Options:
-  --show    Display current config values (read from ~/.config/norman/config.yaml)
+  --show    Display current config values (fetched from the server)
   --set     Set a config value (e.g., --set server_port=9090)
   --json    Output as machine-readable JSON
 
-Config is persisted as YAML at ~/.config/norman/config.yaml.
+Config is managed by the server at ~/.config/norman/config.yaml.
 Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 		return
-	}
-
-	c, err := config.LoadDefault()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
-		os.Exit(1)
 	}
 
 	if len(args) > 0 && args[0] == "--set" {
@@ -271,37 +265,44 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 		}
 		key, val := parts[0], parts[1]
 
-		// Simple key-value setter (extensible for nested keys)
+		// Build partial update map
+		update := make(map[string]interface{})
 		switch key {
 		case "default_model":
-			c.System.DefaultModel = val
+			update["default_model"] = val
 		case "server_port":
-			fmt.Sscanf(val, "%d", &c.System.ServerPort)
+			var port int
+			if n, err := fmt.Sscanf(val, "%d", &port); n != 1 || err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid server_port value: %s\n", val)
+				os.Exit(1)
+			}
+			update["server_port"] = port
 		case "max_tokens":
-			fmt.Sscanf(val, "%d", &c.System.Skills.MaxActive)
+			var t int
+			if n, err := fmt.Sscanf(val, "%d", &t); n != 1 || err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid max_tokens value: %s\n", val)
+				os.Exit(1)
+			}
+			update["max_tokens"] = t
 		case "temperature":
 			var t float64
 			if n, err := fmt.Sscanf(val, "%f", &t); n != 1 || err != nil {
 				fmt.Fprintf(os.Stderr, "Invalid temperature value: %s\n", val)
 				os.Exit(1)
 			}
-			c.System.Temperature = t
+			update["temperature"] = t
 		case "logging.verbose":
-			c.System.Logging.Verbose = (val == "true" || val == "1")
+			update["verbose"] = (val == "true" || val == "1")
 		case "openshell_address":
-			c.System.OpenShell.Address = val
+			update["openshell_address"] = val
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
 			os.Exit(1)
 		}
 
-		if err := c.Validate(); err != nil {
-			fmt.Fprintf(os.Stderr, "Validation failed: %v\n", err)
-			os.Exit(1)
-		}
-
-		if err := c.Save(getConfigPath()); err != nil {
-			fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
+		// POST update to server
+		if err := putConfig(update); err != nil {
+			fmt.Fprintf(os.Stderr, "Error updating config: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("Updated %s → %s\n", key, val)
@@ -309,39 +310,80 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	}
 
 	if len(args) > 0 && args[0] == "--json" {
-		data, _ := json.MarshalIndent(c.System, "", "  ")
+		cfg, err := getConfig()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching config from server: %v\n", err)
+			os.Exit(1)
+		}
+		data, _ := json.MarshalIndent(cfg, "", "  ")
 		fmt.Println(string(data))
 		return
 	}
 
 	// Default: show current config (human-readable)
-	fmt.Println("# Current Configuration (System)")
-	fmt.Printf("  default_model:    %s\n", c.System.DefaultModel)
-	fmt.Printf("  server_port:      %d\n", c.System.ServerPort)
-	fmt.Printf("  host:             %s\n", c.System.Host)
-	fmt.Printf("  max_active_skills: %d\n", c.System.Skills.MaxActive)
-	fmt.Printf("  bell_enabled:     %v\n", c.System.Notify.BellEnabled)
-	fmt.Printf("  rate_limit_per_min: %d\n", c.System.Notify.RateLimitPerMin)
-	fmt.Printf("  logging.verbose:  %v\n", c.System.Logging.Verbose)
-	if c.System.OpenShell.Address != "" {
-		fmt.Printf("  openshell_address: %s\n", c.System.OpenShell.Address)
+	cfg, err := getConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching config from server: %v\n", err)
+		os.Exit(1)
 	}
 
-	if len(c.Workspaces) > 0 {
-		fmt.Println("\n# Per-Workspace Overrides")
-		for wsID, ws := range c.Workspaces {
-			fmt.Printf("  [%s]\n", wsID)
-			if ws.Model != "" {
-				fmt.Printf("    model: %s\n", ws.Model)
-			}
-			if ws.MaxTokens > 0 {
-				fmt.Printf("    max_tokens: %d\n", ws.MaxTokens)
-			}
-			if len(ws.SkillOverrides) > 0 {
-				fmt.Printf("    skill_overrides: %v\n", ws.SkillOverrides)
-			}
-		}
+	fmt.Println("# Current Configuration (System)")
+	fmt.Printf("  default_model:    %s\n", cfg.DefaultModel)
+	fmt.Printf("  server_port:      %d\n", cfg.ServerPort)
+	fmt.Printf("  host:             %s\n", cfg.Host)
+	fmt.Printf("  max_active_skills: %d\n", cfg.Skills.MaxActive)
+	fmt.Printf("  bell_enabled:     %v\n", cfg.Notify.BellEnabled)
+	fmt.Printf("  rate_limit_per_min: %d\n", cfg.Notify.RateLimitPerMin)
+	fmt.Printf("  logging.verbose:  %v\n", cfg.Logging.Verbose)
+	if cfg.OpenShell.Address != "" {
+		fmt.Printf("  openshell_address: %s\n", cfg.OpenShell.Address)
 	}
+
+	// Note: workspace overrides are managed server-side; client cannot read them here.
+}
+
+// getConfig fetches the current system config from the server.
+func getConfig() (*config.SystemConfig, error) {
+	resp, err := http.Get(serverURL() + "/api/config")
+	if err != nil {
+		return nil, fmt.Errorf("GET /api/config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET /api/config returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		System *config.SystemConfig `json:"system"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode config response: %w", err)
+	}
+
+	return result.System, nil
+}
+
+// putConfig sends a partial system config update to the server.
+func putConfig(updates map[string]interface{}) error {
+	body, err := json.Marshal(updates)
+	if err != nil {
+		return fmt.Errorf("marshal updates: %w", err)
+	}
+
+	resp, err := http.Post(serverURL()+"/api/config", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("PUT /api/config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("PUT /api/config returned %d: %s", resp.StatusCode, string(data))
+	}
+
+	return nil
 }
 
 // handleCreate delegates workspace creation to the agent server.

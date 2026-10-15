@@ -137,6 +137,7 @@ func main() {
 	// Config endpoint — returns full system config (with unresolved secret placeholders).
 	// Per-workspace overrides are included if workspace_id query param is provided.
 	e.GET("/api/config", srv.GetConfig)
+	e.PUT("/api/config", srv.PutConfig)
 
 	// Session archive endpoint (Step 7d)
 	e.POST("/api/sessions/archive", srv.ArchiveSession)
@@ -552,6 +553,106 @@ func (s *server) GetConfig(c echo.Context) error {
 	result["system"] = s.cfg.System
 	result["openshell"] = resolveGatewayAddress()
 	return c.JSON(http.StatusOK, result)
+}
+
+// PutConfig accepts a partial system config update and merges it into the server's config.
+func (s *server) PutConfig(c echo.Context) error {
+	var updates map[string]interface{}
+	if err := c.Bind(&updates); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	}
+
+	// Merge updates into s.cfg.System
+	if err := mergeUpdatesIntoSystem(s.cfg.System, updates); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	// Validate the merged config
+	if err := s.cfg.Validate(); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	// Save to disk
+	configPath := os.ExpandEnv("$HOME/.config/norman/config.yaml")
+	if err := s.cfg.Save(configPath); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save config"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message": "config updated",
+		"system":  s.cfg.System,
+	})
+}
+
+// mergeUpdatesIntoSystem applies partial key-value updates into a SystemConfig.
+func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interface{}) error {
+	for k, v := range updates {
+		switch k {
+		case "default_model":
+			if s, ok := v.(string); ok {
+				cfg.DefaultModel = s
+			} else {
+				return fmt.Errorf("default_model must be a string")
+			}
+		case "server_port":
+			if f, ok := v.(float64); ok {
+				cfg.ServerPort = int(f)
+			} else {
+				return fmt.Errorf("server_port must be a number")
+			}
+		case "host":
+			if s, ok := v.(string); ok {
+				cfg.Host = s
+			} else {
+				return fmt.Errorf("host must be a string")
+			}
+		case "max_active_skills":
+			if f, ok := v.(float64); ok {
+				cfg.Skills.MaxActive = int(f)
+			} else {
+				return fmt.Errorf("max_active_skills must be a number")
+			}
+		case "bell_enabled":
+			if b, ok := v.(bool); ok {
+				cfg.Notify.BellEnabled = b
+			} else {
+				return fmt.Errorf("bell_enabled must be a boolean")
+			}
+		case "rate_limit_per_min":
+			if f, ok := v.(float64); ok {
+				cfg.Notify.RateLimitPerMin = int(f)
+			} else {
+				return fmt.Errorf("rate_limit_per_min must be a number")
+			}
+		case "verbose":
+			if b, ok := v.(bool); ok {
+				cfg.Logging.Verbose = b
+			} else {
+				return fmt.Errorf("verbose must be a boolean")
+			}
+		case "temperature":
+			if f, ok := v.(float64); ok {
+				cfg.Temperature = f
+			} else {
+				return fmt.Errorf("temperature must be a number")
+			}
+		case "max_tokens":
+			if f, ok := v.(float64); ok {
+				cfg.MaxTokens = int(f)
+			} else {
+				return fmt.Errorf("max_tokens must be a number")
+			}
+		case "openshell_address":
+			if s, ok := v.(string); ok {
+				cfg.OpenShell.Address = s
+			} else {
+				return fmt.Errorf("openshell_address must be a string")
+			}
+		default:
+			return fmt.Errorf("unknown config key: %s", k)
+		}
+	}
+	return nil
 }
 
 // resolveGatewayAddress returns the currently-resolved OpenShell gateway address.
