@@ -338,7 +338,7 @@ Available workspaces:
 | 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and api-spec.md | Low | Quick win | High | ✅ DONE |
 | 14b | Session archive format inconsistency: `SaveTask` → `.json`, `ArchiveSession` → `.jsonl` | Medium | Small fix | Medium | ✅ DONE |
 | 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low | ✅ DONE — type suffix appended to slug |
-| 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium |
+| 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium | ✅ DONE — WriteSchema/ReadSchema added; GitDiff/GitCommit wired via exec.Command |
 | 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium |
 | 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Deferred |
 | 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low |
@@ -361,10 +361,13 @@ Available workspaces:
 - [x] All callers updated: engine.go Create/PruneStale, version.go Create
 - [x] Collision test added verifying same-title/different-type produces distinct slugs
 
-#### 14d — Schema.md read/write + git operations in wiki engine (PENDING)
-- [ ] Add `WriteSchema(slug, content)` to `pkg/wiki/engine.go`
-- [ ] Add `ReadSchema(slug) -> string` accessor
-- [ ] Wire `git add/commit/diff` into the engine (use `go-git` or shell out)
+#### 14d ✅ DONE — Schema.md read/write + git operations in wiki engine
+- [x] `WriteSchema(slug, content)` added to `pkg/wiki/engine.go` — writes schema.md with auto-generated frontmatter (title derived from slug)
+- [x] `ReadSchema(slug) -> string` accessor added — reads and returns markdown body after frontmatter
+- [x] `GitDiff(slug) ([]byte, error)` wired — runs `git diff --cached {slug}.md` via exec.Command
+- [x] `GitCommit(message string) error` wired — runs `git add . && git commit -m "message"` via exec.Command
+- [x] `ParseSchemaBody(markdown string) (string, error)` added to entry.go — extracts body without type validation
+- [x] Tests: WriteSchema, ReadSchema, ReadSchemaNotFound, GitDiff, GitCommit all pass
 
 #### 14e — Plan persistence in agent loop (PENDING)
 - [ ] Add `SavePlan(planID, content)` and `LoadPlan(planID) -> string` to loop
@@ -400,7 +403,7 @@ Available workspaces:
 | Workspace CRUD | ✅ | In-memory registry; disk persistence pending (14h) |
 | Task execution + WebSocket push | ✅ | All 24 endpoints implemented |
 | Wiki engine (flat markdown) | ✅ | Frontmatter, index, log.md working |
-| Schema.md support | ❌ | Pending (14d) |
+| Schema.md support | ✅ | WriteSchema/ReadSchema added; git diff/commit wired (14d) |
 | Plan persistence | ❌ | In-memory only; pending (14e) |
 | Session archival + budget compression | ✅ | Threshold checks exist but not loop-integrated (14g) |
 | MCP integration | ✅ | Skills declare endpoints, tools injected on demand |

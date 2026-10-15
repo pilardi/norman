@@ -142,3 +142,25 @@ func (e *WikiEntry) ToMarkdown() string {
 	}
 	return sb.String()
 }
+
+// ParseSchemaBody extracts the markdown body from a schema file (after frontmatter).
+// Unlike ParseFrontmatter, it does not validate entry type — suitable for schema files.
+func ParseSchemaBody(markdown string) (string, error) {
+	trimmed := strings.TrimSpace(markdown)
+	if !strings.HasPrefix(trimmed, "---") {
+		return "", fmt.Errorf("no frontmatter delimiter found")
+	}
+
+	// Find closing delimiter
+	endIdx := strings.Index(trimmed[3:], "\n---\n")
+	if endIdx == -1 {
+		// Try without trailing newline (edge case)
+		endIdx = strings.Index(trimmed[3:], "\n---")
+		if endIdx == -1 {
+			return "", fmt.Errorf("no closing frontmatter delimiter found")
+		}
+	}
+
+	body := strings.TrimSpace(markdown[3+endIdx+4:])
+	return body, nil
+}

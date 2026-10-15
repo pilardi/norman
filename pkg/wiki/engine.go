@@ -4,6 +4,7 @@ package wiki
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -120,6 +121,88 @@ func (e *Engine) Get(slug string) (*WikiEntry, error) {
 		return nil, fmt.Errorf("read entry: %w", err)
 	}
 	return ParseFrontmatter(string(data))
+}
+
+// WriteSchema writes a schema file to the wiki base directory.
+// The slug is used as the filename (without .md extension).
+// Content is stored as plain markdown body; frontmatter is generated automatically.
+func (e *Engine) WriteSchema(slug string, content string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	path := filepath.Join(e.base, slug+".md")
+
+	// Generate minimal frontmatter — title is derived from the slug
+	title := strings.ReplaceAll(slug, "-", " ")
+	frontmatter := fmt.Sprintf("---\ntitle: %s\ntype: schema\nslug: %s\nupdated: %s\n---\n\n", title, slug, time.Now().UTC().Format(time.RFC3339))
+
+	data := []byte(frontmatter + content)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return fmt.Errorf("write schema: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename schema: %w", err)
+	}
+
+	return nil
+}
+
+// ReadSchema reads a schema file and returns its content (markdown body after frontmatter).
+// Returns ErrNotFound if the slug doesn't exist.
+func (e *Engine) ReadSchema(slug string) (string, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	path := filepath.Join(e.base, slug+".md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("schema not found: %s", slug)
+		}
+		return "", fmt.Errorf("read schema: %w", err)
+	}
+
+	content, err := ParseSchemaBody(string(data))
+	if err != nil {
+		return "", fmt.Errorf("parse schema body: %w", err)
+	}
+	return content, nil
+}
+
+// GitDiff returns the git diff of a specific schema file (staged changes).
+// Returns the diff output as bytes; returns nil if no staged changes.
+func (e *Engine) GitDiff(slug string) ([]byte, error) {
+	cmd := exec.Command("git", "-C", e.base, "diff", "--cached", slug+".md")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// git diff returns exit code 1 if there are changes, 0 if clean
+		if strings.Contains(string(out), "no changes") || (len(out) == 0 && err == nil) {
+			return nil, nil // no staged changes
+		}
+		return out, fmt.Errorf("git diff: %w", err)
+	}
+	return out, nil
+}
+
+// GitCommit runs git add and git commit with the given message.
+// Returns nil on success; errors are returned without failing silently.
+func (e *Engine) GitCommit(message string) error {
+	cmd := exec.Command("git", "add", ".")
+	cmd.Dir = e.base
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+
+	cmd = exec.Command("git", "commit", "--no-verify", "-m", message, "--allow-empty-message")
+	cmd.Env = append(os.Environ(), "GIT_EDITOR=true")
+	cmd.Dir = e.base
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git commit: %w", err)
+	}
+
+	return nil
 }
 
 // List returns all entries matching the given filters.

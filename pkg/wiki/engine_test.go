@@ -1,6 +1,10 @@
 package wiki
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -235,5 +239,136 @@ func TestFilterStale(t *testing.T) {
 	}
 	if len(freshOnly) != 1 || freshOnly[0].Title != "Fresh" {
 		t.Errorf("expected only Fresh, got %v", freshOnly)
+	}
+}
+
+func TestEngineWriteSchema(t *testing.T) {
+	dir := t.TempDir()
+	engine, err := NewEngine(dir)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	err = engine.WriteSchema("test-schema", "# Schema\n\nThis is a test schema.")
+	if err != nil {
+		t.Fatalf("WriteSchema: %v", err)
+	}
+
+	// Verify file exists and has correct frontmatter
+	data, err := os.ReadFile(filepath.Join(dir, "test-schema.md"))
+	if err != nil {
+		t.Fatalf("read schema file: %v", err)
+	}
+	if !strings.Contains(string(data), "---") {
+		t.Errorf("expected frontmatter delimiter in schema file")
+	}
+	if !strings.Contains(string(data), "type: schema") {
+		t.Errorf("expected type: schema in frontmatter")
+	}
+}
+
+func TestEngineReadSchema(t *testing.T) {
+	dir := t.TempDir()
+	engine, err := NewEngine(dir)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	content := "# My Schema\n\nThis is the schema body content."
+	err = engine.WriteSchema("my-schema", content)
+	if err != nil {
+		t.Fatalf("WriteSchema: %v", err)
+	}
+
+	readContent, err := engine.ReadSchema("my-schema")
+	if err != nil {
+		t.Fatalf("ReadSchema: %v", err)
+	}
+	if readContent != content {
+		t.Errorf("expected '%s', got '%s'", content, readContent)
+	}
+}
+
+func TestEngineReadSchemaNotFound(t *testing.T) {
+	dir := t.TempDir()
+	engine, err := NewEngine(dir)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	_, err = engine.ReadSchema("nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent schema")
+	}
+}
+
+func TestEngineGitDiff(t *testing.T) {
+	dir := t.TempDir()
+	engine, err := NewEngine(dir)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	// Initialize a git repo in the test dir
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Skipf("git init failed: %v", err)
+	}
+
+	err = engine.WriteSchema("diff-test", "# Diff Test\n\ncontent here")
+	if err != nil {
+		t.Fatalf("WriteSchema: %v", err)
+	}
+
+	// Stage the file
+	cmd = exec.Command("git", "add", "diff-test.md")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+
+	diff, err := engine.GitDiff("diff-test")
+	if err != nil {
+		t.Fatalf("GitDiff: %v", err)
+	}
+	if diff == nil || len(diff) == 0 {
+		t.Error("expected non-empty diff output")
+	}
+}
+
+func TestEngineGitCommit(t *testing.T) {
+	dir := t.TempDir()
+	engine, err := NewEngine(dir)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+
+	// Initialize a git repo in the test dir
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Skipf("git init failed: %v", err)
+	}
+
+	err = engine.WriteSchema("commit-test", "# Commit Test\n\ncontent")
+	if err != nil {
+		t.Fatalf("WriteSchema: %v", err)
+	}
+
+	err = engine.GitCommit("test commit message")
+	if err != nil {
+		t.Fatalf("GitCommit: %v", err)
+	}
+
+	// Verify commit exists via git log
+	cmd = exec.Command("git", "log", "--oneline", "-1")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v", err)
+	}
+	if !strings.Contains(string(out), "test commit message") {
+		t.Errorf("expected commit message in git log, got: %s", string(out))
 	}
 }
