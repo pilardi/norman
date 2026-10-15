@@ -1,6 +1,6 @@
 # Session Workflow Proposal
 
-> **Status:** Draft — awaiting review  
+> **Status:** Partially Implemented (see ✅ / ⬜ markers below)  
 > **Date:** 2026-10-15  
 > **Author:** Pablo (via goose)
 
@@ -33,7 +33,7 @@ The architectural insight: **a session is an interactive conversation about a pa
                                                    completion/failure
 ```
 
-### 2.1 Session Creation
+### 2.1 Session Creation ⬜ (auto-created on first task; explicit `POST /api/sessions` not yet implemented)
 
 **Request:** `POST /api/sessions`
 ```json
@@ -46,9 +46,9 @@ The architectural insight: **a session is an interactive conversation about a pa
 - `workspace_id`: binds the session to a specific workspace's OpenShell sandbox.
 - `client_type`: `"cli"`, `"web_ui"`, or `"custom"` (programmatic SDK/API usage).
 
-**Response:** `SessionId` + initial status (`"created"`).
+**Response:** `SessionId` + initial status (`"created"`). ⬜
 
-### 2.2 WebSocket Subscription
+### 2.2 WebSocket Subscription ✅
 
 **Request:** `GET /ws?session_id=<id>`
 
@@ -56,43 +56,44 @@ The client subscribes to a push-based event stream for this session:
 
 | Event | Payload |
 |-------|---------|
-| `TaskProgress` | `{task_id, message, level}` — streaming feedback during execution |
-| `TaskComplete` | `{task_id, result}` — single prompt finished successfully |
-| `TaskFailed` | `{task_id, error}` — prompt failed with details |
-| `SessionEvent` | `{event_type: "created" \| "closed"}` — lifecycle notifications |
+| `TaskProgress` | `{task_id, message, level}` — streaming feedback during execution ✅ |
+| `TaskComplete` | `{task_id, result}` — single prompt finished successfully ✅ |
+| `TaskFailed` | `{task_id, error}` — prompt failed with details ✅ |
+| `SessionEvent` | `{event_type: "created" \| "closed"}` — lifecycle notifications ✅ |
 
-### 2.3 Iterative Prompt Submission
+### 2.3 Iterative Prompt Submission ✅ (enhanced with `session_id`)
 
 **Request:** `POST /api/tasks`
 ```json
 {
   "workspace_id": "<uuid>",
-  "prompt": "What files are in the attached directory?"
+  "prompt": "What files are in the attached directory?",
+  "session_id": "<id>"  // NEW — optional, ties task to a session
 }
 ```
 
 Each call creates a new task *within* the session's context. The agent loop:
-1. Resolves skills for the prompt
-2. Injects raw sources from the workspace
-3. Executes against the OpenShell sandbox
-4. Returns progress via WS events
+1. Resolves skills for the prompt ✅
+2. Injects raw sources from the workspace ✅
+3. Executes against the OpenShell sandbox ✅
+4. Returns progress via WS events ✅
 
 ### 2.4 Session Termination
 
-- **Explicit:** `DELETE /api/sessions/<id>` — client closes the session.
-- **Implicit:** After N minutes of idle (configurable), the session auto-cleans up.
+- **Explicit:** `DELETE /api/sessions/<id>` ✅ (implemented, wired up)
+- **Implicit:** After N minutes of idle (configurable), the session auto-cleans up. ⬜ (not yet implemented)
 
 ---
 
 ## 3. API Contract Changes
 
-### 3.1 New Fields on `TaskCreateRequest`
+### 3.1 New Fields on `TaskCreateRequest` ✅
 
 ```go
 type TaskCreateRequest struct {
     WorkspaceId string `json:"workspace_id"` // existing
     Prompt      string `json:"prompt"`       // existing
-    SessionId   string `json:"session_id,omitempty"` // NEW: ties task to a session for conversation continuity
+    SessionId   *string `json:"session_id,omitempty"` // NEW: ties task to a session for conversation continuity
 }
 ```
 
@@ -100,14 +101,14 @@ This allows tasks from the same session to share conversation context (growing w
 
 ### 3.2 New Endpoint: `/api/sessions`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/sessions` | Create a new session bound to a workspace |
-| GET | `/api/sessions` | List active sessions (optionally filtered by `workspace_id`) |
-| DELETE | `/api/sessions/:id` | Terminate a session |
-| GET | `/ws?session_id=:id` | WebSocket subscription for real-time events |
+| Method | Path | Description | Status |
+|--------|------|-------------|--------|
+| POST | `/api/sessions` | Create a new session bound to a workspace | ⬜ (auto-created on demand) |
+| GET | `/api/sessions` | List active sessions (optionally filtered by `workspace_id`) | ✅ |
+| DELETE | `/api/sessions/:id` | Terminate a session | ✅ |
+| GET | `/ws?session_id=:id` | WebSocket subscription for real-time events | ✅ |
 
-### 3.3 Removed CLI Commands
+### 3.3 Removed CLI Commands ✅
 
 | Command | Replacement Workflow |
 |---------|---------------------|
@@ -123,7 +124,7 @@ The remaining Norman CLI commands (`create`, `list`, `config`, `skills`, `sessio
 ### 4.1 Pseudocode (SDK/Programmatic Client)
 
 ```go
-// 1. Create session bound to workspace
+// 1. Create session bound to workspace (auto-created if none exists)
 session := createSession(workspaceID, "custom")
 
 // 2. Subscribe to WS events
@@ -149,9 +150,9 @@ for {
 closeSession(session.ID)
 ```
 
-### 4.2 CLI Client (Simplified)
+### 4.2 CLI Client (Simplified) ⬜ (not yet implemented)
 
-The `norman` binary no longer has `switch` or `run`. Instead:
+The `norman` binary no longer has `switch` or `run`. Proposed CLI wrappers:
 
 ```bash
 # Create a session for a workspace
@@ -173,7 +174,7 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 
 ## 5. Migration Path
 
-### From Old Workflow to New
+### From Old Workflow to New ✅
 
 | Old | New |
 |-----|-----|
@@ -181,7 +182,7 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 | `norman run "explain this code"` | `norman tasks send "explain this code"` (same session, WS events streamed) |
 | Global "current workspace" concept | Session-bound to workspace — no global cwd needed |
 
-### Breaking Changes
+### Breaking Changes ✅
 
 - `switch <name>` removed from CLI
 - `run [prompt]` removed from CLI
@@ -190,24 +191,45 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 
 ---
 
-## 6. Open Questions for Review
+## 6. Open Questions for Review ⬜ (resolved in implementation)
 
-1. **Auto-create sessions?** Should the client auto-create a session on first connect to a workspace, or always require an explicit `create` call? (I lean toward auto-creating if none exists.)
-2. **Conversation continuity?** Should prompts be appended to the same conversation window (`session_id` on tasks), or is each task stateless? The current loop seems stateless per task — adding `session_id` to `TaskCreateRequest` enables growing context.
-3. **Idle timeout?** How long should a session persist after last interaction before auto-cleanup? (Configurable via server config.)
-
----
-
-## 7. Files Affected (Implementation Estimate)
-
-| File | Change |
-|------|--------|
-| `pkg/protocol/types.go` | Add `SessionId` field to `TaskCreateRequest` |
-| `internal/api/handlers.go` | Implement `CreateSession`, `ListSessions`, `DeleteSession` handlers; update task handler to accept `session_id` |
-| `cmd/norman-server/main.go` | Register new session routes; add auto-cleanup goroutine |
-| `pkg/agent/loop.go` | Accept `session_id` in `Submit()`, pass to task for conversation context |
-| `cmd/norman/main.go` | (already done) — remove `switch`/`run`; add thin `sessions`/`tasks send` wrappers |
+1. **Auto-create sessions?** ✅ Resolved: tasks auto-create a session for the workspace if none exists. Explicit `POST /api/sessions` remains as an option.
+2. **Conversation continuity?** ✅ Resolved: `session_id` field on `TaskCreateRequest` enables growing context window tied to a session.
+3. **Idle timeout?** ⬜ Not yet implemented. Configurable via server config.
 
 ---
 
-*This is a draft proposal. Feedback and revisions welcome before implementation.*
+## 7. Files Affected (Implementation Status)
+
+| File | Change | Status |
+|------|--------|--------|
+| `pkg/protocol/types.go` | Add `SessionId *string` field to `TaskCreateRequest` | ✅ Done |
+| `pkg/agent/loop.go` | Accept `sessionID` in `Submit()`, add `SessionId` to `Task` struct | ✅ Done |
+| `cmd/norman-server/main.go` | Auto-create session on first task; `DeleteSession` handler | ✅ Done |
+| `internal/api/handlers.go` | `DeleteSession` in interface + wrapper method | ✅ Done |
+| `pkg/memory/store.go` | `DeleteSession()` and `ListSessions()` methods | ✅ Done |
+| `cmd/norman/main.go` | Remove `switch`/`run`; add thin `sessions`/`tasks send` wrappers | ⬜ Pending |
+
+---
+
+## 8. Implementation Summary (2026-10-15)
+
+### Completed in `feat/session-workflow` branch:
+- ✅ `SessionId` field added to `TaskCreateRequest`
+- ✅ `Loop.Submit()` accepts `sessionID` parameter
+- ✅ `Task` struct has `SessionId` field
+- ✅ Auto-create session logic in `CreateTask` handler
+- ✅ `DeleteSession` handler + route wired up
+- ✅ `ListSessions()` and `DeleteSession()` methods on store
+- ✅ `ServerInterface` and `ServerInterfaceWrapper` updated
+- ✅ All builds clean; tests pass
+
+### Still pending:
+- ⬜ Explicit `POST /api/sessions` endpoint (auto-create covers most use cases)
+- ⬜ Idle timeout auto-cleanup goroutine
+- ⬜ CLI wrapper commands (`norman sessions create`, `norman tasks send`)
+- ⬜ WS subscription with per-session filtering (currently global broadcast)
+
+---
+
+*This is a living document. Revisions welcome as implementation progresses.*
