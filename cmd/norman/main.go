@@ -291,7 +291,9 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			}
 			update["temperature"] = t
 		case "logging.verbose":
-			update["verbose"] = (val == "true" || val == "1")
+			// Verbose is a client-side toggle (-v/--verbose); not shared with server.
+			fmt.Printf("Verbose mode: %s (client-local, not persisted to server)\n", val)
+			return
 		case "openshell_address":
 			update["openshell_address"] = val
 		default:
@@ -323,7 +325,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			"max_active_skills":    cfg.Skills.MaxActive,
 			"bell_enabled":         cfg.Notify.BellEnabled,
 			"rate_limit_per_min":   cfg.Notify.RateLimitPerMin,
-			"logging.verbose":      cfg.Logging.Verbose,
 			"openshell_address":    resolvedGateway,
 		}
 		data, _ := json.MarshalIndent(output, "", "  ")
@@ -345,7 +346,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  max_active_skills: %d\n", cfg.Skills.MaxActive)
 	fmt.Printf("  bell_enabled:     %v\n", cfg.Notify.BellEnabled)
 	fmt.Printf("  rate_limit_per_min: %d\n", cfg.Notify.RateLimitPerMin)
-	fmt.Printf("  logging.verbose:  %v\n", cfg.Logging.Verbose)
 	// Show the resolved gateway address (from server-side resolution, not local config).
 	if resolvedGateway != "" {
 		fmt.Printf("  openshell_address: %s\n", resolvedGateway)

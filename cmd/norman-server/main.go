@@ -602,9 +602,12 @@ func (s *server) GetConfig(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
 	}
 
-	// Return full system config with resolved OpenShell gateway address
+	// Return full system config (excluding Logging.Verbose) with resolved OpenShell gateway address.
+	// Verbose is a client-side concern; the server may run with or without it independently.
 	result := make(map[string]interface{})
-	result["system"] = s.cfg.System
+	cfgCopy := *s.cfg.System
+	cfgCopy.Logging = config.LoggingConfig{Verbose: false} // strip from API response
+	result["system"] = cfgCopy
 	result["openshell"] = resolveGatewayAddress()
 	return c.JSON(http.StatusOK, result)
 }
@@ -677,12 +680,6 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				cfg.Notify.RateLimitPerMin = int(f)
 			} else {
 				return fmt.Errorf("rate_limit_per_min must be a number")
-			}
-		case "verbose":
-			if b, ok := v.(bool); ok {
-				cfg.Logging.Verbose = b
-			} else {
-				return fmt.Errorf("verbose must be a boolean")
 			}
 		case "temperature":
 			if f, ok := v.(float64); ok {
