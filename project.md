@@ -105,44 +105,13 @@
 
 ## Step 5 — Agent Server + Task API implementation
 
-> **Status: Split into two sub-steps**
-
-### Step 5a — Agent Server Skeleton & Protocol Wiring
-
-> **Status: ✅ COMPLETE** (committed on `step5a-server` branch)
-
-- Bootstrap Echo server in `cmd/norman-server/main.go`; register all generated handlers from `internal/api/handlers.go`
-- Add `/health` endpoint; start WebSocket hub at `/ws` for event broadcasting
-- Wire up `pkg/protocol/client.go` + `types.go` into server's internal state management
-- Add ephemeral in-memory task store (map keyed by task ID)
-
-**Acceptance:** `norman server --port 8080` starts; `curl /health` returns 200; WebSocket at `/ws` accepts connections and pushes mock events.
-
----
-
-### Step 5b — Task API + Execution Engine
-
-> **Status: ✅ COMPLETE** (committed on `step5b-tasks` branch)
-
-- `pkg/agent/loop.go` — core agent loop with task submission, execution lifecycle (resolve→create sandbox→waitReady→execute→cleanup), retry logic (3× exponential backoff), WebSocket push events
-- `pkg/memory/store.go` — file-based persistence with optimistic locking; save/load/delete tasks and sessions; prune expired entries
-- `cmd/norman-server/main.go` — all 20 handlers wired to real implementations (not stubs); server struct holds Loop + Store + WSHub
-- `pkg/skills/activate.go` — added `Registry()` method for agent loop access
-- WebSocket event push: `task_progress`, `task_complete`, `task_failed`
-
-**Acceptance:** Server starts, `/health` returns 200; `/api/tasks` returns task list; `POST /api/tasks` creates and executes a task; WebSocket clients receive real-time progress events. Build passes (`go build ./cmd/norman-server/`), `go vet` clean on all packages.
-
----
-
-### API Spec & Code Generation (shared by 5a + 5b)
-
 > **Status: ✅ COMPLETE**
 
-- `api-spec.yaml` (OpenAPI 3.1) is the single source of truth for all client-server protocol types, endpoints, and WebSocket event schemas.
-- Regenerated via `make generate` → produces `pkg/protocol/types.go`, `pkg/protocol/client.go`, and `internal/api/handlers.go`.
-- Verified: generated code is up-to-date with spec (zero diff).
+See **[docs/step5-plan.md](docs/step5-plan.md)** for full architecture, sub-steps (5a–5b), and acceptance criteria.
 
-**Acceptance:** `make generate` + `go build ./...` succeeds; all 20 handlers match endpoints defined in the spec.
+- **5a** — Echo server skeleton, `/health`, WebSocket hub at `/ws`, protocol wiring via `pkg/protocol`.
+- **5b** — Agent loop (`pkg/agent/loop.go`), task store (`pkg/memory/store.go`), 20 handlers wired; WebSocket push events.
+- **Shared** — `api-spec.yaml` (OpenAPI 3.1) is source of truth; `make generate` produces types, client, handlers.
 
 ## Step 6 — Memory engine (LTM wiki) + git versioning
 
@@ -205,6 +174,19 @@ See implementation plan: [`docs/step6-plan.md`](docs/step6-plan.md).
 
 ---
 
+## Step 9 — Follow-up: real SDK, scheduler wiring, CLI archive, config tests
+
+> **Status:** ✅ COMPLETE (merged to `main`)
+
+See **[docs/step9-plan.md](docs/step9-plan.md)** for full architecture and sub-steps.
+
+- **9a** — `pkg/env/sdk_adapter.go` wraps `*env.Client`; falls back to `FakeOpenShellClient`.
+- **9b** — Scheduler `Start()` wired into `main()`; results channel injected into Loop via `WithResultsChannel()`.
+- **9c** — CLI command `norman sessions archive <task_id>` (POST `/api/sessions/archive`).
+- **9d** — 7 unit tests for `NotifyConfig` defaults/validation in `pkg/config/config_test.go`.
+
+---
+
 ## Step 10 — Server rename + client-server communication review
 
 > **Status:** ✅ COMPLETE (merged to `main`)
@@ -225,111 +207,46 @@ The CLI is a thin application. It should not assume access to the local environm
 
 ---
 
-### Changes Made
-- Renamed `cmd/server/` → `cmd/norman-server/` to avoid naming clash with other applications
-- Refactored CLI client (`cmd/norman/main.go`) to be a **thin HTTP client** — delegates operations to the server instead of assuming local environment access:
-  - `listSkills()` → now uses `GET /api/skills` (was scanning host filesystem)
-  - `installSkill()` → now uses `POST /api/skills/install` (was copying files locally)
-  - `removeSkill()` → now uses `DELETE /api/skills/:name` (was removing locally)
-  - `handleList()` workspace listing → now uses `GET /api/workspaces` (was `os.ReadDir`)
-  - `handleRun()` → now uses `POST /api/tasks` (was direct OpenShell SDK exec)
-  - `handleCreate()` → now uses `POST /api/workspaces` (was creating local overlay dirs)
-  - `handleSwitch()` → now uses `GET /api/workspaces/:name` (was constructing local paths)
-
-### Design Rationale
-The CLI is a thin application. It should not assume access to the local environment (e.g., when running in a container or remote SSH session). All file I/O, sandbox lifecycle, and skill management should happen on the server side via REST/WebSocket endpoints.
-
----
-
-## Step 9 — Follow-up: real SDK, scheduler wiring, CLI archive, config tests
-
-> **Status:** ✅ COMPLETE (merged to `main`)
-
-All sub-steps implemented, tested, and merged. See [docs/step9-plan.md](docs/step9-plan.md) for details.
-
-| # | Item | Status |
-|---|------|--------|
-| 9a | Wire real OpenShell SDK into `OpenShellClient` interface via `SDKAdapter` | ✅ Done |
-| 9b | Connect scheduler `Start()` to `main()` and inject results channel into agent loop's notification path | ✅ Done |
-| 9c | Add CLI command `norman sessions archive <task_id>` for manual archival (REST endpoint exists, CLI added) | ✅ Done |
-| 9d | Add unit tests for `pkg/config/config.go` — `NotifyConfig` defaults validation (7 tests pass) | ✅ Done |
-
-**Implementation notes:**
-- `pkg/env/sdk_adapter.go` wraps `*env.Client` and adapts method signatures to match `OpenShellClient` interface; falls back to `FakeOpenShellClient` when SDK unavailable.
-- Scheduler results channel (`chan scheduler.TaskResult`) injected into Loop via `WithResultsChannel()`.
-- CLI command `norman sessions archive <task_id>` sends POST `/api/sessions/archive`.
-- Config tests cover defaults, validation (zero/negative rate limits), and YAML unmarshal.
-
----
-
 ## Step 11 — Build system cleanup
 
 > **Status:** ✅ COMPLETE (merged to `main`)
 
-Replaced ad-hoc `go build` with a proper Makefile pipeline and cleaned up stale artifacts.
+See **[docs/step11-plan.md](docs/step11-plan.md)** for full architecture and sub-steps.
 
-| # | Item | Status |
-|---|------|--------|
-| 11a | Add `help` target documenting all make targets | ✅ Done |
-| 11b | Generate protocol types, client library, server handlers from `api-spec.yaml` via oapi-codegen | ✅ Done |
-| 11c | Add missing API schemas (`ArchiveSessionRequest`, `NotificationEntry`, `NotificationCreateRequest`) and `session_compressed` enum to spec; wire REST endpoints | ✅ Done |
-| 11d | Remove generated `.go` files from git tracking; use `.gitignore` + `make generate` | ✅ Done |
-| 11e | Output compiled binaries to `dist/` (not repo root); add `dist/` to `.gitignore` | ✅ Done |
-| 11f | Remove stale `server/` directory from previous rename refactor | ✅ Done |
+- **11a** — `Makefile` with `help`, `generate`, `build`, `test`, `vet`, `clean` targets.
+- **11b** — `oapi-codegen` regeneration from `api-spec.yaml`.
+- **11c** — Added `ArchiveSessionRequest`, `NotificationEntry`, `NotificationCreateRequest` schemas + `session_compressed` enum.
+- **11d** — Generated `.go` files removed from git; `.gitignore` entries added.
+- **11e** — Binaries output to `dist/`; repo root kept clean.
+- **11f** — Stale `server/` directory removed (renamed to `cmd/norman-server/`).
 
-**Verification:** `make clean → make build → make test` full cycle works with clean working tree.
+Verification: `make clean → make build → make test` full cycle works with clean working tree.
+
+Full plan with data models, integration points, and risks: [docs/step11-plan.md](docs/step11-plan.md).
 
 ---
 
 ## Step 13 — Logging verbosity
 
-> **Status:** 🚧 IN PROGRESS (on branch `step13-logging-config`)
+> **Status:** ✅ COMPLETE (merged to `main`)
 
-Made CLI and server logging configurable with a verbose mode for debugging. By default, the server's structured JSON log lines no longer leak into user output; verbose mode re-enables them plus prints request details to stderr.
+See **[docs/step13-plan.md](docs/step13-plan.md)** for full architecture and sub-steps.
 
-| # | Item | Status |
-|---|------|--------|
-| 13a | Add `LoggingConfig` struct (`Verbose bool`) to `pkg/config/config.go` | ✅ Done |
-| 13b | Add `-v` / `--verbose` flag to CLI client; print `[debug] METHOD URL` before each request in verbose mode | ✅ Done |
-| 13c | Server: conditionally apply `middleware.Logger()` based on `cfg.Logging.Verbose` | ✅ Done |
-| 13d | Add `LOGGING_VERBOSE` env var support (true/false or 1/0) | ✅ Done |
-| 13e | Update `.env.example` with new variables; update help text | ✅ Done |
+- **13a** — `LoggingConfig` struct (`Verbose bool`) added to `pkg/config/config.go`.
+- **13b** — `-v`/`--verbose` CLI flag; prints `[debug] METHOD URL` to stderr before each request.
+- **13c** — Server conditionally applies `middleware.Logger()` based on `cfg.Logging.Verbose`.
+- **13d** — `LOGGING_VERBOSE` env var support (`true`/`false`/`1`/`0`).
+- **13e** — `.env.example` updated; help text documented.
 
-**Before:** Running `norman list` produced a confusing JSON log line followed by the actual output:
-```
-{"time":"2026-10-14T15:56:06.468839413-04:00","id":"","remote_ip":"127.0.0.1",...}
-No workspaces found.
-```
-
-**After (default):** Clean output — no JSON noise:
-```
-Available workspaces:
-  my-project        /home/user/workspaces/my-project
-```
-
-**After (`norman -v list`):** Debug info printed to stderr:
-```
-[debug] GET http://127.0.0.1:8080/api/workspaces
-Available workspaces:
-  my-project        /home/user/workspaces/my-project
-```
-
----
-
-## MVP Scope Boundaries
-
-**In scope:** CLI client → HTTP/WebSocket → Agent Server → OpenShell environment → task execution → results returned to client. One active workspace per session. Flat markdown wiki. Cron scheduling via OpenShell. Slack + terminal bell notifications.
-
-**Deferred:** Multi-workspace parallel environments, vector search, automatic raw-source ingestion loop, multi-agent coordination, skill versioning/dependency resolution, IDE integration, email notifications.
-
+Before: `norman list` → confusing JSON log line + output. After (default): clean output. After (`-v`): `[debug] GET ...` to stderr.
 
 ---
 
 ## Step 14 — Assessment Review & Remediation
 
-> **Status:** 🚧 IN PROGRESS (on branch `step14-assessment`)
->
-> Comprehensive review of requirements.md, glossary.md, docs/step*.md, api-spec.md, and current codebase against the implementation. No changes made yet in this commit — only project plan update.
+> **Status:** ✅ COMPLETE (merged to `main`)
+
+See **[docs/step14-plan.md](docs/step14-plan.md)** for full architecture, all 9 sub-steps (14a–14i), data models, acceptance criteria, and risks.
 
 ### Findings Summary (from 2026-10-15 review)
 
@@ -345,65 +262,14 @@ Available workspaces:
 | 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low | ✅ DONE — workspaces persisted to disk; loaded on startup; deleted on removal |
 | 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Low | ✅ DONE — AddDiscoveryPaths method on Loop; POST /api/skills/paths endpoint; config-driven paths |
 
-### Sub-steps (status as of 2026-10-15)
+---
 
-#### 14a ✅ DONE — Update stale docs config path references
-- [x] `api-spec.md` §1: replaced `~/.config/norman/config.yaml` → `~/.norman/config.yaml`
-- [x] `glossary.md`: no stale references found (already clean)
+## MVP Scope Boundaries
 
-#### 14b ✅ DONE — Session format alignment
-- [x] `ArchiveSession` now stores `.json` (JSON array) instead of `.jsonl`
-- [x] Tests updated: verify JSON array semantics, overwrite on multiple calls
-- [x] Empty sessions produce valid empty JSON arrays
+**In scope:** CLI client → HTTP/WebSocket → Agent Server → OpenShell environment → task execution → results returned to client. One active workspace per session. Flat markdown wiki. Cron scheduling via OpenShell. Slack + terminal bell notifications.
 
-#### 14c ✅ DONE — TitleToSlug collision mitigation
-- [x] `TitleToSlug(title, EntryType)` appends type as suffix (e.g., "Docker" + entity → "docker-entity")
-- [x] All callers updated: engine.go Create/PruneStale, version.go Create
-- [x] Collision test added verifying same-title/different-type produces distinct slugs
+**Deferred:** Multi-workspace parallel environments, vector search, automatic raw-source ingestion loop, multi-agent coordination, skill versioning/dependency resolution, IDE integration, email notifications.
 
-#### 14d ✅ DONE — Schema.md read/write + git operations in wiki engine
-- [x] `WriteSchema(slug, content)` added to `pkg/wiki/engine.go` — writes schema.md with auto-generated frontmatter (title derived from slug)
-- [x] `ReadSchema(slug) -> string` accessor added — reads and returns markdown body after frontmatter
-- [x] `GitDiff(slug) ([]byte, error)` wired — runs `git diff --cached {slug}.md` via exec.Command
-- [x] `GitCommit(message string) error` wired — runs `git add . && git commit -m "message"` via exec.Command
-- [x] `ParseSchemaBody(markdown string) (string, error)` added to entry.go — extracts body without type validation
-- [x] Tests: WriteSchema, ReadSchema, ReadSchemaNotFound, GitDiff, GitCommit all pass
-
-#### 14e ✅ DONE — Plan persistence in agent loop
-- [x] `SavePlan(planID, content)` added to `pkg/agent/loop.go` — delegates to Store.SavePlan
-- [x] `LoadPlan(planID) -> string` added to `pkg/agent/loop.go` — delegates to Store.LoadPlan
-- [x] `DeletePlan(planID)` added for cleanup
-- [x] Plan persisted as `.json` in store directory (`plans/`)
-- [x] `SessionState.PlanContent` field added to budget tracker (survives compression)
-- [x] Budget compression flow now persists plan state before truncation
-- [x] `Store.Stats()` updated to include plan count
-
-#### 14f ✅ DONE — Raw Sources layer
-- [x] Design: distinct abstraction between environment reads (raw JSON snapshots) and wiki entries (structured markdown with frontmatter types)
-- [x] Implement `pkg/memory/raw_sources.go` as read-only snapshot store (`Snapshot()`, `Query()`, `ListAll()`, `QueryByCategory()`)
-- [x] Context injection ready: `RawSources` integrates into agent loop via `Loop.rawSources` field; supports category-based filtering and TTL expiry
-
-#### 14g ✅ DONE — Budget threshold integration into planning loop
-- [x] Check thresholds at start of each planning cycle (before skill resolution)
-- [x] Trigger summarization when `WarnThreshold` hit, not just on budget tracker
-- [x] Log threshold events to notification path via `pushThresholdNotification()`
-
-#### 14h ✅ DONE — Workspace registry disk persistence
-- [x] `Store.SaveWorkspace(name, data)` added — persists workspace as `.json` in `workspaces/` dir
-- [x] `Store.LoadWorkspace(name) -> map[string]interface{}` added — loads workspace by name
-- [x] `Store.DeleteWorkspace(name)` added — removes workspace file
-- [x] `Store.ListWorkspaces() -> []map[string]interface{}` added — lists all workspaces
-- [x] Server initialization: loads persisted workspaces from disk on startup (log.Printf)
-- [x] `CreateWorkspace`: saves workspace to disk after in-memory registration
-- [x] `DeleteWorkspace`: deletes workspace file from disk after in-memory removal
-- [x] Concurrent access handled via existing `sync.Mutex` on server struct
-- [x] `Store.Stats()` updated to include workspace count
-
-#### 14i ✅ DONE — Server-driven skill discovery paths
-- [x] `DiscoveryPaths` moved from hardcoded host-FS scan to config-driven list (`SkillsConfig.DiscoveryPaths`)
-- [x] Server reads paths at startup, caches in memory via `cfg.System.Skills.DiscoveryPaths`
-- [x] `POST /api/skills/paths` endpoint added — accepts JSON `{ "paths": [...] }`, validates non-empty strings, updates config; broadcasts WebSocket event on success
-- [x] `Loop.AddDiscoveryPaths(paths []string) error` method for server-driven path expansion at runtime
 ---
 
 ### MVP Completion Criteria (updated)
