@@ -310,18 +310,30 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	}
 
 	if len(args) > 0 && args[0] == "--json" {
-		cfg, err := getConfig()
+		cfg, resolvedGateway, err := getConfig()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching config from server: %v\n", err)
 			os.Exit(1)
 		}
-		data, _ := json.MarshalIndent(cfg, "", "  ")
+
+		// Output snake_case for consistency with CLI display.
+		output := map[string]interface{}{
+			"default_model":        cfg.DefaultModel,
+			"server_port":          cfg.ServerPort,
+			"host":                 cfg.Host,
+			"max_active_skills":    cfg.Skills.MaxActive,
+			"bell_enabled":         cfg.Notify.BellEnabled,
+			"rate_limit_per_min":   cfg.Notify.RateLimitPerMin,
+			"logging.verbose":      cfg.Logging.Verbose,
+			"openshell_address":    resolvedGateway,
+		}
+		data, _ := json.MarshalIndent(output, "", "  ")
 		fmt.Println(string(data))
 		return
 	}
 
 	// Default: show current config (human-readable)
-	cfg, err := getConfig()
+	cfg, resolvedGateway, err := getConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching config from server: %v\n", err)
 		os.Exit(1)
@@ -335,7 +347,10 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  bell_enabled:     %v\n", cfg.Notify.BellEnabled)
 	fmt.Printf("  rate_limit_per_min: %d\n", cfg.Notify.RateLimitPerMin)
 	fmt.Printf("  logging.verbose:  %v\n", cfg.Logging.Verbose)
-	if cfg.OpenShell.Address != "" {
+	// Show the resolved gateway address (from server-side resolution, not local config).
+	if resolvedGateway != "" {
+		fmt.Printf("  openshell_address: %s\n", resolvedGateway)
+	} else if cfg.OpenShell.Address != "" {
 		fmt.Printf("  openshell_address: %s\n", cfg.OpenShell.Address)
 	}
 
@@ -343,26 +358,27 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 }
 
 // getConfig fetches the current system config from the server.
-func getConfig() (*config.SystemConfig, error) {
+func getConfig() (*config.SystemConfig, string, error) {
 	resp, err := http.Get(serverURL() + "/api/config")
 	if err != nil {
-		return nil, fmt.Errorf("GET /api/config: %w", err)
+		return nil, "", fmt.Errorf("GET /api/config: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GET /api/config returned %d: %s", resp.StatusCode, string(body))
+		return nil, "", fmt.Errorf("GET /api/config returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
-		System *config.SystemConfig `json:"system"`
+		System  *config.SystemConfig `json:"system"`
+		OpenShell string             `json:"openshell"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode config response: %w", err)
+		return nil, "", fmt.Errorf("decode config response: %w", err)
 	}
 
-	return result.System, nil
+	return result.System, result.OpenShell, nil
 }
 
 // putConfig sends a partial system config update to the server.
