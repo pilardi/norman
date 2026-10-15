@@ -50,9 +50,9 @@ func (r *RawSources) Snapshot(source Source) (*Source, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Generate ID if not provided
+	// Generate ID if not provided (use nanosecond precision to avoid collisions).
 	if source.ID == "" {
-		source.ID = fmt.Sprintf("src-%s", time.Now().Format("20060102-150405"))
+		source.ID = fmt.Sprintf("src-%s", time.Now().Format("20060102-150405.000000000"))
 	}
 
 	// Ensure category is set

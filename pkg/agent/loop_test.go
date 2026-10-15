@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestCheckAndCompressWarnThreshold(t *testing.T) {
 	notifier := notify.New(fakeWSHub, false, "", 100)
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
 
 	// Set to warn threshold (75%)
 	loop.budget.TokenCount = 7500 // 75% of 10000
@@ -56,7 +57,7 @@ func TestCheckAndCompressCriticalThreshold(t *testing.T) {
 	notifier := notify.New(fakeWSHub, false, "", 100)
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
 
 	// Set to critical threshold (90%)
 	loop.budget.TokenCount = 9000 // 90% of 10000
@@ -87,7 +88,7 @@ func TestCheckAndCompressBelowThreshold(t *testing.T) {
 	notifier := notify.New(fakeWSHub, false, "", 100)
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
 
 	// Set well below warn threshold (5%)
 	loop.budget.TokenCount = 500 // 5% of 10000
@@ -110,7 +111,7 @@ func TestCheckAndCompressNilBudget(t *testing.T) {
 	fakeWSHub := &FakeWSHub{}
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil) // no budget configured
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil) // no budget configured
 
 	ctx := context.Background()
 	taskID := "test-task-004"
@@ -128,7 +129,7 @@ func TestCheckAndCompressAlreadyCompressed(t *testing.T) {
 	notifier := notify.New(fakeWSHub, false, "", 100)
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
 
 	// Manually set compressed state
 	loop.budget.Compressed = true
@@ -152,7 +153,7 @@ func TestCheckAndCompressNoNotifier(t *testing.T) {
 	fakeWSHub := &FakeWSHub{}
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil).WithBudget(budget.NewBudgetConfig(10000)) // no notifier
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil).WithBudget(budget.NewBudgetConfig(10000)) // no notifier
 
 	// Set to warn threshold
 	loop.budget.TokenCount = 7500
@@ -173,7 +174,7 @@ func TestPushThresholdNotificationWarn(t *testing.T) {
 	notifier := notify.New(fakeWSHub, false, "", 100)
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
 
 	// Set to warn threshold (75%)
 	loop.budget.TokenCount = 7500
@@ -205,7 +206,7 @@ func TestPushThresholdNotificationCritical(t *testing.T) {
 	notifier := notify.New(fakeWSHub, false, "", 100)
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil).WithNotifier(notifier).WithBudget(budget.NewBudgetConfig(10000))
 
 	// Set to critical threshold (90%)
 	loop.budget.TokenCount = 9000
@@ -240,7 +241,7 @@ func TestExecuteBudgetCheckAtStart(t *testing.T) {
 	cfg := config.DefaultConfig()
 	// Create a minimal activator (empty registry is fine for this test)
 	act := skills.NewActivator(nil, 0)
-	loop := New(cfg, store, act, fakeWSHub, fakeClient).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithBudget(budget.NewBudgetConfig(10000))
 
 	ctx := context.Background()
 	taskID := "test-task-009"
@@ -287,7 +288,7 @@ func TestExecuteCallsCheckTwice(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	act := skills.NewActivator(nil, 0)
-	loop := New(cfg, store, act, fakeWSHub, fakeClient).WithBudget(budget.NewBudgetConfig(10000))
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithBudget(budget.NewBudgetConfig(10000))
 
 	ctx := context.Background()
 	taskID := "test-task-010"
@@ -349,7 +350,7 @@ func TestAddDiscoveryPaths(t *testing.T) {
 	fakeWSHub := &FakeWSHub{}
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil)
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
 
 	// Initial paths should be the defaults
 	initialCount := len(loop.config.System.Skills.DiscoveryPaths)
@@ -392,7 +393,7 @@ func TestAddDiscoveryPathsEmpty(t *testing.T) {
 	fakeWSHub := &FakeWSHub{}
 
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, fakeWSHub, nil)
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
 
 	err = loop.AddDiscoveryPaths([]string{})
 	if err == nil {
@@ -417,10 +418,101 @@ func TestAddDiscoveryPathsNilConfig(t *testing.T) {
 	}
 	fakeWSHub := &FakeWSHub{}
 
-	loop := New(nil, store, nil, fakeWSHub, nil)
+	loop := New(nil, store, nil, nil, fakeWSHub, nil)
 
 	err = loop.AddDiscoveryPaths([]string{"/test/path"})
 	if err == nil {
 		t.Error("expected error when config is nil")
+	}
+}
+
+func TestRawSourcesContextInjection(t *testing.T) {
+	// Create a temporary raw sources store and inject entries.
+	rsBase := t.TempDir()
+	rs, err := memory.NewRawSources(rsBase)
+	if err != nil {
+		t.Fatalf("new raw sources: %v", err)
+	}
+
+	// Snapshot a couple of sources.
+	_, err = rs.Snapshot(memory.Source{
+		Name:     "HOME env var",
+		Category: "env",
+		Content:  "HOME=/home/user",
+	})
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+
+	_, err = rs.Snapshot(memory.Source{
+		Name:     "Config read",
+		Category: "config",
+		Content:  `{"model": "gpt-4o", "temperature": 0.7}`,
+	})
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+
+	// Create a loop with raw sources and a fake client that captures the prompt.
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+	fakeClient := NewFakeOpenShellClient()
+
+	loop := New(nil, store, rs, nil, fakeWSHub, fakeClient)
+
+	// Execute a task — the injected context should appear in the prompt sent to RunCommand.
+	task := &Task{
+		ID:        "test-task-001",
+		Prompt:    "Run ls -la",
+		Workspace: "default",
+	}
+
+	loop.execute(context.Background(), task)
+
+	// Verify the captured prompt contains raw source context markers.
+	capturedPrompt := fakeClient.CapturedPrompt()
+	t.Logf("Captured prompt (first 800 chars):\n%s", capturedPrompt[:min(800, len(capturedPrompt))])
+	if !strings.Contains(capturedPrompt, "## Raw Environment Context") {
+		t.Errorf("expected injected context header in prompt; got:\n%s", capturedPrompt[:min(500, len(capturedPrompt))])
+	}
+	if !strings.Contains(capturedPrompt, "HOME env var") {
+		t.Error("expected 'HOME env var' source name in injected context")
+	}
+	if !strings.Contains(capturedPrompt, "Config read") {
+		t.Error("expected 'Config read' source name in injected context")
+	}
+	if !strings.Contains(capturedPrompt, "Run ls -la") {
+		t.Error("expected original prompt text after injected context")
+	}
+}
+
+func TestRawSourcesNilInLoop(t *testing.T) {
+	// When rawSources is nil (not wired), execution should proceed normally without panic.
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+	fakeClient := NewFakeOpenShellClient()
+
+	loop := New(nil, store, nil, nil, fakeWSHub, fakeClient)
+
+	task := &Task{
+		ID:        "test-task-002",
+		Prompt:    "echo hello",
+		Workspace: "default",
+	}
+
+	loop.execute(context.Background(), task)
+
+	// Should complete without error.
+	if task.Status != protocol.TaskStatusCompleted {
+		t.Errorf("expected completed, got %s", task.Status)
+	}
+	if task.Error != "" {
+		t.Errorf("unexpected error: %v", task.Error)
 	}
 }

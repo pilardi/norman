@@ -32,12 +32,13 @@ import (
 
 // server holds all dependencies injected at startup.
 type server struct {
-	cfg       *config.Config
-	store     *memory.Store
-	activator *skills.Activator
-	loop      *agent.Loop
-	wsHub     *WSHub
-	notifier  *notify.Notifier
+	cfg        *config.Config
+	store      *memory.Store
+	rawSources *memory.RawSources
+	activator  *skills.Activator
+	loop       *agent.Loop
+	wsHub      *WSHub
+	notifier   *notify.Notifier
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
 	mu        sync.Mutex
@@ -55,9 +56,10 @@ Options:
   -h, --help       Show this help text and exit
 
 Environment variables:
-  NORMAN_STORE_DIR   Path to the memory store directory (default: $HOME/.norman/store)
-  NORMAN_HOST        Server bind address (default: "127.0.0.1")
-  NORMAN_PORT        Server port number (default: 8080)
+  NORMAN_STORE_DIR       Path to the memory store directory (default: $HOME/.norman/store)
+  NORMAN_RAW_SOURCES_DIR Path to the raw sources store directory (default: $HOME/.norman/raw_sources)
+  NORMAN_HOST            Server bind address (default: "127.0.0.1")
+  NORMAN_PORT            Server port number (default: 8080)
 
 Config file: ~/.norman/config.yaml
 
@@ -159,8 +161,18 @@ Workspace-level overrides (per-workspace in config.yaml):
 
 	loopClient := env.NewSDKAdapter(openShellClient)
 
+	// Initialize raw sources store for environment snapshots (context injection).
+	rawSourcesDir := os.Getenv("NORMAN_RAW_SOURCES_DIR")
+	if rawSourcesDir == "" {
+		rawSourcesDir = os.ExpandEnv("$HOME/.norman/raw_sources") // fallback for local dev
+	}
+	rawSources, err := memory.NewRawSources(rawSourcesDir)
+	if err != nil {
+		log.Fatalf("failed to init raw sources store: %v", err)
+	}
+
 	// Create agent loop
-	loop := agent.New(cfg, store, activator, wsHub, loopClient)
+	loop := agent.New(cfg, store, rawSources, activator, wsHub, loopClient)
 
 	// Initialize notification notifier from config
 	notifier := notify.New(wsHub, cfg.System.Notify.BellEnabled, cfg.System.Notify.SlackWebhook, cfg.System.Notify.RateLimitPerMin)
@@ -174,6 +186,7 @@ Workspace-level overrides (per-workspace in config.yaml):
 	srv := &server{
 		cfg:        cfg,
 		store:      store,
+		rawSources: rawSources,
 		activator:  activator,
 		loop:       loop,
 		wsHub:      wsHub,

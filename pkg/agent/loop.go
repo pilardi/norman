@@ -37,6 +37,7 @@ type Loop struct {
 	mu          sync.Mutex
 	tasks       map[string]*Task // taskID -> Task state
 	store       *memory.Store    // persistent state
+	rawSources  *memory.RawSources // raw environment snapshots for context injection
 	activator   *skills.Activator
 	config      *config.Config
 	openShell   OpenShellClient
@@ -86,10 +87,11 @@ type WSHubPublisher interface {
 }
 
 // New creates a new agent loop with the given dependencies.
-func New(cfg *config.Config, store *memory.Store, activator *skills.Activator, wsHub WSHubPublisher, client OpenShellClient) *Loop {
+func New(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources, activator *skills.Activator, wsHub WSHubPublisher, client OpenShellClient) *Loop {
 	return &Loop{
 		tasks:      make(map[string]*Task),
 		store:      store,
+		rawSources: rawSources,
 		activator:  activator,
 		config:     cfg,
 		openShell:  client,
@@ -210,20 +212,29 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	})
 
 	skillsToActivate := l.resolveSkills(task.Prompt)
-	for _, name := range skillsToActivate {
-		_, err := l.activator.Activate(name)
-		if err != nil {
-			log.Printf("agent: failed to activate skill %s: %v", name, err)
+	if l.activator != nil {
+		for _, name := range skillsToActivate {
+			_, err := l.activator.Activate(name)
+			if err != nil {
+				log.Printf("agent: failed to activate skill %s: %v", name, err)
+			}
 		}
-	}
 
-	activeSkills := l.activator.Active()
-	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &task.ID,
-		Message: strPtr(fmt.Sprintf("Activated skills: %s", strings.Join(activeSkills, ", "))),
-		Step:    intPtr(2),
-	})
+		activeSkills := l.activator.Active()
+		l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			TaskId:  &task.ID,
+			Message: strPtr(fmt.Sprintf("Activated skills: %s", strings.Join(activeSkills, ", "))),
+			Step:    intPtr(2),
+		})
+	} else {
+		l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			TaskId:  &task.ID,
+			Message: strPtr("Activated skills: (none)"),
+			Step:    intPtr(2),
+		})
+	}
 
 	// Phase 2: Sandbox creation
 	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -263,7 +274,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		return
 	}
 
-	// Phase 4: Execute
+	// Phase 4: Execute — inject raw sources context into prompt
 	l.mu.Lock()
 	task.Status = protocol.TaskStatusRunning
 	l.mu.Unlock()
@@ -275,7 +286,30 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		Step:    intPtr(5),
 	})
 
-	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxID, task.Prompt)
+	// Inject raw source context into the prompt if available.
+	prompt := task.Prompt
+	if l.rawSources != nil {
+		sources, err := l.rawSources.ListAll()
+		if err != nil {
+			log.Printf("agent: failed to read raw sources for task %s: %v", task.ID, err)
+		} else if len(sources) > 0 {
+			var ctxParts []string
+			ctxParts = append(ctxParts, "## Raw Environment Context")
+			ctxParts = append(ctxParts, "")
+			for _, s := range sources {
+				ctxParts = append(ctxParts, fmt.Sprintf("### %s (%s)", s.Name, s.ID))
+				ctxParts = append(ctxParts, fmt.Sprintf("_Created: %s | Category: %s_", s.CreatedAt.Format(time.RFC3339), s.Category))
+				ctxParts = append(ctxParts, "")
+				ctxParts = append(ctxParts, "```")
+				ctxParts = append(ctxParts, s.Content)
+				ctxParts = append(ctxParts, "```")
+				ctxParts = append(ctxParts, "")
+			}
+			prompt = strings.Join(ctxParts, "\n") + "\n\n---\n\n" + task.Prompt
+		}
+	}
+
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxID, prompt)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("execution failed (exit %d): %v", exitCode, err)
@@ -305,6 +339,10 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 // resolveSkills determines which skills should be activated for a given prompt.
 func (l *Loop) resolveSkills(prompt string) []string {
 	var result []string
+
+	if l.activator == nil {
+		return result
+	}
 
 	// Match on keywords from the prompt against skill names/descriptions
 	keywords := extractKeywords(prompt)
@@ -610,10 +648,11 @@ func intPtr(i int) *int        { return &i }
 
 // FakeOpenShellClient is a mock implementation of OpenShellClient.
 type FakeOpenShellClient struct {
-	mu          sync.Mutex
-	sandboxes   map[string]string // workspace.name -> sandboxID
-	commands    []string           // queued commands to simulate
-	logLines    []string           // simulated log output
+	mu             sync.Mutex
+	sandboxes      map[string]string // workspace.name -> sandboxID
+	commands       []string          // queued commands to simulate
+	logLines       []string          // simulated log output
+	capturedPrompt string            // last prompt sent to RunCommand (for test verification)
 }
 
 // NewFakeOpenShellClient creates a fake client for testing.
@@ -622,6 +661,13 @@ func NewFakeOpenShellClient() *FakeOpenShellClient {
 		sandboxes: make(map[string]string),
 		logLines:  []string{"sandbox initialized", "ready"},
 	}
+}
+
+// CapturedPrompt returns the last prompt sent to RunCommand.
+func (f *FakeOpenShellClient) CapturedPrompt() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.capturedPrompt
 }
 
 func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string) (string, error) {
@@ -645,6 +691,7 @@ func (f *FakeOpenShellClient) WaitReady(ctx context.Context, workspace, name str
 func (f *FakeOpenShellClient) RunCommand(ctx context.Context, sandboxID, command string) (string, int, error) {
 	f.mu.Lock()
 	f.commands = append(f.commands, command)
+	f.capturedPrompt = command
 	f.mu.Unlock()
 
 	// Simulate output
