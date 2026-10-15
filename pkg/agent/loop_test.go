@@ -339,9 +339,88 @@ func (f *FakeWSHub) BroadcastEvent(event protocol.WebSocketEvent) {
 	f.events = append(f.events, event)
 }
 
-// Task.StatusChange returns a channel that closes when task status changes.
-func (t *Task) StatusChange() <-chan struct{} {
-	ch := make(chan struct{})
-	close(ch) // fake client completes immediately
-	return ch
+// --- AddDiscoveryPaths tests (Step 14i) ---
+
+func TestAddDiscoveryPaths(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, fakeWSHub, nil)
+
+	// Initial paths should be the defaults
+	initialCount := len(loop.config.System.Skills.DiscoveryPaths)
+	if initialCount == 0 {
+		t.Fatalf("expected at least one default discovery path")
+	}
+
+	// Add new paths
+	err = loop.AddDiscoveryPaths([]string{"/custom/skills/", "~/my-skills/"})
+	if err != nil {
+		t.Fatalf("AddDiscoveryPaths failed: %v", err)
+	}
+
+	newCount := len(loop.config.System.Skills.DiscoveryPaths)
+	if newCount != initialCount+2 {
+		t.Errorf("expected %d paths after adding 2, got %d", initialCount+2, newCount)
+	}
+
+	// Verify the added paths are present
+	foundCustom := false
+	foundHome := false
+	for _, p := range loop.config.System.Skills.DiscoveryPaths {
+		if p == "/custom/skills/" {
+			foundCustom = true
+		}
+		if p == "~/my-skills/" {
+			foundHome = true
+		}
+	}
+	if !foundCustom || !foundHome {
+		t.Errorf("expected paths '/custom/skills/' and '~/my-skills/' to be added")
+	}
+}
+
+func TestAddDiscoveryPathsEmpty(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, fakeWSHub, nil)
+
+	err = loop.AddDiscoveryPaths([]string{})
+	if err == nil {
+		t.Error("expected error for empty paths array")
+	}
+
+	err = loop.AddDiscoveryPaths([]string{""})
+	if err == nil {
+		t.Error("expected error for empty string path")
+	}
+
+	err = loop.AddDiscoveryPaths([]string{"  "})
+	if err == nil {
+		t.Error("expected error for whitespace-only path")
+	}
+}
+
+func TestAddDiscoveryPathsNilConfig(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+
+	loop := New(nil, store, nil, fakeWSHub, nil)
+
+	err = loop.AddDiscoveryPaths([]string{"/test/path"})
+	if err == nil {
+		t.Error("expected error when config is nil")
+	}
 }

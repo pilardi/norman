@@ -580,6 +580,29 @@ func (l *Loop) DeletePlan(planID string) error {
 	return nil
 }
 
+// AddDiscoveryPaths appends new discovery paths to the config's skill discovery list.
+// This is the server-driven mechanism for expanding where skills are scanned at runtime.
+// Returns an error if any path is empty or invalid.
+func (l *Loop) AddDiscoveryPaths(paths []string) error {
+	if l.config == nil || l.config.System == nil {
+		return fmt.Errorf("config not available")
+	}
+
+	if len(paths) == 0 {
+		return fmt.Errorf("paths array must not be empty")
+	}
+
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return fmt.Errorf("empty discovery path in input")
+		}
+	}
+
+	l.config.System.Skills.DiscoveryPaths = append(l.config.System.Skills.DiscoveryPaths, paths...)
+	return nil
+}
+
 func strPtr(s string) *string { return &s }
 func intPtr(i int) *int        { return &i }
 

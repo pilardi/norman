@@ -244,6 +244,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 		return srv.DeleteWorkspace(c, c.Param("name"))
 	})
 
+	// Skill discovery path management (Step 14i)
+	e.POST("/api/skills/paths", srv.AddDiscoveryPaths)
+
 	// WebSocket hub for real-time push events
 	e.GET("/ws", func(c echo.Context) error {
 		conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
@@ -388,6 +391,36 @@ func (s *server) RemoveSkill(c echo.Context, name string) error {
 	})
 
 	return c.NoContent(http.StatusOK)
+}
+
+// AddDiscoveryPaths adds new paths to the skill discovery configuration.
+// Accepts a JSON body with "paths" array of strings.
+func (s *server) AddDiscoveryPaths(c echo.Context) error {
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if len(req.Paths) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "paths array must not be empty"})
+	}
+
+	if err := s.loop.AddDiscoveryPaths(req.Paths); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr(fmt.Sprintf("Added %d discovery path(s) for skill scanning", len(req.Paths))),
+		Step:    intPtr(0),
+	})
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"added": len(req.Paths),
+		"paths": req.Paths,
+	})
 }
 
 func (s *server) ListTasks(c echo.Context, params protocol.ListTasksParams) error {
@@ -880,3 +913,4 @@ func (h *WSHub) writeLoop() {
 }
 
 func strPtr(s string) *string { return &s }
+func intPtr(i int) *int        { return &i }

@@ -343,7 +343,7 @@ Available workspaces:
 | 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Low | ✅ DONE — pkg/memory/raw_sources.go implements read-only snapshot store; context injection ready |
 | 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low | ✅ DONE — threshold check at cycle start; notify path logging; idempotent compression |
 | 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low | ✅ DONE — workspaces persisted to disk; loaded on startup; deleted on removal |
-| 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Deferred |
+| 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Low | ✅ DONE — AddDiscoveryPaths method on Loop; POST /api/skills/paths endpoint; config-driven paths |
 
 ### Sub-steps (status as of 2026-10-15)
 
@@ -399,10 +399,11 @@ Available workspaces:
 - [x] Concurrent access handled via existing `sync.Mutex` on server struct
 - [x] `Store.Stats()` updated to include workspace count
 
-#### 14i — Server-driven skill discovery paths (DEFERRED)
-- [ ] Move `DiscoveryPaths` from host-FS scan to config-driven list
-- [ ] Server reads paths at startup, caches in memory
-- [ ] CLI sends path additions via POST /api/skills/paths (new endpoint?)
+#### 14i ✅ DONE — Server-driven skill discovery paths
+- [x] `DiscoveryPaths` moved from hardcoded host-FS scan to config-driven list (`SkillsConfig.DiscoveryPaths`)
+- [x] Server reads paths at startup, caches in memory via `cfg.System.Skills.DiscoveryPaths`
+- [x] `POST /api/skills/paths` endpoint added — accepts JSON `{ "paths": [...] }`, validates non-empty strings, updates config; broadcasts WebSocket event on success
+- [x] `Loop.AddDiscoveryPaths(paths []string) error` method for server-driven path expansion at runtime
 ---
 
 ### MVP Completion Criteria (updated)
@@ -414,6 +415,7 @@ Available workspaces:
 | Task execution + WebSocket push | ✅ | All 24 endpoints implemented |
 | Wiki engine (flat markdown) | ✅ | Frontmatter, index, log.md working |
 | Schema.md support | ✅ | WriteSchema/ReadSchema added; git diff/commit wired (14d) |
+| Skill discovery paths | ✅ | Config-driven via `DiscoveryPaths`; POST /api/skills/paths for runtime expansion (14i) |
 | Plan persistence | ✅ | SavePlan/LoadPlan added; plan survives budget compression (14e) |
 | Session archival + budget compression | ✅ | Threshold checks exist but not loop-integrated (14g) |
 | MCP integration | ✅ | Skills declare endpoints, tools injected on demand |
