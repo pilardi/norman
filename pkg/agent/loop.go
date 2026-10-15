@@ -331,6 +331,19 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 		log.Printf("agent: failed to archive session %s: %v", taskID, err)
 	}
 
+	// Persist plan state before compression (preserves plan during truncation)
+	if l.budget.PlanContent != "" {
+		planID := l.budget.PlanID
+		if planID == "" {
+			planID = fmt.Sprintf("plan-%s", taskID[:8])
+		}
+		if err := l.store.SavePlan(planID, l.budget.PlanContent); err != nil {
+			log.Printf("agent: failed to persist plan %s before compression: %v", planID, err)
+		} else {
+			log.Printf("agent: preserved plan %s for task %s (survives truncation)", planID, taskID[:8])
+		}
+	}
+
 	// Broadcast notification
 	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
@@ -467,6 +480,58 @@ func taskToMap(t *Task) map[string]interface{} {
 		m["completed_at"] = time.Now().Format(time.RFC3339)
 	}
 	return m
+}
+
+// SavePlan persists a plan to the store and updates the in-memory budget tracker.
+func (l *Loop) SavePlan(planID string, content string) error {
+	if err := l.store.SavePlan(planID, content); err != nil {
+		return fmt.Errorf("save plan: %w", err)
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.budget != nil {
+		l.budget.PlanID = planID
+		l.budget.PlanContent = content
+	}
+
+	return nil
+}
+
+// LoadPlan loads a plan from the store and updates the in-memory budget tracker.
+func (l *Loop) LoadPlan(planID string) (string, error) {
+	content, err := l.store.LoadPlan(planID)
+	if err != nil {
+		return "", fmt.Errorf("load plan: %w", err)
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.budget != nil {
+		l.budget.PlanID = planID
+		l.budget.PlanContent = content
+	}
+
+	return content, nil
+}
+
+// DeletePlan removes a plan from the store and clears the in-memory tracker.
+func (l *Loop) DeletePlan(planID string) error {
+	if err := l.store.DeletePlan(planID); err != nil {
+		return fmt.Errorf("delete plan: %w", err)
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.budget != nil && l.budget.PlanID == planID {
+		l.budget.PlanID = ""
+		l.budget.PlanContent = ""
+	}
+
+	return nil
 }
 
 func strPtr(s string) *string { return &s }

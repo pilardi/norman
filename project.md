@@ -339,7 +339,7 @@ Available workspaces:
 | 14b | Session archive format inconsistency: `SaveTask` → `.json`, `ArchiveSession` → `.jsonl` | Medium | Small fix | Medium | ✅ DONE |
 | 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low | ✅ DONE — type suffix appended to slug |
 | 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium | ✅ DONE — WriteSchema/ReadSchema added; GitDiff/GitCommit wired via exec.Command |
-| 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium |
+| 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium | ✅ DONE — SavePlan/LoadPlan added; budget compression preserves plan state |
 | 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Deferred |
 | 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low |
 | 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low |
@@ -369,10 +369,14 @@ Available workspaces:
 - [x] `ParseSchemaBody(markdown string) (string, error)` added to entry.go — extracts body without type validation
 - [x] Tests: WriteSchema, ReadSchema, ReadSchemaNotFound, GitDiff, GitCommit all pass
 
-#### 14e — Plan persistence in agent loop (PENDING)
-- [ ] Add `SavePlan(planID, content)` and `LoadPlan(planID) -> string` to loop
-- [ ] Persist plan as `.json` or markdown in store directory
-- [ ] Integrate with budget compression (preserve plan during truncation)
+#### 14e ✅ DONE — Plan persistence in agent loop
+- [x] `SavePlan(planID, content)` added to `pkg/agent/loop.go` — delegates to Store.SavePlan
+- [x] `LoadPlan(planID) -> string` added to `pkg/agent/loop.go` — delegates to Store.LoadPlan
+- [x] `DeletePlan(planID)` added for cleanup
+- [x] Plan persisted as `.json` in store directory (`plans/`)
+- [x] `SessionState.PlanContent` field added to budget tracker (survives compression)
+- [x] Budget compression flow now persists plan state before truncation
+- [x] `Store.Stats()` updated to include plan count
 
 #### 14f — Raw Sources layer (DEFERRED)
 - [ ] Design: distinct abstraction between environment reads and wiki entries
@@ -404,7 +408,7 @@ Available workspaces:
 | Task execution + WebSocket push | ✅ | All 24 endpoints implemented |
 | Wiki engine (flat markdown) | ✅ | Frontmatter, index, log.md working |
 | Schema.md support | ✅ | WriteSchema/ReadSchema added; git diff/commit wired (14d) |
-| Plan persistence | ❌ | In-memory only; pending (14e) |
+| Plan persistence | ✅ | SavePlan/LoadPlan added; plan survives budget compression (14e) |
 | Session archival + budget compression | ✅ | Threshold checks exist but not loop-integrated (14g) |
 | MCP integration | ✅ | Skills declare endpoints, tools injected on demand |
 | Scheduler + notifications | ✅ | Cron registration, WS push, bell, Slack |

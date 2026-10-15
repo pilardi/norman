@@ -34,6 +34,11 @@ func (s *Store) SaveTask(taskID string, data map[string]interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	dir := filepath.Join(s.base, "tasks")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create tasks dir: %w", err)
+	}
+
 	path := filepath.Join(s.base, "tasks", taskID+".json")
 
 	return s.saveFile(path, data)
@@ -79,10 +84,8 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 	return nil
 }
 
+// saveFile writes data to a JSON file atomically (caller must hold s.mu).
 func (s *Store) saveFile(path string, data map[string]interface{}) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Write atomically via temp file + rename
 	tmp := path + ".tmp"
 	data["updated_at"] = time.Now().Format(time.RFC3339)
@@ -185,6 +188,11 @@ func (s *Store) SaveSession(sessionID string, data map[string]interface{}) error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	dir := filepath.Join(s.base, "sessions")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create sessions dir: %w", err)
+	}
+
 	path := filepath.Join(s.base, "sessions", sessionID+".json")
 
 	data["updated_at"] = time.Now().Format(time.RFC3339)
@@ -280,13 +288,132 @@ func (s *Store) Prune(maxAge time.Duration) int {
 	return pruned
 }
 
+// SavePlan persists a plan's content to disk as JSON.
+func (s *Store) SavePlan(planID string, content string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "plans")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create plans dir: %w", err)
+	}
+
+	path := filepath.Join(dir, planID+".json")
+
+	data := map[string]interface{}{
+		"id":          planID,
+		"content":     content,
+		"created_at":  time.Now().Format(time.RFC3339),
+		"updated_at":  time.Now().Format(time.RFC3339),
+	}
+
+	contentBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal plan data: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, contentBytes, 0644); err != nil {
+		return fmt.Errorf("write plan file: %w", err)
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename plan file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadPlan reads a plan's content from disk.
+func (s *Store) LoadPlan(planID string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "plans", planID+".json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("plan %s not found", planID)
+		}
+		return "", fmt.Errorf("read plan file: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("parse plan data: %w", err)
+	}
+
+	content, ok := result["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("plan content not a string")
+	}
+
+	return content, nil
+}
+
+// DeletePlan removes a plan's persisted state.
+func (s *Store) DeletePlan(planID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.base, "plans", planID+".json")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil // already gone
+		}
+		return fmt.Errorf("delete plan file: %w", err)
+	}
+
+	return nil
+}
+
+// ListPlans returns all stored plans.
+func (s *Store) ListPlans() ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	plans := make([]map[string]interface{}, 0)
+
+	dir := filepath.Join(s.base, "plans")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return plans, nil // no plans yet
+		}
+		return nil, fmt.Errorf("read plans dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue // skip unreadable files
+		}
+
+		var plan map[string]interface{}
+		if err := json.Unmarshal(data, &plan); err != nil {
+			continue // skip corrupt files
+		}
+
+		plans = append(plans, plan)
+	}
+
+	return plans, nil
+}
+
 // Stats returns store statistics.
-func (s *Store) Stats() (taskCount, sessionCount int, err error) {
+func (s *Store) Stats() (taskCount, sessionCount int, planCount int, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	taskDir := filepath.Join(s.base, "tasks")
 	sessionDir := filepath.Join(s.base, "sessions")
+	planDir := filepath.Join(s.base, "plans")
 
 	entries, err := os.ReadDir(taskDir)
 	if err == nil {
@@ -306,5 +433,14 @@ func (s *Store) Stats() (taskCount, sessionCount int, err error) {
 		}
 	}
 
-	return taskCount, sessionCount, nil
+	entries, err = os.ReadDir(planDir)
+	if err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {
+				planCount++
+			}
+		}
+	}
+
+	return taskCount, sessionCount, planCount, nil
 }
