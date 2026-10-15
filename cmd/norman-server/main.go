@@ -56,10 +56,32 @@ Options:
 
 Environment variables:
   NORMAN_STORE_DIR   Path to the memory store directory (default: $HOME/.norman/store)
-  NORMAN_HOST        Server bind address (default: "0.0.0.0")
-  NORMAN_PORT        Server port number (default: 8081)
+  NORMAN_HOST        Server bind address (default: "127.0.0.1")
+  NORMAN_PORT        Server port number (default: 8080)
 
 Config file: ~/.config/norman/config.yaml
+
+System defaults (overridable in config.yaml):
+  default_model      gpt-4o
+  server_port        8080
+  host               127.0.0.1
+  temperature        0.7
+  max_tokens         32000
+  skills.discovery   ~/.norman/skills/, /usr/share/norman/skills/
+  skills.max_active  3
+  notify.bell_enabled true
+  notify.rate_limit_per_min 10
+
+OpenShell: auto-resolved from OPENSHELL_GATEWAY_ADDRESS env var or
+           metadata.json gateway_endpoint (falls back to localhost:8090).
+
+Workspace-level overrides (per-workspace in config.yaml):
+  base_dir       ~/workspaces
+  model          (empty = use system default)
+  max_tokens     (0 = use system default)
+  temperature    (0 = use system default)
+  skill_overrides []
+  system_prompt  (empty = use system default)
 
 `+
 				"Norman agent server — HTTP API + WebSocket hub for workspace management.\n")
