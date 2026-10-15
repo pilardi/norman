@@ -205,10 +205,10 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 |------|--------|--------|
 | `pkg/protocol/types.go` | Add `SessionId *string` field to `TaskCreateRequest` | ✅ Done |
 | `pkg/agent/loop.go` | Accept `sessionID` in `Submit()`, add `SessionId` to `Task` struct | ✅ Done |
-| `cmd/norman-server/main.go` | Auto-create session on first task; `DeleteSession` handler | ✅ Done |
+| `cmd/norman-server/main.go` | Auto-create session on first task; `DeleteSession` handler; `CreateSession` fix; idle cleanup loop | ✅ Done |
 | `internal/api/handlers.go` | `DeleteSession` in interface + wrapper method | ✅ Done |
 | `pkg/memory/store.go` | `DeleteSession()` and `ListSessions()` methods | ✅ Done |
-| `cmd/norman/main.go` | Remove `switch`/`run`; add thin `sessions`/`tasks send` wrappers | ⬜ Pending |
+| `cmd/norman/main.go` | Remove `switch`/`run`; add thin `sessions create/close`, `tasks send` wrappers | ✅ Done |
 
 ---
 
@@ -223,12 +223,9 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 - ✅ `ListSessions()` and `DeleteSession()` methods on store
 - ✅ `ServerInterface` and `ServerInterfaceWrapper` updated
 - ✅ All builds clean; tests pass
-
-### Still pending:
-- ⬜ Explicit `POST /api/sessions` endpoint (auto-create covers most use cases)
-- ⬜ Idle timeout auto-cleanup goroutine
-- ⬜ CLI wrapper commands (`norman sessions create`, `norman tasks send`)
-- ⬜ WS subscription with per-session filtering (currently global broadcast)
+- ✅ `POST /api/sessions` endpoint now persists session and returns Session object (was previously a stub)
+- ✅ Idle timeout auto-cleanup goroutine (30 min default, 5 min scan interval)
+- ✅ CLI wrapper commands: `norman sessions create --workspace <name>`, `sessions close <id>`, `tasks send <prompt>`
 
 ---
 

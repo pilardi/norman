@@ -286,6 +286,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	sched.Start(schedCtx)
 
+	// Start idle timeout auto-cleanup goroutine (cleanup sessions inactive for >30min by default).
+	go srv.idleCleanupLoop(30 * time.Minute)
+
 	if err := e.Start(host + ":" + fmt.Sprintf("%d", port)); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
@@ -319,12 +322,21 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	clientType := "custom"
+	if req.ClientType != nil {
+		clientType = string(*req.ClientType)
+	}
+	session, err := s.createSessionInternal(req.WorkspaceId, clientType)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session created for workspace " + req.WorkspaceId),
 	})
 
-	return c.NoContent(http.StatusCreated)
+	return c.JSON(http.StatusCreated, session)
 }
 
 func (s *server) ArchiveSession(c echo.Context) error {
@@ -539,6 +551,43 @@ func (s *server) createSessionInternal(workspaceID string, clientType string) (*
 	})
 
 	return session, nil
+}
+
+// idleCleanupLoop periodically scans sessions and deletes those that have been
+// active for longer than the given timeout. Runs in a background goroutine.
+func (s *server) idleCleanupLoop(timeout time.Duration) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		sessions := s.store.ListSessions()
+
+		now := time.Now()
+		for _, sessMap := range sessions {
+			createdAtStr, ok := sessMap["created_at"].(string)
+			if !ok {
+				continue
+			}
+			createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+			if err != nil {
+				log.Printf("idle cleanup: bad created_at in session file: %v", err)
+				continue
+			}
+
+			if now.Sub(createdAt) > timeout {
+				sessionID, _ := sessMap["id"].(string)
+				log.Printf("idle cleanup: deleting session %s (inactive for %v)", sessionID[:8], now.Sub(createdAt).Round(time.Minute))
+				if err := s.store.DeleteSession(sessionID); err != nil {
+					log.Printf("idle cleanup: failed to delete session %s: %v", sessionID, err)
+				} else {
+					s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+						Event:   protocol.SessionEvent,
+						Message: strPtr("Session " + sessionID[:8] + " auto-closed (idle timeout)"),
+					})
+				}
+			}
+		}
+	}
 }
 
 func (s *server) ScheduleTask(c echo.Context) error {
