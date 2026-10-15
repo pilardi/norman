@@ -335,9 +335,9 @@ Available workspaces:
 
 | # | Issue | Severity | Effort | Priority |
 |---|-------|----------|--------|----------|
-| 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and api-spec.md | Low | Quick win | High |
-| 14b | Session archive format inconsistency: `SaveTask` → `.json`, `ArchiveSession` → `.jsonl` | Medium | Small fix | Medium |
-| 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low |
+| 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and api-spec.md | Low | Quick win | High | ✅ DONE |
+| 14b | Session archive format inconsistency: `SaveTask` → `.json`, `ArchiveSession` → `.jsonl` | Medium | Small fix | Medium | ✅ DONE |
+| 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low | ✅ DONE — type suffix appended to slug |
 | 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium |
 | 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium |
 | 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Deferred |
@@ -345,51 +345,52 @@ Available workspaces:
 | 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low |
 | 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Deferred |
 
-### Sub-steps
+### Sub-steps (status as of 2026-10-15)
 
-#### 14a — Update stale docs config path references
-- [ ] `glossary.md` §1: replace `~/.config/norman/config.yaml` → `~/.norman/config.yaml`
-- [ ] `api-spec.md` §1: same replacement in transport defaults section
+#### 14a ✅ DONE — Update stale docs config path references
+- [x] `api-spec.md` §1: replaced `~/.config/norman/config.yaml` → `~/.norman/config.yaml`
+- [x] `glossary.md`: no stale references found (already clean)
 
-#### 14b — Session format alignment
-- [ ] Decide: align all session storage to `.json` (remove `.jsonl` from `ArchiveSession`)
-- [ ] Update `pkg/memory/store.go` line ~52 path and related logic
-- [ ] Verify no consumer depends on JSONL format (grep for `.jsonl` references)
+#### 14b ✅ DONE — Session format alignment
+- [x] `ArchiveSession` now stores `.json` (JSON array) instead of `.jsonl`
+- [x] Tests updated: verify JSON array semantics, overwrite on multiple calls
+- [x] Empty sessions produce valid empty JSON arrays
 
-#### 14c — TitleToSlug collision mitigation
-- [ ] Option A: append type to slug → `{slug}-{type}`
-- [ ] Option B: use content hash as suffix for duplicates
-- [ ] Decide and implement; add test case for collision scenario
+#### 14c ✅ DONE — TitleToSlug collision mitigation
+- [x] `TitleToSlug(title, EntryType)` appends type as suffix (e.g., "Docker" + entity → "docker-entity")
+- [x] All callers updated: engine.go Create/PruneStale, version.go Create
+- [x] Collision test added verifying same-title/different-type produces distinct slugs
 
-#### 14d — Schema.md read/write + git operations in wiki engine
+#### 14d — Schema.md read/write + git operations in wiki engine (PENDING)
 - [ ] Add `WriteSchema(slug, content)` to `pkg/wiki/engine.go`
 - [ ] Add `ReadSchema(slug) -> string` accessor
 - [ ] Wire `git add/commit/diff` into the engine (use `go-git` or shell out)
 
-#### 14e — Plan persistence in agent loop
+#### 14e — Plan persistence in agent loop (PENDING)
 - [ ] Add `SavePlan(planID, content)` and `LoadPlan(planID) -> string` to loop
 - [ ] Persist plan as `.json` or markdown in store directory
 - [ ] Integrate with budget compression (preserve plan during truncation)
 
-#### 14f — Raw Sources layer (deferred)
+#### 14f — Raw Sources layer (DEFERRED)
 - [ ] Design: distinct abstraction between environment reads and wiki entries
 - [ ] Implement `pkg/memory/raw_sources.go` as read-only snapshot store
 - [ ] Wire into agent loop for context injection
 
-#### 14g — Budget threshold integration into planning loop
+#### 14g — Budget threshold integration into planning loop (LOW PRIORITY)
 - [ ] Check thresholds at start of each planning cycle (not just after API calls)
 - [ ] Trigger summarization when `WarnThreshold` hit, not just on budget tracker
 - [ ] Log threshold events to notification path
 
-#### 14h — Workspace registry disk persistence
+#### 14h — Workspace registry disk persistence (PENDING)
 - [ ] Persist `workspaces map[string]*protocol.Workspace` to JSON file in store
 - [ ] Load on server startup; save on CreateWorkspace/DeleteWorkspace
 - [ ] Handle concurrent access with lock (already has sync.Mutex)
 
-#### 14i — Server-driven skill discovery paths
+#### 14i — Server-driven skill discovery paths (DEFERRED)
 - [ ] Move `DiscoveryPaths` from host-FS scan to config-driven list
 - [ ] Server reads paths at startup, caches in memory
 - [ ] CLI sends path additions via POST /api/skills/paths (new endpoint?)
+---
 
 ### MVP Completion Criteria (updated)
 
