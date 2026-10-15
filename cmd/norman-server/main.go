@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/norman/norman/internal/api"
@@ -37,6 +38,10 @@ type server struct {
 	loop      *agent.Loop
 	wsHub     *WSHub
 	notifier  *notify.Notifier
+
+	// workspaceRegistry tracks created workspaces (in-memory + persisted).
+	mu        sync.Mutex
+	workspaces map[string]*protocol.Workspace
 }
 
 func main() {
@@ -147,6 +152,16 @@ func main() {
 	e.POST("/api/notifications", srv.CreateNotification)
 	e.DELETE("/api/notifications/:id", func(c echo.Context) error {
 		return srv.DeleteNotification(c, c.Param("id"))
+	})
+
+	// Workspace endpoints (Step 9d)
+	e.GET("/api/workspaces", srv.ListWorkspaces)
+	e.POST("/api/workspaces", srv.CreateWorkspace)
+	e.GET("/api/workspaces/:name", func(c echo.Context) error {
+		return srv.GetWorkspace(c, c.Param("name"))
+	})
+	e.DELETE("/api/workspaces/:name", func(c echo.Context) error {
+		return srv.DeleteWorkspace(c, c.Param("name"))
 	})
 
 	// WebSocket hub for real-time push events
@@ -427,7 +442,14 @@ func (s *server) TailTaskLog(c echo.Context, id string, params protocol.TailTask
 }
 
 func (s *server) ListWorkspaces(c echo.Context) error {
-	return c.JSON(http.StatusOK, []map[string]interface{}{}) // stub for now
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := make([]*protocol.Workspace, 0, len(s.workspaces))
+	for _, ws := range s.workspaces {
+		result = append(result, ws)
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 func (s *server) CreateWorkspace(c echo.Context) error {
@@ -436,15 +458,43 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	// Derive path: workspace dir is under the store's base directory.
+	storePath := s.store.Base()
+	wsPath := filepath.Join(storePath, req.Name)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	id := uuid.New()
+	status := protocol.WorkspaceStatusActive
+	ws := &protocol.Workspace{
+		Id:        &id,
+		Name:      strPtr(req.Name),
+		Path:      strPtr(wsPath),
+		Status:    &status,
+		CreatedAt: &now,
+	}
+	s.workspaces[req.Name] = ws
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Workspace created: " + req.Name),
 	})
 
-	return c.NoContent(http.StatusCreated)
+	return c.JSON(http.StatusCreated, ws)
 }
 
 func (s *server) DeleteWorkspace(c echo.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.workspaces[name]; !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	delete(s.workspaces, name)
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Deleting workspace: " + name),
@@ -454,14 +504,15 @@ func (s *server) DeleteWorkspace(c echo.Context, name string) error {
 }
 
 func (s *server) GetWorkspace(c echo.Context, name string) error {
-	// Use workspace-specific config if available, otherwise fall back to system default
-	wsConfig := s.cfg.MergeWorkspaceConfig(name, &config.WorkspaceConfig{})
-	path := wsConfig.BaseDir + "/" + name
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"name": name,
-		"path": path,
-	})
+	ws, ok := s.workspaces[name]
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	return c.JSON(http.StatusOK, ws)
 }
 
 func (s *server) ConnectWebSocket(c echo.Context) error {

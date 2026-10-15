@@ -24,6 +24,11 @@ func NewStore(baseDir string) (*Store, error) {
 	return &Store{base: baseDir}, nil
 }
 
+// Base returns the base directory path for this store.
+func (s *Store) Base() string {
+	return s.base
+}
+
 // SaveTask persists a task's state to disk with optimistic locking.
 func (s *Store) SaveTask(taskID string, data map[string]interface{}) error {
 	s.mu.Lock()
