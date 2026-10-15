@@ -259,7 +259,7 @@ func TestStoreStatsIncludesPlans(t *testing.T) {
 	store.SavePlan("plan-1", "content")
 	store.SavePlan("plan-2", "content")
 
-	tasks, sessions, plans, err := store.Stats()
+	tasks, sessions, plans, _, err := store.Stats()
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -272,6 +272,38 @@ func TestStoreStatsIncludesPlans(t *testing.T) {
 	}
 	if plans != 2 {
 		t.Errorf("expected 2 plans, got %d", plans)
+	}
+}
+
+func TestStoreStatsIncludesWorkspaces(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	store.SaveTask("task-1", map[string]interface{}{"id": "task-1"})
+	store.SaveSession("session-1", map[string]interface{}{"id": "session-1"})
+	store.SavePlan("plan-1", "content")
+	store.SaveWorkspace("ws-alpha", map[string]interface{}{"name": "ws-alpha", "path": "/tmp/ws"})
+	store.SaveWorkspace("ws-beta", map[string]interface{}{"name": "ws-beta", "path": "/tmp/ws2"})
+
+	tasks, sessions, plans, workspaces, err := store.Stats()
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+
+	if tasks != 1 {
+		t.Errorf("expected 1 task, got %d", tasks)
+	}
+	if sessions != 1 {
+		t.Errorf("expected 1 session, got %d", sessions)
+	}
+	if plans != 1 {
+		t.Errorf("expected 1 plan, got %d", plans)
+	}
+	if workspaces != 2 {
+		t.Errorf("expected 2 workspaces, got %d", workspaces)
 	}
 }
 

@@ -181,6 +181,31 @@ Workspace-level overrides (per-workspace in config.yaml):
 		workspaces: make(map[string]*protocol.Workspace),
 	}
 
+	// Load persisted workspaces from disk on startup
+	if loaded, err := store.ListWorkspaces(); err != nil {
+		log.Printf("server: failed to load workspaces from disk: %v", err)
+	} else {
+		for _, wsMap := range loaded {
+			if name, ok := wsMap["name"].(string); ok {
+				ws := &protocol.Workspace{
+					Id:        nil,
+					Name:      strPtr(name),
+					Path:      strPtr(wsMap["path"].(string)),
+					Status:    (*protocol.WorkspaceStatus)(strPtr(wsMap["status"].(string))),
+					CreatedAt: nil,
+				}
+				if idStr, ok := wsMap["id"].(string); ok {
+					id, err := uuid.Parse(idStr)
+					if err == nil {
+						ws.Id = &id
+					}
+				}
+				srv.workspaces[name] = ws
+			}
+		}
+		log.Printf("server: loaded %d persisted workspaces from disk", len(srv.workspaces))
+	}
+
 	e := echo.New()
 	e.Use(middleware.Recover())
 
@@ -532,6 +557,18 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	}
 	s.workspaces[req.Name] = ws
 
+	// Persist workspace to disk
+	wsMap := map[string]interface{}{
+		"id":         id.String(),
+		"name":       req.Name,
+		"path":       wsPath,
+		"status":     string(status),
+		"created_at": now.Format(time.RFC3339),
+	}
+	if err := s.store.SaveWorkspace(req.Name, wsMap); err != nil {
+		log.Printf("server: failed to persist workspace %s: %v", req.Name, err)
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Workspace created: " + req.Name),
@@ -549,6 +586,11 @@ func (s *server) DeleteWorkspace(c echo.Context, name string) error {
 	}
 
 	delete(s.workspaces, name)
+
+	// Delete workspace file from disk
+	if err := s.store.DeleteWorkspace(name); err != nil {
+		log.Printf("server: failed to delete workspace %s from disk: %v", name, err)
+	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,

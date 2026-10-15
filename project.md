@@ -342,7 +342,7 @@ Available workspaces:
 | 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium | ✅ DONE — SavePlan/LoadPlan added; budget compression preserves plan state |
 | 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Deferred |
 | 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low |
-| 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low |
+| 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low | ✅ DONE — workspaces persisted to disk; loaded on startup; deleted on removal |
 | 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Deferred |
 
 ### Sub-steps (status as of 2026-10-15)
@@ -388,10 +388,16 @@ Available workspaces:
 - [ ] Trigger summarization when `WarnThreshold` hit, not just on budget tracker
 - [ ] Log threshold events to notification path
 
-#### 14h — Workspace registry disk persistence (PENDING)
-- [ ] Persist `workspaces map[string]*protocol.Workspace` to JSON file in store
-- [ ] Load on server startup; save on CreateWorkspace/DeleteWorkspace
-- [ ] Handle concurrent access with lock (already has sync.Mutex)
+#### 14h ✅ DONE — Workspace registry disk persistence
+- [x] `Store.SaveWorkspace(name, data)` added — persists workspace as `.json` in `workspaces/` dir
+- [x] `Store.LoadWorkspace(name) -> map[string]interface{}` added — loads workspace by name
+- [x] `Store.DeleteWorkspace(name)` added — removes workspace file
+- [x] `Store.ListWorkspaces() -> []map[string]interface{}` added — lists all workspaces
+- [x] Server initialization: loads persisted workspaces from disk on startup (log.Printf)
+- [x] `CreateWorkspace`: saves workspace to disk after in-memory registration
+- [x] `DeleteWorkspace`: deletes workspace file from disk after in-memory removal
+- [x] Concurrent access handled via existing `sync.Mutex` on server struct
+- [x] `Store.Stats()` updated to include workspace count
 
 #### 14i — Server-driven skill discovery paths (DEFERRED)
 - [ ] Move `DiscoveryPaths` from host-FS scan to config-driven list
@@ -404,7 +410,7 @@ Available workspaces:
 | Criterion | Status | Notes |
 |-----------|--------|-------|
 | Client → Server config sync | ✅ | PUT/GET /api/config working |
-| Workspace CRUD | ✅ | In-memory registry; disk persistence pending (14h) |
+| Workspace CRUD | ✅ | Persisted to disk on Create/Delete; loaded on startup (14h) |
 | Task execution + WebSocket push | ✅ | All 24 endpoints implemented |
 | Wiki engine (flat markdown) | ✅ | Frontmatter, index, log.md working |
 | Schema.md support | ✅ | WriteSchema/ReadSchema added; git diff/commit wired (14d) |
