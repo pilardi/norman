@@ -188,10 +188,6 @@ func main() {
 		handleConfig(args)
 	case "create":
 		handleCreate(args)
-	case "switch":
-		handleSwitch(args)
-	case "run":
-		handleRun(args)
 	case "list":
 		handleList(args)
 	case "skills":
@@ -219,8 +215,6 @@ Flags:
 
 Commands:
   create <name>        Create a new workspace + persistent OpenShell session
-  switch <name>        Switch to an existing workspace session
-  run [prompt]         Execute a prompt inside the workspace session
   list                 List available workspaces and their sessions
   config               Show or edit current configuration
   skills list          List installed skills
@@ -429,76 +423,6 @@ func handleCreate(args []string) {
 
 	fmt.Printf("Created workspace '%s' (delegated to agent server)\n", name)
 	fmt.Println("(Server manages OpenShell sandbox lifecycle)")
-}
-
-// handleSwitch queries the server for workspace info and displays it.
-func handleSwitch(args []string) {
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Usage: norman switch <name>")
-		os.Exit(1)
-	}
-
-	name := args[0]
-
-	body, err := httpGet("/api/workspaces/" + url.PathEscape(name))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error switching to workspace '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	var ws map[string]interface{}
-	if err := json.Unmarshal(body, &ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing workspace response: %v\n", err)
-		os.Exit(1)
-	}
-
-	path, _ := ws["path"].(string)
-	sandbox, _ := ws["sandbox"].(string)
-	status, _ := ws["status"].(string)
-
-	fmt.Printf("Switched to workspace '%s'\n", name)
-	fmt.Printf("  Path:      %s\n", path)
-	if sandbox != "" {
-		fmt.Printf("  Sandbox:   %s\n", sandbox)
-	}
-	fmt.Printf("  Status:    %s\n", status)
-}
-
-// handleRun submits a prompt to the agent server for execution.
-func handleRun(args []string) {
-	if len(args) < 1 {
-		fmt.Println(`run [prompt] — Execute a prompt in the workspace session
-
-Usage: norman run "your prompt here"
-
-The prompt is submitted to the agent server which executes it inside an OpenShell sandbox.`)
-		return
-	}
-
-	prompt := strings.Join(args, " ")
-
-	// Submit task to server via REST API
-	taskReq := map[string]string{
-		"prompt":       prompt,
-		"workspace_id": "default",
-	}
-
-	body, err := httpPostJSON("/api/tasks", taskReq)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error submitting task: %v\n", err)
-		os.Exit(1)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
-	}
-
-	taskID, _ := result["id"].(string)
-	status, _ := result["status"].(string)
-	fmt.Printf("Task submitted (id=%s, status=%s)\n", taskID, status)
-	fmt.Println("(Poll /api/tasks/:id or watch WebSocket for results)")
 }
 
 // handleList fetches workspace info from the server.
