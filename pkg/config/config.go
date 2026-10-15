@@ -70,7 +70,7 @@ const (
 	DefaultModel       = "gpt-4o"
 	DefaultServerPort  = 8080
 	DefaultHost        = "127.0.0.1"
-	DefaultBaseDir     = "~/workspaces"
+	DefaultBaseDir     = "~/.norman/workspaces"
 	DefaultMaxTokens   = 32000
 	DefaultTemperature = 0.7
 	DefaultMaxActive   = 3
@@ -158,7 +158,7 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
-// LoadDefault reads from the standard config path (~/.config/norman/config.yaml).
+// LoadDefault reads from the standard config path (~/.norman/config.yaml).
 // If the file does not exist, returns DefaultConfig() instead of an error.
 // Also loads .env files from the current directory and $HOME/.norman/.env as fallbacks.
 func LoadDefault() (*Config, error) {
@@ -169,12 +169,12 @@ func LoadDefault() (*Config, error) {
 	}
 	godotenv.Load(".env", filepath.Join(envDir, ".norman", ".env"))
 
-	configDir := os.ExpandEnv("$HOME/.config/norman")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return nil, fmt.Errorf("create config dir: %w", err)
 	}
 
-	path := filepath.Join(configDir, "config.yaml")
+	path := configPath
 
 	data, err := os.ReadFile(path)
 	if err != nil {

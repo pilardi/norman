@@ -59,7 +59,7 @@ Environment variables:
   NORMAN_HOST        Server bind address (default: "127.0.0.1")
   NORMAN_PORT        Server port number (default: 8080)
 
-Config file: ~/.config/norman/config.yaml
+Config file: ~/.norman/config.yaml
 
 System defaults (overridable in config.yaml):
   default_model      gpt-4o
@@ -76,7 +76,7 @@ OpenShell: auto-resolved from OPENSHELL_GATEWAY_ADDRESS env var or
            metadata.json gateway_endpoint (falls back to localhost:8090).
 
 Workspace-level overrides (per-workspace in config.yaml):
-  base_dir       ~/workspaces
+  base_dir       ~/.norman/workspaces/
   model          (empty = use system default)
   max_tokens     (0 = use system default)
   temperature    (0 = use system default)
@@ -682,7 +682,7 @@ func (s *server) PutConfig(c echo.Context) error {
 	}
 
 	// Save to disk
-	configPath := os.ExpandEnv("$HOME/.config/norman/config.yaml")
+	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save config"})
 	}

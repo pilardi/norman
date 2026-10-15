@@ -90,7 +90,7 @@ Skills currently declare tools as static strings in their SKILL.md metadata. We 
   - `BellHandler` — prints `\a` (bell character) + brief text to terminal.
   - `SlackHandler` — sends webhook POST to configured Slack URL (MVP, no OAuth).
 - Rate limiting: max 10 notifications/minute across all tasks (token bucket algorithm).
-- Config in `~/.config/norman/config.yaml`:
+- Config in `~/.norman/config.yaml`:
   ```yaml
   notify:
     slack_webhook: ""  # optional
