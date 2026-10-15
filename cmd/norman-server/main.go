@@ -45,6 +45,28 @@ type server struct {
 }
 
 func main() {
+	// --help / -h: print usage and exit.
+	for _, arg := range os.Args[1:] {
+		if arg == "--help" || arg == "-h" {
+			fmt.Fprintf(os.Stderr, `Usage: norman-server [OPTIONS]
+
+Options:
+  -v, --verbose    Enable server-side debug logging (Echo middleware)
+  -h, --help       Show this help text and exit
+
+Environment variables:
+  NORMAN_STORE_DIR   Path to the memory store directory (default: $HOME/.norman/store)
+  NORMAN_HOST        Server bind address (default: "0.0.0.0")
+  NORMAN_PORT        Server port number (default: 8081)
+
+Config file: ~/.config/norman/config.yaml
+
+`+
+				"Norman agent server — HTTP API + WebSocket hub for workspace management.\n")
+			os.Exit(0)
+		}
+	}
+
 	fmt.Fprintf(os.Stderr, "Norman agent server starting...\n")
 
 	// Load configuration
