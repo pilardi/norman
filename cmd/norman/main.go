@@ -288,6 +288,8 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			c.System.Temperature = t
 		case "logging.verbose":
 			c.System.Logging.Verbose = (val == "true" || val == "1")
+		case "openshell_address":
+			c.System.OpenShell.Address = val
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
 			os.Exit(1)
@@ -321,6 +323,9 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  bell_enabled:     %v\n", c.System.Notify.BellEnabled)
 	fmt.Printf("  rate_limit_per_min: %d\n", c.System.Notify.RateLimitPerMin)
 	fmt.Printf("  logging.verbose:  %v\n", c.System.Logging.Verbose)
+	if c.System.OpenShell.Address != "" {
+		fmt.Printf("  openshell_address: %s\n", c.System.OpenShell.Address)
+	}
 
 	if len(c.Workspaces) > 0 {
 		fmt.Println("\n# Per-Workspace Overrides")
