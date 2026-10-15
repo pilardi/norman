@@ -322,3 +322,89 @@ Available workspaces:
 
 **Deferred:** Multi-workspace parallel environments, vector search, automatic raw-source ingestion loop, multi-agent coordination, skill versioning/dependency resolution, IDE integration, email notifications.
 
+
+---
+
+## Step 14 — Assessment Review & Remediation
+
+> **Status:** 🚧 IN PROGRESS (on branch `step14-assessment`)
+>
+> Comprehensive review of requirements.md, glossary.md, docs/step*.md, api-spec.md, and current codebase against the implementation. No changes made yet in this commit — only project plan update.
+
+### Findings Summary (from 2026-10-15 review)
+
+| # | Issue | Severity | Effort | Priority |
+|---|-------|----------|--------|----------|
+| 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and api-spec.md | Low | Quick win | High |
+| 14b | Session archive format inconsistency: `SaveTask` → `.json`, `ArchiveSession` → `.jsonl` | Medium | Small fix | Medium |
+| 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low |
+| 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium |
+| 14e | Plan persistence missing from agent loop — only tracked in memory | Medium | Implementation | Medium |
+| 14f | Raw Sources layer as distinct abstraction over environment reads — not yet implemented | Low | Design | Deferred |
+| 14g | Budget threshold checks exist but not actively triggered in planning loop | Low | Integration | Low |
+| 14h | Workspace registry is in-memory only (no disk persistence) | Medium | Implementation | Low |
+| 14i | Skill discovery paths host-FS-bound; should become server-driven via config | Medium | Refactor | Deferred |
+
+### Sub-steps
+
+#### 14a — Update stale docs config path references
+- [ ] `glossary.md` §1: replace `~/.config/norman/config.yaml` → `~/.norman/config.yaml`
+- [ ] `api-spec.md` §1: same replacement in transport defaults section
+
+#### 14b — Session format alignment
+- [ ] Decide: align all session storage to `.json` (remove `.jsonl` from `ArchiveSession`)
+- [ ] Update `pkg/memory/store.go` line ~52 path and related logic
+- [ ] Verify no consumer depends on JSONL format (grep for `.jsonl` references)
+
+#### 14c — TitleToSlug collision mitigation
+- [ ] Option A: append type to slug → `{slug}-{type}`
+- [ ] Option B: use content hash as suffix for duplicates
+- [ ] Decide and implement; add test case for collision scenario
+
+#### 14d — Schema.md read/write + git operations in wiki engine
+- [ ] Add `WriteSchema(slug, content)` to `pkg/wiki/engine.go`
+- [ ] Add `ReadSchema(slug) -> string` accessor
+- [ ] Wire `git add/commit/diff` into the engine (use `go-git` or shell out)
+
+#### 14e — Plan persistence in agent loop
+- [ ] Add `SavePlan(planID, content)` and `LoadPlan(planID) -> string` to loop
+- [ ] Persist plan as `.json` or markdown in store directory
+- [ ] Integrate with budget compression (preserve plan during truncation)
+
+#### 14f — Raw Sources layer (deferred)
+- [ ] Design: distinct abstraction between environment reads and wiki entries
+- [ ] Implement `pkg/memory/raw_sources.go` as read-only snapshot store
+- [ ] Wire into agent loop for context injection
+
+#### 14g — Budget threshold integration into planning loop
+- [ ] Check thresholds at start of each planning cycle (not just after API calls)
+- [ ] Trigger summarization when `WarnThreshold` hit, not just on budget tracker
+- [ ] Log threshold events to notification path
+
+#### 14h — Workspace registry disk persistence
+- [ ] Persist `workspaces map[string]*protocol.Workspace` to JSON file in store
+- [ ] Load on server startup; save on CreateWorkspace/DeleteWorkspace
+- [ ] Handle concurrent access with lock (already has sync.Mutex)
+
+#### 14i — Server-driven skill discovery paths
+- [ ] Move `DiscoveryPaths` from host-FS scan to config-driven list
+- [ ] Server reads paths at startup, caches in memory
+- [ ] CLI sends path additions via POST /api/skills/paths (new endpoint?)
+
+### MVP Completion Criteria (updated)
+
+| Criterion | Status | Notes |
+|-----------|--------|-------|
+| Client → Server config sync | ✅ | PUT/GET /api/config working |
+| Workspace CRUD | ✅ | In-memory registry; disk persistence pending (14h) |
+| Task execution + WebSocket push | ✅ | All 24 endpoints implemented |
+| Wiki engine (flat markdown) | ✅ | Frontmatter, index, log.md working |
+| Schema.md support | ❌ | Pending (14d) |
+| Plan persistence | ❌ | In-memory only; pending (14e) |
+| Session archival + budget compression | ✅ | Threshold checks exist but not loop-integrated (14g) |
+| MCP integration | ✅ | Skills declare endpoints, tools injected on demand |
+| Scheduler + notifications | ✅ | Cron registration, WS push, bell, Slack |
+| OpenShell mTLS auth | ✅ | NewClientWithTLS with ca.crt/tls.crt/tls.key |
+| Config unified under ~/.norman/ | ✅ | All paths resolved (14a) |
+
+---
