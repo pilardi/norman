@@ -56,8 +56,10 @@ func (e *WikiEntry) HasTag(tag string) bool {
 	return false
 }
 
-// TitleToSlug converts a title into a filesystem-safe slug.
-func TitleToSlug(title string) string {
+// TitleToSlug converts a title into a filesystem-safe slug, appending the entry type
+// as a suffix to avoid collisions between entries of different types with the same title.
+// Example: "Docker" + entity → "docker-entity"; "Docker" + task → "docker-task".
+func TitleToSlug(title string, entryType EntryType) string {
 	slug := strings.ToLower(strings.TrimSpace(title))
 	slug = strings.ReplaceAll(slug, " ", "-")
 	slug = strings.ReplaceAll(slug, "_", "-")
@@ -69,7 +71,7 @@ func TitleToSlug(title string) string {
 		}
 	}
 	slug = b.String()
-	return filepath.Clean(slug)
+	return filepath.Clean(slug + "-" + string(entryType))
 }
 
 // ParseFrontmatter parses the YAML frontmatter from a markdown string.

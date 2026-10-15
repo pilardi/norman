@@ -42,7 +42,7 @@ func NewGitVersioner(baseDir string, mode BatchMode) (*GitVersioner, error) {
 
 // Create wraps Engine.Create with a git commit.
 func (g *GitVersioner) Create(entry *WikiEntry) error {
-	slug := TitleToSlug(entry.Title)
+	slug := TitleToSlug(entry.Title, entry.Type)
 	msg := fmt.Sprintf("wiki: create %s", slug)
 	g.addLog(msg)
 	return g.flush()

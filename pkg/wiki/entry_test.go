@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,20 +78,31 @@ Body text.`
 func TestTitleToSlug(t *testing.T) {
 	tests := []struct {
 		input    string
+		entryType EntryType
 		expected string
 	}{
-		{"Project Alpha", "project-alpha"},
-		{"API Gateway v2", "api-gateway-v2"},
-		{"Docker_Build_Optimization", "docker-build-optimization"},
-		{"Hello World!", "hello-world"},
-		{"  Mixed CASE  ", "mixed-case"},
+		{"Project Alpha", EntryTypeEntity, "project-alpha-entity"},
+		{"API Gateway v2", EntryTypeSource, "api-gateway-v2-source"},
+		{"Docker_Build_Optimization", EntryTypeTask, "docker-build-optimization-task"},
+		{"Hello World!", EntryTypeTrend, "hello-world-trend"},
+		{"  Mixed CASE  ", EntryTypeEntity, "mixed-case-entity"},
 	}
 
 	for _, tc := range tests {
-		got := TitleToSlug(tc.input)
+		got := TitleToSlug(tc.input, tc.entryType)
 		if got != tc.expected {
-			t.Errorf("TitleToSlug(%q) = %q, want %q", tc.input, got, tc.expected)
+			t.Errorf("TitleToSlug(%q, %s) = %q, want %q", tc.input, tc.entryType, got, tc.expected)
 		}
+	}
+
+	// Verify collision avoidance: same title, different types → different slugs
+	slug1 := TitleToSlug("Docker", EntryTypeEntity)
+	slug2 := TitleToSlug("Docker", EntryTypeTask)
+	if slug1 == slug2 {
+		t.Errorf("collision detected: %q == %q", slug1, slug2)
+	}
+	if !strings.HasSuffix(slug1, "-entity") || !strings.HasSuffix(slug2, "-task") {
+		t.Errorf("expected type suffixes, got %q and %q", slug1, slug2)
 	}
 }
 

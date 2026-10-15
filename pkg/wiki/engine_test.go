@@ -26,7 +26,7 @@ func TestEngineCreateAndGet(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	got, err := engine.Get("test-entry")
+	got, err := engine.Get("test-entry-entity")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -68,11 +68,11 @@ func TestEngineUpdate(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := engine.Update("updatable", map[string]interface{}{"content": "updated body"}); err != nil {
+	if err := engine.Update("updatable-source", map[string]interface{}{"content": "updated body"}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
-	got, err := engine.Get("updatable")
+	got, err := engine.Get("updatable-source")
 	if err != nil {
 		t.Fatalf("Get after update: %v", err)
 	}
@@ -93,11 +93,11 @@ func TestEngineDelete(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := engine.Delete("todelete"); err != nil {
+	if err := engine.Delete("todelete-task"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	_, err = engine.Get("todelete")
+	_, err = engine.Get("todelete-task")
 	if err == nil {
 		t.Error("expected ErrNotFound after delete")
 	}

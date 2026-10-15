@@ -29,7 +29,7 @@ func (e *Engine) Create(entry *WikiEntry) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	slug := TitleToSlug(entry.Title)
+	slug := TitleToSlug(entry.Title, entry.Type)
 	path := filepath.Join(e.base, slug+".md")
 
 	if _, err := os.Stat(path); err == nil {
@@ -174,7 +174,7 @@ func (e *Engine) PruneStale() (removed int) {
 		}
 
 		if shouldRemove {
-			slug := TitleToSlug(entry.Title)
+			slug := TitleToSlug(entry.Title, entry.Type)
 			path := filepath.Join(e.base, slug+".md")
 			if err := os.Remove(path); err == nil {
 				removed++
