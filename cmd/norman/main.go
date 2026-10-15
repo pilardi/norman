@@ -241,10 +241,9 @@ func handleConfig(args []string) {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Println(`config — Show or edit configuration
 
-Usage: norman config [--show | --set key=value | --json]
+Usage: norman config [--set key=value | --json]
 
 Options:
-  --show    Display current config values (fetched from the server)
   --set     Set a config value (e.g., --set server_port=9090)
   --json    Output as machine-readable JSON
 
