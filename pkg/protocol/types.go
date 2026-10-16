@@ -476,6 +476,7 @@ type WebSocketEvent struct {
 	Message         *string                 `json:"message,omitempty"`
 	Priority        *WebSocketEventPriority `json:"priority,omitempty"`
 	RemainingTokens *int                    `json:"remaining_tokens,omitempty"`
+	SessionId       *string                 `json:"session_id,omitempty"`
 	Step            *int                    `json:"step,omitempty"`
 	TaskId          *string                 `json:"task_id,omitempty"`
 

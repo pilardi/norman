@@ -340,6 +340,14 @@ func (f *FakeWSHub) BroadcastEvent(event protocol.WebSocketEvent) {
 	f.events = append(f.events, event)
 }
 
+func (f *FakeWSHub) BroadcastSession(sessionID string, event protocol.WebSocketEvent) {
+	// For tests: store session-aware events with prefix to distinguish from global broadcasts
+	eventCopy := event
+	eventCopy.SessionId = strPtr(sessionID)
+	f.lastEvent = eventCopy
+	f.events = append(f.events, eventCopy)
+}
+
 // --- AddDiscoveryPaths tests (Step 14i) ---
 
 func TestAddDiscoveryPaths(t *testing.T) {

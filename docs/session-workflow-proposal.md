@@ -191,11 +191,26 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 
 ---
 
-## 6. Open Questions for Review ⬜ (resolved in implementation)
+## 6. Open Questions for Review ✅ (all resolved)
 
 1. **Auto-create sessions?** ✅ Resolved: tasks auto-create a session for the workspace if none exists. Explicit `POST /api/sessions` remains as an option.
 2. **Conversation continuity?** ✅ Resolved: `session_id` field on `TaskCreateRequest` enables growing context window tied to a session.
-3. **Idle timeout?** ⬜ Not yet implemented. Configurable via server config.
+3. **Idle timeout?** ✅ Resolved: 30-minute default, 5-min scan interval; configurable via server config in future.
+
+---
+
+## 6b. WebSocket Per-Session Filtering ✅ (new)
+
+Implemented in this commit:
+
+- `WSHub` tracks per-session client maps (`map[string]map[*Conn]struct{}`)
+- `/ws` and `ConnectWebSocket` accept `?session_id=<id>` query param
+- `BroadcastSession(sessionID, event)` routes events only to clients subscribed to that session
+- Global `BroadcastEvent()` remains for backward-compatible broadcast (clients without session filter still receive all events)
+- All task progress/completion events now use `BroadcastSession(task.SessionId, ...)` in the agent loop
+- Session creation and deletion events are also session-scoped
+
+Usage: `wss://host/ws?session_id=<session-id>` for session-specific stream; `wss://host/ws` for global broadcast.
 
 ---
 
@@ -203,11 +218,12 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 
 | File | Change | Status |
 |------|--------|--------|
-| `pkg/protocol/types.go` | Add `SessionId *string` field to `TaskCreateRequest` | ✅ Done |
-| `pkg/agent/loop.go` | Accept `sessionID` in `Submit()`, add `SessionId` to `Task` struct | ✅ Done |
-| `cmd/norman-server/main.go` | Auto-create session on first task; `DeleteSession` handler; `CreateSession` fix; idle cleanup loop | ✅ Done |
-| `internal/api/handlers.go` | `DeleteSession` in interface + wrapper method | ✅ Done |
+| `pkg/protocol/types.go` | Add `SessionId *string` field to `TaskCreateRequest`; add `SessionId` to `WebSocketEvent` | ✅ Done |
+| `pkg/agent/loop.go` | Accept `sessionID` in `Submit()`, add `SessionId` to `Task` struct; use `BroadcastSession()` for task events | ✅ Done |
+| `cmd/norman-server/main.go` | Auto-create session on first task; `DeleteSession` handler; `CreateSession` fix; idle cleanup loop; per-session WS filtering (`?session_id` query param, `BroadcastSession()`) | ✅ Done |
+| `internal/api/handlers.go` | `DeleteSession` in interface + wrapper method; `ConnectWebSocket` handler with session_id extraction | ✅ Done |
 | `pkg/memory/store.go` | `DeleteSession()` and `ListSessions()` methods | ✅ Done |
+| `cmd/norman/main.go` | Remove `switch`/`run`; add thin `sessions create/close`, `tasks send` wrappers; WS subscription with session filtering | ✅ Done |
 | `cmd/norman/main.go` | Remove `switch`/`run`; add thin `sessions create/close`, `tasks send` wrappers | ✅ Done |
 
 ---
@@ -226,6 +242,7 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 - ✅ `POST /api/sessions` endpoint now persists session and returns Session object (was previously a stub)
 - ✅ Idle timeout auto-cleanup goroutine (30 min default, 5 min scan interval)
 - ✅ CLI wrapper commands: `norman sessions create --workspace <name>`, `sessions close <id>`, `tasks send <prompt>`
+- ✅ **WS per-session filtering**: `/ws?session_id=<id>` query param; `BroadcastSession()` method; all task/session events scoped to session
 
 ---
 

@@ -266,7 +266,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 		if err != nil {
 			return err
 		}
-		wsHub.Add(conn)
+		// Extract optional session_id from query params for per-session filtering
+		sessionID := c.QueryParam("session_id")
+		wsHub.Add(conn, sessionID)
 		defer wsHub.Remove(conn)
 
 		for {
@@ -331,7 +333,7 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	s.wsHub.BroadcastSession(session.Id.String(), protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session created for workspace " + req.WorkspaceId),
 	})
@@ -545,7 +547,7 @@ func (s *server) createSessionInternal(workspaceID string, clientType string) (*
 		"created_at":   now.Format(time.RFC3339),
 	})
 
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	s.wsHub.BroadcastSession(id.String(), protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session created for workspace " + workspaceID),
 	})
@@ -777,7 +779,9 @@ func (s *server) ConnectWebSocket(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	s.wsHub.Add(conn)
+	// Extract optional session_id from query params for per-session filtering
+	sessionID := c.QueryParam("session_id")
+	s.wsHub.Add(conn, sessionID)
 	defer s.wsHub.Remove(conn)
 
 	for {
@@ -972,15 +976,17 @@ func resolveGatewayAddress() string {
 // --- WSHub (moved from stub to real implementation) ---
 
 type WSHub struct {
-	mu        sync.RWMutex
-	clients   map[*websocket.Conn]struct{}
-	broadcast chan []byte
+	mu            sync.RWMutex
+	clients       map[*websocket.Conn]struct{}          // global clients (no session filter)
+	sessionClients map[string]map[*websocket.Conn]struct{} // per-session client maps
+	broadcast     chan []byte
 }
 
 func NewWSHub() *WSHub {
 	return &WSHub{
-		clients:   make(map[*websocket.Conn]struct{}),
-		broadcast: make(chan []byte, 256),
+		clients:        make(map[*websocket.Conn]struct{}),
+		sessionClients: make(map[string]map[*websocket.Conn]struct{}),
+		broadcast:      make(chan []byte, 256),
 	}
 }
 
@@ -1015,16 +1021,45 @@ func (h *WSHub) BroadcastEvent(event protocol.WebSocketEvent) {
 	h.Broadcast(data)
 }
 
-func (h *WSHub) Add(c *websocket.Conn) {
+// BroadcastSession sends a WebSocketEvent only to clients subscribed to the given session_id.
+func (h *WSHub) BroadcastSession(sessionID string, event protocol.WebSocketEvent) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("ws marshal error: %v", err)
+		return
+	}
+	h.mu.RLock()
+	subs := h.sessionClients[sessionID]
+	for c := range subs {
+		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+			log.Printf("ws session write error for %s: %v", sessionID[:8], err)
+		}
+	}
+	h.mu.RUnlock()
+}
+
+// Add registers a WebSocket connection with an optional session_id.
+// If sessionID is empty, the client joins the global broadcast pool.
+func (h *WSHub) Add(c *websocket.Conn, sessionID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.clients[c] = struct{}{}
+	if sessionID != "" {
+		if h.sessionClients[sessionID] == nil {
+			h.sessionClients[sessionID] = make(map[*websocket.Conn]struct{})
+		}
+		h.sessionClients[sessionID][c] = struct{}{}
+	}
 }
 
+// Remove unregisters a WebSocket connection from both global and session pools.
 func (h *WSHub) Remove(c *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.clients, c)
+	for _, subs := range h.sessionClients {
+		delete(subs, c)
+	}
 }
 
 func (h *WSHub) writeLoop() {
