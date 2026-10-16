@@ -291,6 +291,69 @@ func (s *Store) ListSessions() []map[string]interface{} {
 	return sessions
 }
 
+// SaveTranscript writes a conversation transcript as markdown to the sessions directory.
+// Each entry is formatted as "## Turn N: [role]\n\ncontent\n" with timestamps.
+func (s *Store) SaveTranscript(sessionID string, entries []map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "sessions")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create sessions dir: %w", err)
+	}
+
+	var lines []string
+	lines = append(lines, "# Session Transcript\n")
+	lines = append(lines, fmt.Sprintf("**Session ID:** `%s`\n\n", sessionID))
+	lines = append(lines, fmt.Sprintf("**Created:** %s\n\n---\n\n", time.Now().Format(time.RFC3339)))
+
+	for i, entry := range entries {
+		role, _ := entry["role"].(string)
+		content, _ := entry["content"].(string)
+		timestamp, _ := entry["timestamp"].(string)
+
+		lines = append(lines, fmt.Sprintf("## Turn %d: %s", i+1, role))
+		if timestamp != "" {
+			lines = append(lines, fmt.Sprintf("\n\n*%s*\n", timestamp))
+		} else {
+			lines = append(lines, "\n")
+		}
+		lines = append(lines, content+"\n")
+		lines = append(lines, "\n---\n\n")
+	}
+
+	path := filepath.Join(dir, sessionID+".md")
+	tmp := path + ".tmp"
+	content := strings.Join(lines, "")
+	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write transcript: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename transcript: %w", err)
+	}
+
+	return nil
+}
+
+// LoadTranscript reads a session's markdown transcript from disk.
+func (s *Store) LoadTranscript(sessionID string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "sessions", sessionID+".md")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("transcript for session %s not found", sessionID)
+		}
+		return "", fmt.Errorf("read transcript: %w", err)
+	}
+
+	return string(data), nil
+}
+
 // Prune removes completed tasks older than the given age.
 func (s *Store) Prune(maxAge time.Duration) int {
 	s.mu.Lock()

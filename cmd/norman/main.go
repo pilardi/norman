@@ -1171,7 +1171,11 @@ func handleChat(args []string) {
 	// Enter REPL loop.
 	fmt.Println("\n=== Norman Chat Session ===")
 	fmt.Printf("Session: %s | Workspace resolved\n", sessionID)
-	fmt.Println("Type a message or use slash-commands (/help, /list tasks, /close, /new, /history [N])")
+	fmt.Println("Type a message or use slash-commands (/help, /list tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)")
+
+	// Track turns for transcript persistence.
+	var turns []map[string]interface{}
+	transcriptPath := filepath.Join(os.ExpandEnv("$HOME"), ".norman", "sessions", sessionID+".md")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -1185,7 +1189,13 @@ func handleChat(args []string) {
 			case "list", "tasks":
 				listEmergentTasks(sessionID)
 			case "close":
-				fmt.Println("Closing session...")
+				fmt.Println("Closing session... saving transcript.")
+				// Save full transcript to disk.
+				if err := saveTranscriptLocally(transcriptPath, turns); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save transcript: %v\n", err)
+				} else {
+					fmt.Printf("Transcript saved to %s\n", transcriptPath)
+				}
 				return
 			case "new":
 				// Start a new session (auto-create).
@@ -1209,6 +1219,21 @@ func handleChat(args []string) {
 				fmt.Printf("New session '%s' created.\n", sessionID)
 			case "history":
 				showHistory(sessionID, cmdArgs)
+			case "sessions":
+				listSessions()
+			case "switch":
+				if len(cmdArgs) == 0 {
+					fmt.Fprintln(os.Stderr, "Usage: /switch <session-id>")
+					continue
+				}
+				sessionID = cmdArgs[0]
+				fmt.Printf("Switched to session '%s'\n", sessionID[:8])
+			case "archive":
+				if len(cmdArgs) == 0 {
+					fmt.Fprintln(os.Stderr, "Usage: /archive <session-id>")
+					continue
+				}
+				archiveSession(cmdArgs[0])
 			default:
 				fmt.Fprintf(os.Stderr, "Unknown slash-command: /%s\n", cmd)
 			}
@@ -1257,6 +1282,27 @@ func handleChat(args []string) {
 			continue
 		}
 
+		// Track turn for transcript persistence.
+		responseText := ""
+		if resp, ok := result["response"].(string); ok {
+			responseText = resp
+		} else if msg, ok := result["message"].(string); ok {
+			responseText = msg
+		}
+
+		turns = append(turns, map[string]interface{}{
+			"role": "user",
+			"content": line,
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
+		if responseText != "" {
+			turns = append(turns, map[string]interface{}{
+				"role": "assistant",
+				"content": responseText,
+				"timestamp": time.Now().Format(time.RFC3339),
+			})
+		}
+
 		// Display agent response (structured or raw).
 		displayResponse(result)
 	}
@@ -1279,6 +1325,9 @@ Slash-commands (prefix with /):
   /close            Close the current session (save transcript)
   /new              Start a new chat session
   /history [N]      Show last N messages of current session
+  /sessions         List all active sessions
+  /switch <id>      Switch to another session by ID
+  /archive <id>     Archive a session's transcript
 
 Examples:
   norman chat --workspace my-project
@@ -1314,6 +1363,40 @@ func showHistory(sessionID string, args []string) {
 	fmt.Printf("\n--- Last %d messages ---\n%s\n---\n", n, string(body))
 }
 
+// listSessions lists all active sessions via GET /api/sessions.
+func listSessions() {
+	body, err := httpGet("/api/sessions")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
+		return
+	}
+	fmt.Printf("\n--- Active Sessions ---\n%s\n---\n", string(body))
+}
+
+// archiveSession archives a session's transcript via POST /api/sessions/{id}.
+func archiveSession(sessionID string) {
+	url := serverURL() + "/api/sessions/" + url.PathEscape(sessionID)
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating archive request: %v\n", err)
+		return
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", sessionID[:8], err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "HTTP %d archiving session %s: %s\n", resp.StatusCode, sessionID[:8], string(body))
+		return
+	}
+	fmt.Printf("Session '%s' archived successfully.\n", sessionID[:8])
+}
+
 // displayResponse formats and prints the agent's response.
 func displayResponse(result map[string]interface{}) {
 	if resp, ok := result["response"].(string); ok {
@@ -1339,6 +1422,46 @@ func expandHome(path string) (string, error) {
 		return filepath.Join(home, path[2:]), nil
 	}
 	return path, nil
+}
+
+// saveTranscriptLocally writes conversation turns as markdown to a local transcript file.
+func saveTranscriptLocally(path string, turns []map[string]interface{}) error {
+	var lines []string
+	lines = append(lines, "# Session Transcript\n")
+	lines = append(lines, fmt.Sprintf("**Session ID:** `%s`\n\n", filepath.Base(filepath.Dir(path))))
+	lines = append(lines, fmt.Sprintf("**Created:** %s\n\n---\n\n", time.Now().Format(time.RFC3339)))
+
+	for i, turn := range turns {
+		role, _ := turn["role"].(string)
+		content, _ := turn["content"].(string)
+		ts, _ := turn["timestamp"].(string)
+
+		lines = append(lines, fmt.Sprintf("## Turn %d: %s", i+1, role))
+		if ts != "" {
+			lines = append(lines, fmt.Sprintf("\n\n*%s*\n", ts))
+		} else {
+			lines = append(lines, "\n")
+		}
+		lines = append(lines, content+"\n")
+		lines = append(lines, "\n---\n\n")
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create transcript dir: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	content := strings.Join(lines, "")
+	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write transcript: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename transcript: %w", err)
+	}
+
+	return nil
 }
 
 // getConfigPath returns the standard config file path.

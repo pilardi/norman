@@ -255,6 +255,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 		return srv.SendMessage(c, c.Param("id"))
 	})
 
+	// Session history (Phase 3)
+	e.GET("/api/sessions/:id/history", func(c echo.Context) error {
+		return srv.SessionHistory(c, c.Param("id"))
+	})
+
 	// Notification endpoints (Step 8d)
 	e.GET("/api/notifications", srv.ListNotifications)
 	e.POST("/api/notifications", srv.CreateNotification)
@@ -446,6 +451,33 @@ func (s *server) DeleteSession(c echo.Context, id string) error {
 	})
 
 	return c.NoContent(http.StatusOK)
+}
+
+// SessionHistory returns the last N conversation turns for a session.
+func (s *server) SessionHistory(c echo.Context, id string) error {
+	limit := 10 // default
+	if q := c.QueryParam("limit"); q != "" {
+		fmt.Sscanf(q, "%d", &limit)
+	}
+
+	sessMap, err := s.store.LoadSession(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	timestamps := sessMap["turns"]
+	turns, ok := timestamps.([]interface{})
+	if !ok {
+		turns = []interface{}{}
+	}
+
+	start := 0
+	if len(turns) > limit {
+		start = len(turns) - limit
+	}
+
+	result := turns[start:]
+	return c.JSON(http.StatusOK, result)
 }
 
 func (s *server) ListSkills(c echo.Context) error {

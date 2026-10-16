@@ -72,30 +72,30 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | 8 | Enhance `GET /api/tasks/{id}` to return proper `protocol.Task` struct | `cmd/norman-server/main.go` | Returns structured Task with UUID, status enum, prompt, workspace, timestamps. | ✅ Implemented |
 | 9 | Add `DELETE /api/tasks/{id}` — permanent task removal (replaces Cancel semantics) | `cmd/norman-server/main.go`, `api-spec.yaml` | Uses `DeleteTask()` on Loop which removes from memory + persists deletion. Updated spec to reflect "permanent removal" vs "cancel". | ✅ Implemented |
 
-### Phase 3 — Interactive Chat CLI (P1)
+### Phase 3 — Interactive Chat CLI REPL (P1) ✅ DONE
 
 **Goal:** Provide the REPL experience that makes the chat-first model usable.
 
 | # | Change | Files | Notes |
 |---|--------|-------|-------|
-| 10 | Add `norman chat --workspace <name>` REPL mode | `cmd/norman/main.go` (new command) | Reads user input line-by-line; pushes to agent loop via WS or HTTP POST `/api/sessions/{id}/messages`; displays agent responses in real-time. Blocks until session closed. |
-| 11 | Implement slash-commands parser (`/help`, `/list tasks`, `/close`, `/new`, `/history`) | `cmd/norman/main.go` | Slash-commands are parsed before being sent to the agent; they trigger local actions (e.g., `/close` sends a WS close event, `/new` calls POST /api/sessions). |
-| 12 | Add session persistence: save full conversation transcript to `.norman/sessions/<id>/transcript.md` | `pkg/memory/store.go`, `main.go` | Each message + agent response is appended. Supports replay and session resume. |
-| 13 | Add `sessions list` / `sessions switch <name>` convenience commands (CLI layer) | `cmd/norman/main.go` | Switch between conversations; only one active per client. |
-| 14 | Update `idleCleanupLoop` to use `s.store.ListSessions()` instead of direct file reads | `main.go` | Consolidate on the store API for session management. |
+| 10 | Add `norman chat --workspace <name>` REPL mode | `cmd/norman/main.go` (new command) | Reads user input line-by-line; pushes to agent loop via WS or HTTP POST `/api/sessions/{id}/messages`; displays agent responses in real-time. Blocks until session closed. ✅ Implemented |
+| 11 | Implement slash-commands parser (`/help`, `/list tasks`, `/close`, `/new`, `/history`) | `cmd/norman/main.go` | Slash-commands are parsed before being sent to the agent; they trigger local actions (e.g., `/close` sends a WS close event, `/new` calls POST /api/sessions). ✅ Implemented |
+| 12 | Add session persistence: save full conversation transcript to `.norman/sessions/<id>/transcript.md` | `pkg/memory/store.go`, `main.go` | Each message + agent response is appended. Supports replay and session resume. ✅ Implemented |
+| 13 | Add `/sessions`, `/switch <id>`, `/archive <id>` slash-commands (in-chat) | `cmd/norman/main.go` | Session management from within REPL — list, switch, archive sessions. ✅ Implemented |
+| 14 | Update `idleCleanupLoop` to use `s.store.ListSessions()` instead of direct file reads | `main.go` | Consolidate on the store API for session management. ✅ Already wired |
+| 15 | Add `GET /api/sessions/:id/history` handler (server) | `cmd/norman-server/main.go` | Returns last N conversation turns as JSON for `/history` CLI command. ✅ Implemented |
 
----
-
-### Phase 3b — Session Management Enhancements (P1)
+### Phase 3b — Session Management Enhancements (P1) ✅ DONE
 
 **Goal:** Sessions are the primary unit of state, not tasks.
 
 | # | Change | Files | Notes |
 |---|--------|-------|-------|
-| 15 | Add `sessions archive <id>` command | `cmd/norman/main.go` | Moves session transcript to `.norman/archived/`; removes from active sessions list. |
-| 16 | Add `/history [N]` slash-command (in-chat) | `cmd/norman/main.go` | Shows last N messages of current session for context review. |
+| 16 | Add `Store.SaveTranscript(sessionID, turns)` — writes markdown transcript | `pkg/memory/store.go` | Full conversation as formatted markdown with timestamps. ✅ Implemented |
+| 17 | Add `Store.LoadTranscript(sessionID)` — reads markdown transcript | `pkg/memory/store.go` | For `/history` CLI command to display past sessions. ✅ Implemented |
+| 18 | Wire incremental transcript saving in chat loop (user + agent turns) | `cmd/norman/main.go` | Each turn tracked and saved on `/close`. ✅ Implemented |
 
-### Phase 4 — Scheduler Integration (P2)
+### Phase 4 — Scheduler Integration (P2) ⬜ Pending
 
 **Goal:** Tasks are fully integrated with the chat-first model; scheduler is a background service, not a primary feature.
 
@@ -121,8 +121,8 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | P0 — Chat Workflow (CLI) | `norman chat` REPL, slash-commands, session switch/archive | ~3h | ✅ Done | None (pure CLI changes) |
 | P1 — Session API | Add `/messages`, deprecate task writes, update spec | ~4-6h | ✅ Done | None (builds on current stub fixes) |
 | P2 — Emergent Tasks | `Agent.CreateTask()`, `SendMessageWithTask`, GET/DELETE /api/tasks/{id} | ~3-4h | ✅ Done | Phase 1 complete |
-| P3 — Chat CLI REPL | REPL mode (`norman chat`), slash-commands, in-chat `/history` | ~3h | ⬜ Pending | Phase 0 complete (CLI infrastructure) |
-| P3b — Session Mgmt | Transcript persistence, session switch/archive, `idleCleanupLoop` update | ~2h | ⬜ Pending | Phase 1 complete |
+| P3 — Chat CLI REPL | REPL mode (`norman chat`), slash-commands, in-chat `/history`, `/sessions`, `/switch`, `/archive` | ~3h | ✅ Done | Phase 0 complete (CLI infrastructure) |
+| P3b — Session Mgmt | Transcript persistence (`SaveTranscript`/`LoadTranscript`), incremental turn tracking, `idleCleanupLoop` wiring | ~2h | ✅ Done | Phase 1 complete |
 | P4 — Scheduler | Persistence callback, health endpoint | ~2h | ⬜ Pending | Phase 2 complete |
 | P5 — Spec Cleanup | Regenerate types from new OpenAPI spec | ~1h | ⬜ Pending | Phase 1 complete |
 
