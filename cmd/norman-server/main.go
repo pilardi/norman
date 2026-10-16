@@ -688,7 +688,7 @@ func (s *server) UnscheduleTask(c echo.Context, id string) error {
 }
 
 func (s *server) CancelTask(c echo.Context, id string) error {
-	err := s.loop.CancelTask(id)
+	err := s.loop.DeleteTask(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
@@ -696,7 +696,7 @@ func (s *server) CancelTask(c echo.Context, id string) error {
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &id,
-		Message: strPtr("Task cancelled"),
+		Message: strPtr("Task deleted"),
 	})
 
 	return c.NoContent(http.StatusOK)
@@ -708,14 +708,26 @@ func (s *server) GetTask(c echo.Context, id string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":         task.ID,
-		"status":     string(task.Status),
-		"prompt":     task.Prompt,
-		"output":     string(task.Output),
-		"error":      task.Error,
-		"created_at": task.CreatedAt.Format(time.RFC3339),
-	})
+	uuidVal, parseErr := uuid.Parse(id)
+	if parseErr != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid task ID: %v", parseErr)})
+	}
+
+	status := protocol.TaskStatus(task.Status)
+	resp := protocol.Task{
+		Id:         &uuidVal,
+		Status:     &status,
+		Prompt:     strPtr(task.Prompt),
+		WorkspaceId: strPtr(task.Workspace),
+		CreatedAt:  &task.CreatedAt,
+		Error:      strPtr(task.Error),
+	}
+
+	if len(task.Output) > 0 {
+		resp.OutputPath = strPtr(fmt.Sprintf("/tmp/task-%s.output", task.ID[:8]))
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 func (s *server) ReportTaskComplete(c echo.Context, id string) error {

@@ -25,6 +25,7 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | Stub implementations replaced | ✅ Done | `ListScheduledTasks`, `TailTaskLog`, `runCommand()` wired to OpenShell Exec() |
 | Requirements spec rewritten | ✅ Done | Chat-first, session-centric (269 lines vs ~700) |
 | Session API (POST /messages, GET /sessions/{id}) | ✅ Done | `api-spec.yaml`, `pkg/agent/loop.go`, `cmd/norman-server/main.go` |
+| Emergent Task Creation (CreateTask, SendMessageWithTask, GET/DELETE /api/tasks/{id}) | ✅ Done | `pkg/agent/loop.go`, `cmd/norman-server/main.go`, `api-spec.yaml` |
 
 ### Phase 0 — Interactive Chat CLI (P0)
 
@@ -60,16 +61,16 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | 4 | Update OpenAPI spec to reflect session-centric API | `openapi.yaml` (or equivalent) | Replace task-heavy endpoint list with session/message-focused routes. |
 | 5 | Wire chat message → agent loop processing | `pkg/agent/loop.go`, `main.go` | Message enters the planning loop; agent responds via WS push + returns structured result to client. |
 
-### Phase 2 — Emergent Task Creation (P1)
+### Phase 2 — Emergent Task Creation (P1) ✅ DONE
 
 **Goal:** Agent creates scheduled tasks during conversation based on user intent.
 
-| # | Change | Files | Notes |
-|---|--------|-------|-------|
-| 6 | Add `Agent.CreateTask(prompt string, config map[string]string) (*protocol.ScheduledTask, error)` to Loop | `pkg/agent/loop.go` | Agent calls this when it decides a recurring task is needed (e.g., user says "keep monitoring X"). Parses cron expression from natural language or uses defaults. |
-| 7 | Wire `CreateTask` into the planning loop's decision logic | `pkg/agent/loop.go` | After responding to a message, if the agent inferred a need for ongoing monitoring/reporting, it calls `CreateTask()` and pushes the result via WS event. |
-| 8 | Add `GET /api/tasks` (read-only convenience) | `main.go` | Returns all emergent scheduled tasks for the active session's workspace. No write endpoints — tasks are agent-created. |
-| 9 | Add `DELETE /api/tasks/{id}` (cancel an emergent task) | `main.go` | User can cancel; doesn't create tasks. |
+| # | Change | Files | Notes | Status |
+|---|--------|-------|-------|--------|
+| 6 | Add `Agent.CreateTask(prompt string, config map[string]string) (*Task, error)` to Loop | `pkg/agent/loop.go` | Agent calls this when it decides a recurring task is needed. Accepts config overrides (priority, workspace_id). Returns completed Task. | ✅ Implemented |
+| 7 | Wire `CreateTask` into SendMessage flow via `SendMessageWithTask` | `pkg/agent/loop.go` | When `createTask=true`, after processing the message, calls CreateTask internally and includes task_created/task_id in response. | ✅ Implemented |
+| 8 | Enhance `GET /api/tasks/{id}` to return proper `protocol.Task` struct | `cmd/norman-server/main.go` | Returns structured Task with UUID, status enum, prompt, workspace, timestamps. | ✅ Implemented |
+| 9 | Add `DELETE /api/tasks/{id}` — permanent task removal (replaces Cancel semantics) | `cmd/norman-server/main.go`, `api-spec.yaml` | Uses `DeleteTask()` on Loop which removes from memory + persists deletion. Updated spec to reflect "permanent removal" vs "cancel". | ✅ Implemented |
 
 ### Phase 3 — Interactive Chat CLI (P1)
 
@@ -115,15 +116,15 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 
 ## Priority Summary
 
-| Phase | Scope | Effort | Depends On |
-|-------|-------|--------|------------|
-| P0 — Chat Workflow (CLI) | `norman chat` REPL, slash-commands, session switch/archive | ~3h | None (pure CLI changes) |
-| P1 — Session API | Add `/messages`, deprecate task writes, update spec | ~4-6h | None (builds on current stub fixes) |
-| P2 — Emergent Tasks | `Agent.CreateTask()`, wire into planning loop | ~3-4h | Phase 1 complete |
-| P3 — Chat CLI REPL | REPL mode (`norman chat`), slash-commands, in-chat `/history` | ~3h | Phase 0 complete (CLI infrastructure) |
-| P3b — Session Mgmt | Transcript persistence, session switch/archive, `idleCleanupLoop` update | ~2h | Phase 1 complete |
-| P4 — Scheduler | Persistence callback, health endpoint | ~2h | Phase 2 complete |
-| P5 — Spec Cleanup | Regenerate types from new OpenAPI spec | ~1h | Phase 1 complete |
+| Phase | Scope | Effort | Status | Depends On |
+|-------|-------|--------|--------|------------|
+| P0 — Chat Workflow (CLI) | `norman chat` REPL, slash-commands, session switch/archive | ~3h | ✅ Done | None (pure CLI changes) |
+| P1 — Session API | Add `/messages`, deprecate task writes, update spec | ~4-6h | ✅ Done | None (builds on current stub fixes) |
+| P2 — Emergent Tasks | `Agent.CreateTask()`, `SendMessageWithTask`, GET/DELETE /api/tasks/{id} | ~3-4h | ✅ Done | Phase 1 complete |
+| P3 — Chat CLI REPL | REPL mode (`norman chat`), slash-commands, in-chat `/history` | ~3h | ⬜ Pending | Phase 0 complete (CLI infrastructure) |
+| P3b — Session Mgmt | Transcript persistence, session switch/archive, `idleCleanupLoop` update | ~2h | ⬜ Pending | Phase 1 complete |
+| P4 — Scheduler | Persistence callback, health endpoint | ~2h | ⬜ Pending | Phase 2 complete |
+| P5 — Spec Cleanup | Regenerate types from new OpenAPI spec | ~1h | ⬜ Pending | Phase 1 complete |
 
 **Total estimated effort:** ~18-20h (was ~13h; added ~5h for CLI REPL work)
 

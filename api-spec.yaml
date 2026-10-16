@@ -334,7 +334,7 @@ paths:
 
     delete:
       tags: [task]
-      summary: Cancel a running task
+      summary: Delete a task (permanent removal)
       operationId: cancelTask
       parameters:
         - name: id
@@ -343,12 +343,8 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          description: Task cancelled
-          content:
-            application/json:
-              $ref: "#/components/schemas/Task"
-
+        "204":
+          description: Task deleted
   /api/tasks/{id}/log:
     get:
       tags: [task]

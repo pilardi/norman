@@ -174,11 +174,11 @@ func (l *Loop) GetLogs(ctx context.Context, sandboxID string) ([]string, error) 
 
 // AgentResponse represents the structured response from processing a chat message.
 type AgentResponse struct {
-	SessionID  string   `json:"session_id"`
-	Response   string   `json:"response,omitempty"`
-	ToolsUsed  []string `json:"tools_used,omitempty"`
-	TaskCreated bool   `json:"task_created"`
-	TaskID     string   `json:"task_id,omitempty"`
+	SessionID   string   `json:"session_id"`
+	Response    string   `json:"response,omitempty"`
+	ToolsUsed   []string `json:"tools_used,omitempty"`
+	TaskCreated bool     `json:"task_created"`
+	TaskID      string   `json:"task_id,omitempty"`
 }
 
 // SendMessage processes a chat message synchronously and returns a structured response.
@@ -214,6 +214,34 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 	return resp, nil
 }
 
+// SendMessageWithTask processes a chat message and optionally creates an emergent task.
+// If createTask is true, the agent will also invoke CreateTask internally to spawn
+// a background task after processing the message. The response includes task_created
+// and task_id when applicable.
+func (l *Loop) SendMessageWithTask(ctx context.Context, sessionID string, message string, createTask bool) (*AgentResponse, error) {
+	// First, process the message normally.
+	resp, err := l.SendMessage(ctx, sessionID, message)
+	if err != nil {
+		return nil, err
+	}
+
+	// If task creation is requested, create an emergent task.
+	if createTask && resp.Response != "" {
+		task, err := l.CreateTask(ctx, message, map[string]string{
+			"priority": "normal",
+		})
+		if err != nil {
+			log.Printf("agent: failed to create emergent task: %v", err)
+			return resp, nil // non-fatal; return response without task info
+		}
+
+		resp.TaskCreated = true
+		resp.TaskID = task.ID
+	}
+
+	return resp, nil
+}
+
 // CancelTask marks a task for cancellation.
 func (l *Loop) CancelTask(taskID string) error {
 	l.mu.Lock()
@@ -229,6 +257,80 @@ func (l *Loop) CancelTask(taskID string) error {
 		return l.store.SaveTask(taskID, taskToMap(task))
 	}
 	return fmt.Errorf("task %s is not cancellable (status: %s)", taskID, task.Status)
+}
+
+// DeleteTask permanently removes a task from memory and persists the deletion.
+// Unlike CancelTask (which marks status=cancelled), this fully removes the task entry.
+func (l *Loop) DeleteTask(taskID string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	_, ok := l.tasks[taskID]
+	if !ok {
+		return fmt.Errorf("task %s not found", taskID)
+	}
+
+	delete(l.tasks, taskID)
+	return l.store.DeleteTask(taskID)
+}
+
+// CreateTask creates an emergent task programmatically from the agent's planning loop.
+// Unlike Submit (which is called by the server API layer), this is the agent-side
+// method for creating tasks during conversation processing. It accepts optional config
+// overrides (e.g., "priority", "timeout", "workspace_id") and returns the completed task.
+func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]string) (*Task, error) {
+	taskID := uuid.New().String()
+
+	// Resolve workspace from config or default to empty string.
+	workspaceID := ""
+	if ws, ok := config["workspace_id"]; ok && ws != "" {
+		workspaceID = ws
+	}
+
+	// Parse priority from config (default: "normal").
+	var priority protocol.TaskCreateRequestPriority
+	switch strings.ToLower(config["priority"]) {
+	case "low":
+		priority = protocol.TaskCreateRequestPriorityLow
+	case "high":
+		priority = protocol.TaskCreateRequestPriorityHigh
+	default:
+		priority = protocol.TaskCreateRequestPriorityNormal
+	}
+
+	task := &Task{
+		ID:        taskID,
+		Prompt:    prompt,
+		Status:    protocol.TaskStatusPending,
+		Workspace: workspaceID,
+		SessionId: "", // emergent tasks are not bound to a specific session
+		CreatedAt: time.Now(),
+	}
+
+	// Store priority as metadata for the task.
+	if err := l.store.SaveTask(taskID, map[string]interface{}{
+		"id":          taskID,
+		"prompt":      prompt,
+		"status":      string(task.Status),
+		"workspace":   workspaceID,
+		"priority":    string(priority),
+		"created_at":  task.CreatedAt.Format(time.RFC3339),
+	}); err != nil {
+		log.Printf("agent: failed to persist task %s: %v", taskID, err)
+	}
+
+	// Broadcast progress event (no session-specific filtering for emergent tasks).
+	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		TaskId:  &taskID,
+		Message: strPtr(fmt.Sprintf("Emergent task %s created", taskID[:8])),
+		Step:    intPtr(0),
+	})
+
+	// Execute synchronously (blocks until completion).
+	l.execute(ctx, task)
+
+	return task, nil
 }
 
 // execute runs the agent loop for a single task.
