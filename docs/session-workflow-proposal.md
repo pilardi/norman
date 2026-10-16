@@ -186,7 +186,8 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 
 - `switch <name>` removed from CLI
 - `run [prompt]` removed from CLI
-- `POST /api/tasks` gains optional `session_id` field (backward-compatible if omitted)
+- `POST /api/tasks` requires explicit `session_id` field (returns 400 if omitted)
+- `norman tasks send` now requires `--workspace <name> --session <id>` flags (no auto-resolution)
 - WS subscription is per-session, not a single global stream
 
 ---
@@ -234,7 +235,6 @@ Usage: `wss://host/ws?session_id=<session-id>` for session-specific stream; `wss
 - ✅ `SessionId` field added to `TaskCreateRequest`
 - ✅ `Loop.Submit()` accepts `sessionID` parameter
 - ✅ `Task` struct has `SessionId` field
-- ✅ Auto-create session logic in `CreateTask` handler
 - ✅ `DeleteSession` handler + route wired up
 - ✅ `ListSessions()` and `DeleteSession()` methods on store
 - ✅ `ServerInterface` and `ServerInterfaceWrapper` updated
@@ -243,6 +243,7 @@ Usage: `wss://host/ws?session_id=<session-id>` for session-specific stream; `wss
 - ✅ Idle timeout auto-cleanup goroutine (30 min default, 5 min scan interval)
 - ✅ CLI wrapper commands: `norman sessions create --workspace <name>`, `sessions close <id>`, `tasks send <prompt>`
 - ✅ **WS per-session filtering**: `/ws?session_id=<id>` query param; `BroadcastSession()` method; all task/session events scoped to session
+- ✅ **Explicit-only**: `tasks send` requires `--workspace <name> --session <id>`; server returns 400 if `session_id` missing (no auto-create, no guessing)
 
 ---
 
