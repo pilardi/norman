@@ -167,6 +167,11 @@ func (l *Loop) GetTask(taskID string) (*Task, error) {
 	return task, nil
 }
 
+// GetLogs returns the log lines for a sandbox/session by ID.
+func (l *Loop) GetLogs(ctx context.Context, sandboxID string) ([]string, error) {
+	return l.openShell.GetLogs(ctx, sandboxID)
+}
+
 // CancelTask marks a task for cancellation.
 func (l *Loop) CancelTask(taskID string) error {
 	l.mu.Lock()

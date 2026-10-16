@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/gorilla/websocket"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -40,6 +41,7 @@ type server struct {
 	loop       *agent.Loop
 	wsHub      *WSHub
 	notifier   *notify.Notifier
+	scheduler  *scheduler.Scheduler
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
 	mu        sync.Mutex
@@ -181,6 +183,12 @@ Workspace-level overrides (per-workspace in config.yaml):
 	// Initialize scheduler and wire results into loop's notification path
 	resultsCh := make(chan scheduler.TaskResult, 100) // buffered to avoid blocking
 	sched := scheduler.NewScheduler(resultsCh)
+
+	// Wire OpenShell Exec() into the scheduler's runCommand adapter
+	sched.WithRunCommand(func(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error) {
+		return openShellClient.RunCommand(ctx, provider, sandbox, cmd)
+	})
+
 	loop = loop.WithNotifier(notifier).WithResultsChannel(resultsCh)
 
 	// Build server with all dependencies
@@ -192,6 +200,7 @@ Workspace-level overrides (per-workspace in config.yaml):
 		loop:       loop,
 		wsHub:      wsHub,
 		notifier:   notifier,
+		scheduler:  sched,
 		workspaces: make(map[string]*protocol.Workspace),
 	}
 
@@ -618,7 +627,27 @@ func (s *server) ScheduleTask(c echo.Context) error {
 }
 
 func (s *server) ListScheduledTasks(c echo.Context) error {
-	return c.JSON(http.StatusOK, []map[string]interface{}{}) // stub for now
+	entries := s.scheduler.List()
+	result := make([]protocol.ScheduledTask, 0, len(entries))
+	for _, entry := range entries {
+		status := protocol.ScheduledTaskStatusActive
+		if !entry.Active {
+			status = protocol.ScheduledTaskStatusPaused
+		}
+		id, err := uuid.Parse(entry.ID)
+		if err != nil {
+			log.Printf("list scheduled tasks: bad UUID %q: %v", entry.ID, err)
+			continue
+		}
+		result = append(result, protocol.ScheduledTask{
+			Id:          &id,
+			Name:        &entry.Name,
+			Schedule:    &entry.Schedule,
+			Status:      &status,
+			WorkspaceId: nil, // scheduler tasks don't carry workspace context in MVP
+		})
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 func (s *server) UnscheduleTask(c echo.Context, id string) error {
@@ -682,15 +711,34 @@ func (s *server) TailTaskLog(c echo.Context, id string, params protocol.TailTask
 		lines = *params.Lines
 	}
 
+	task, err := s.loop.GetTask(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	logs, err := s.loop.GetLogs(c.Request().Context(), task.SessionId)
+	if err != nil {
+		log.Printf("tail task log: failed to get logs for session %s: %v", task.SessionId, err)
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"lines": lines,
+			"data":  []string{"no logs available"},
+		})
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &id,
 		Message: strPtr("Tail " + id[:8] + " log (last " + string(rune(lines)) + " lines)"),
 	})
 
+	// Return the last `lines` entries from logs
+	start := 0
+	if len(logs) > lines {
+		start = len(logs) - lines
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"lines": lines,
-		"data":  []string{"sandbox initialized", "ready"}, // stub
+		"data":  logs[start:],
 	})
 }
 
