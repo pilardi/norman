@@ -1171,7 +1171,7 @@ func handleChat(args []string) {
 	// Enter REPL loop.
 	fmt.Println("\n=== Norman Chat Session ===")
 	fmt.Printf("Session: %s | Workspace resolved\n", sessionID)
-	fmt.Println("Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive)")
+	fmt.Println("Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)")
 
 	// Track turns for transcript persistence.
 	var turns []map[string]interface{}
@@ -1327,7 +1327,7 @@ Slash-commands (prefix with /):
   /history [N]      Show last N messages of current session
   /sessions         List all active sessions
   /switch <id>      Switch to another session by ID
-  /archive          Archive current session's transcript
+  /archive <id>     Archive a session's transcript by session ID
 
 Examples:
   norman chat --workspace my-project
