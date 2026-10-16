@@ -491,27 +491,11 @@ func (s *server) CreateTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	// If no session_id provided, auto-create a session for this workspace
-	sessionID := ""
+	// session_id is required — no auto-creation or guessing
 	if req.SessionId == nil || *req.SessionId == "" {
-		sessions := s.store.ListSessions()
-		for _, sess := range sessions {
-			if wsID, ok := sess["workspace_id"].(string); ok && wsID == req.WorkspaceId {
-				sessionID = sess["id"].(string)
-				break
-			}
-		}
-		if sessionID == "" {
-			// Auto-create a new session
-			sess, err := s.createSessionInternal(req.WorkspaceId, "custom")
-			if err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			}
-			sessionID = sess.Id.String()
-		}
-	} else {
-		sessionID = *req.SessionId
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "session_id is required"})
 	}
+	sessionID := *req.SessionId
 
 	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId, sessionID)
 	if err != nil {

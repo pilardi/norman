@@ -838,15 +838,15 @@ func printTaskHelp() {
 Usage: norman tasks <subcommand> [args...]
 
 Subcommands:
-  send <prompt> [--session <id>]   Send a prompt into an active session (POST /api/tasks)
+  send <prompt> --workspace <name> --session <id>   Send a prompt into a specific session (POST /api/tasks)
   add <name> --schedule "<cron>"   Register a recurring task (e.g., "*/5 * * * *")
   list                             List registered tasks with next-run times
   remove <id>                      Unregister and stop a task
   run <id>                         Trigger a task immediately
 
 Examples:
-  norman tasks send "What files are in the attached directory?"
-  norman tasks send --session abc12345 "Explain this code"
+  norman tasks send "What files are in the attached directory?" --workspace myproject --session abc12345
+  norman tasks send "Explain this code" --workspace myproject --session abc12345
 
 Cron format: 6-field (second minute hour day month weekday) or 5-field (minute hour day month weekday)`)
 }
@@ -855,10 +855,14 @@ Cron format: 6-field (second minute hour day month weekday) or 5-field (minute h
 func handleTaskSend(args []string) {
 	prompt := ""
 	sessionID := ""
+	workspaceID := ""
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--session" && i+1 < len(args) {
 			sessionID = args[i+1]
+			i++
+		} else if args[i] == "--workspace" && i+1 < len(args) {
+			workspaceID = args[i+1]
 			i++
 		} else if prompt == "" {
 			prompt = args[i]
@@ -867,56 +871,25 @@ func handleTaskSend(args []string) {
 
 	if prompt == "" {
 		fmt.Fprintln(os.Stderr, "Error: 'send' requires a prompt argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman tasks send <prompt> [--session <id>]")
+		fmt.Fprintln(os.Stderr, "Usage: norman tasks send <prompt> --workspace <name> --session <id>")
 		os.Exit(1)
-	}
-
-	// Resolve workspace_id from the current session or first active session.
-	sessionsBody, err := httpGet("/api/sessions")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
-		os.Exit(1)
-	}
-
-	var sessions []map[string]interface{}
-	if err := json.Unmarshal(sessionsBody, &sessions); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing sessions response: %v\n", err)
-		os.Exit(1)
-	}
-
-	workspaceID := ""
-	if sessionID == "" && len(sessions) > 0 {
-		// Use the first active session's workspace_id
-		ws, ok := sessions[0]["workspace_id"].(string)
-		if ok {
-			workspaceID = ws
-		}
-	} else if sessionID != "" {
-		// Find the session to get its workspace_id
-		for _, s := range sessions {
-			sid, _ := s["id"].(string)
-			if sid == sessionID {
-				ws, ok := s["workspace_id"].(string)
-				if ok {
-					workspaceID = ws
-				}
-				break
-			}
-		}
 	}
 
 	if workspaceID == "" {
-		fmt.Fprintln(os.Stderr, "Error: no active sessions found. Create a session first with 'norman sessions create --workspace <name>'")
+		fmt.Fprintln(os.Stderr, "Error: '--workspace <name>' is required")
 		os.Exit(1)
 	}
 
-	// Build request body
+	if sessionID == "" {
+		fmt.Fprintln(os.Stderr, "Error: '--session <id>' is required")
+		os.Exit(1)
+	}
+
+	// Build request body (explicit, no auto-resolution)
 	body := map[string]string{
 		"prompt":       prompt,
 		"workspace_id": workspaceID,
-	}
-	if sessionID != "" {
-		body["session_id"] = sessionID
+		"session_id":   sessionID,
 	}
 
 	jsonBody, err := json.Marshal(body)
