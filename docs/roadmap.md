@@ -24,6 +24,7 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | WebSocket hub | ✅ Real | `WSHub` in main.go |
 | Stub implementations replaced | ✅ Done | `ListScheduledTasks`, `TailTaskLog`, `runCommand()` wired to OpenShell Exec() |
 | Requirements spec rewritten | ✅ Done | Chat-first, session-centric (269 lines vs ~700) |
+| Session API (POST /messages, GET /sessions/{id}) | ✅ Done | `api-spec.yaml`, `pkg/agent/loop.go`, `cmd/norman-server/main.go` |
 
 ### Phase 0 — Interactive Chat CLI (P0)
 
