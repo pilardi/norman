@@ -247,7 +247,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		Step:    intPtr(3),
 	})
 
-	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:8])
+	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:7])
 	sandboxID, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed

@@ -32,12 +32,12 @@ type ServerInterface interface {
 	// ArchiveSession Archive a session's task data for long-term storage
 	// (POST /api/sessions/archive)
 	ArchiveSession(ctx echo.Context) error
-	// GetSession Get session details
-	// (GET /api/sessions/{id})
-	GetSession(ctx echo.Context, id string) error
 	// DeleteSession Delete a session
 	// (DELETE /api/sessions/{id})
 	DeleteSession(ctx echo.Context, id string) error
+	// GetSession Get session details
+	// (GET /api/sessions/{id})
+	GetSession(ctx echo.Context, id string) error
 	// ListSkills List discovered skills (metadata only)
 	// (GET /api/skills)
 	ListSkills(ctx echo.Context) error
@@ -157,22 +157,6 @@ func (w *ServerInterfaceWrapper) ArchiveSession(ctx echo.Context) error {
 	return err
 }
 
-// GetSession converts echo context to params.
-func (w *ServerInterfaceWrapper) GetSession(ctx echo.Context) error {
-	var err error
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
-	}
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetSession(ctx, id)
-	return err
-}
-
 // DeleteSession converts echo context to params.
 func (w *ServerInterfaceWrapper) DeleteSession(ctx echo.Context) error {
 	var err error
@@ -186,6 +170,22 @@ func (w *ServerInterfaceWrapper) DeleteSession(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.DeleteSession(ctx, id)
+	return err
+}
+
+// GetSession converts echo context to params.
+func (w *ServerInterfaceWrapper) GetSession(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetSession(ctx, id)
 	return err
 }
 
@@ -469,6 +469,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/api/workspaces/:name", wrapper.GetWorkspace, options.OperationMiddlewares["getWorkspace"]...)
 	router.GET(options.BaseURL+"/api/sessions", wrapper.ListSessions, options.OperationMiddlewares["listSessions"]...)
 	router.POST(options.BaseURL+"/api/sessions", wrapper.CreateSession, options.OperationMiddlewares["createSession"]...)
+	router.DELETE(options.BaseURL+"/api/sessions/:id", wrapper.DeleteSession, options.OperationMiddlewares["deleteSession"]...)
 	router.GET(options.BaseURL+"/api/sessions/:id", wrapper.GetSession, options.OperationMiddlewares["getSession"]...)
 	router.POST(options.BaseURL+"/api/sessions/archive", wrapper.ArchiveSession, options.OperationMiddlewares["archiveSession"]...)
 	router.GET(options.BaseURL+"/api/notifications", wrapper.ListNotifications, options.OperationMiddlewares["listNotifications"]...)

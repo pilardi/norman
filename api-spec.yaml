@@ -154,6 +154,19 @@ paths:
                 $ref: "#/components/schemas/Session"
         "404":
           description: Session not found
+    delete:
+      tags: [session]
+      summary: Delete a session
+      operationId: deleteSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Session deleted
 
   /api/sessions/archive:
     post:
@@ -516,6 +529,9 @@ components:
         id:
           type: string
           format: uuid
+        name:
+          type: string
+          description: Human-readable session name
         workspace_id:
           type: string
         status:
@@ -527,11 +543,14 @@ components:
 
     TaskCreateRequest:
       type: object
-      required: [workspace_id, prompt]
+      required: [workspace_id, prompt, session_id]
       properties:
         workspace_id:
           type: string
           description: Target workspace for this task
+        session_id:
+          type: string
+          description: Target session for this task
         prompt:
           type: string
           description: Natural language task description
@@ -709,6 +728,9 @@ components:
             - session_compressed
             - context_budget_warning
         task_id:
+          type: string
+          nullable: true
+        session_id:
           type: string
           nullable: true
         message:

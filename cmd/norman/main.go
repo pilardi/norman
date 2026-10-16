@@ -871,7 +871,7 @@ func handleTaskSend(args []string) {
 
 	if prompt == "" {
 		fmt.Fprintln(os.Stderr, "Error: 'send' requires a prompt argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman tasks send <prompt> --workspace <name> --session <id>")
+		fmt.Fprintln(os.Stderr, "Usage: norman tasks send <prompt> --workspace <name> [--session <id>]")
 		os.Exit(1)
 	}
 
@@ -880,12 +880,61 @@ func handleTaskSend(args []string) {
 		os.Exit(1)
 	}
 
+	// If no session ID provided, auto-create one via POST /api/sessions.
 	if sessionID == "" {
-		fmt.Fprintln(os.Stderr, "Error: '--session <id>' is required")
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "No --session provided — auto-creating session for workspace '%s'...\n", workspaceID)
+
+		// Resolve workspace name → ID.
+		workspacesBody, err := httpGet("/api/workspaces")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
+			os.Exit(1)
+		}
+		var workspaces []map[string]interface{}
+		if err := json.Unmarshal(workspacesBody, &workspaces); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing workspaces: %v\n", err)
+			os.Exit(1)
+		}
+		foundID := ""
+		for _, w := range workspaces {
+			name, _ := w["name"].(string)
+			if name == workspaceID {
+				idStr, _ := w["id"].(string)
+				foundID = idStr
+				break
+			}
+		}
+		if foundID == "" {
+			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list'.\n", workspaceID)
+			os.Exit(1)
+		}
+
+		// POST /api/sessions to create a real session.
+		sessBody := map[string]string{"workspace_id": foundID, "client_type": "cli"}
+		sessJSON, _ := json.Marshal(sessBody)
+		sessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(sessJSON))
+		sessReq.Header.Set("Content-Type", "application/json")
+		sessResp, err := (&http.Client{Timeout: 10 * time.Second}).Do(sessReq)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to auto-create session: %v\n", err)
+			os.Exit(1)
+		}
+		defer sessResp.Body.Close()
+		if sessResp.StatusCode >= 400 {
+			bodyBytes, _ := io.ReadAll(sessResp.Body)
+			fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", sessResp.StatusCode, string(bodyBytes))
+			os.Exit(1)
+		}
+		var sess map[string]interface{}
+		if err := json.NewDecoder(sessResp.Body).Decode(&sess); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
+			os.Exit(1)
+		}
+		sessionID = sess["id"].(string)
+		fmt.Printf("Auto-created session '%s' for workspace '%s'\n", sessionID, workspaceID)
 	}
 
-	// Build request body (explicit, no auto-resolution)
+	// Build request body.
 	body := map[string]string{
 		"prompt":       prompt,
 		"workspace_id": workspaceID,
@@ -927,7 +976,7 @@ func handleTaskSend(args []string) {
 	}
 
 	taskID, _ := result["id"].(string)
-	fmt.Printf("Task '%s' submitted (session=%s)\n", taskID[:8], sessionID[:8])
+	fmt.Printf("Task '%s' submitted (session=%s)\n", taskID, sessionID)
 }
 
 func handleTaskAdd(args []string) {

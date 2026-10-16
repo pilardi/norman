@@ -366,10 +366,13 @@ type ScheduledTaskRequest struct {
 
 // Session defines model for Session.
 type Session struct {
-	CreatedAt   *time.Time          `json:"created_at,omitempty"`
-	Id          *openapi_types.UUID `json:"id,omitempty"`
-	Status      *SessionStatus      `json:"status,omitempty"`
-	WorkspaceId *string             `json:"workspace_id,omitempty"`
+	CreatedAt *time.Time          `json:"created_at,omitempty"`
+	Id        *openapi_types.UUID `json:"id,omitempty"`
+
+	// Name Human-readable session name
+	Name        *string        `json:"name,omitempty"`
+	Status      *SessionStatus `json:"status,omitempty"`
+	WorkspaceId *string        `json:"workspace_id,omitempty"`
 }
 
 // SessionStatus defines model for Session.Status.
@@ -458,12 +461,11 @@ type TaskCreateRequest struct {
 	// Prompt Natural language task description
 	Prompt string `json:"prompt"`
 
+	// SessionId Target session for this task
+	SessionId string `json:"session_id"`
+
 	// WorkspaceId Target workspace for this task
 	WorkspaceId string `json:"workspace_id"`
-
-	// SessionId Binds the task to a session for conversation continuity.
-	// If omitted, the task is stateless (no conversation context shared).
-	SessionId *string `json:"session_id,omitempty"`
 }
 
 // TaskCreateRequestPriority defines model for TaskCreateRequest.Priority.

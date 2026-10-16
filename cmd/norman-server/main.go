@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -311,11 +312,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 // --- Real handler implementations ---
 
 func (s *server) ListSessions(c echo.Context) error {
-	tasks, err := s.store.ListTasks()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	sessions := s.store.ListSessions()
+	if len(sessions) == 0 {
+		return c.JSON(http.StatusOK, []map[string]interface{}{})
 	}
-	return c.JSON(http.StatusOK, tasks)
+	return c.JSON(http.StatusOK, sessions)
 }
 
 func (s *server) CreateSession(c echo.Context) error {
@@ -379,9 +380,27 @@ func (s *server) GetSession(c echo.Context, id string) error {
 }
 
 func (s *server) DeleteSession(c echo.Context, id string) error {
-	err := s.store.DeleteSession(id)
+	// Support both short prefix and full UUID
+	var fullPath string
+	dir := filepath.Join(s.store.Base(), "sessions")
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), id+"-") || entry.Name() == id+".json" {
+			fullPath = filepath.Join(dir, entry.Name())
+			break
+		}
+	}
+
+	if fullPath == "" {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
+	}
+
+	if err := os.Remove(fullPath); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -492,10 +511,15 @@ func (s *server) CreateTask(c echo.Context) error {
 	}
 
 	// session_id is required — no auto-creation or guessing
-	if req.SessionId == nil || *req.SessionId == "" {
+	if req.SessionId == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "session_id is required"})
 	}
-	sessionID := *req.SessionId
+	sessionID := req.SessionId
+
+	// Validate session exists.
+	if _, err := s.store.GetSession(sessionID); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": fmt.Sprintf("session %s not found", sessionID)})
+	}
 
 	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId, sessionID)
 	if err != nil {
@@ -516,15 +540,18 @@ func (s *server) createSessionInternal(workspaceID string, clientType string) (*
 	id := uuid.New()
 	now := time.Now()
 	status := protocol.SessionStatus("active")
+	sessionName := id.String()[:8] + "-session"
 	session := &protocol.Session{
-		Id:        &id,
+		Id:          &id,
+		Name:        strPtr(sessionName),
 		WorkspaceId: strPtr(workspaceID),
-		Status:    &status,
-		CreatedAt: &now,
+		Status:      &status,
+		CreatedAt:   &now,
 	}
 
 	s.store.SaveSession(id.String(), map[string]interface{}{
 		"id":           id.String(),
+		"name":         sessionName,
 		"workspace_id": workspaceID,
 		"client_type":  clientType,
 		"status":       "active",

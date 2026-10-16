@@ -142,12 +142,25 @@ func NewClientWithTLS(gateway string, tlsCfg *v1.TLSConfig) (*Client, error) {
 
 // CreateSandbox creates a persistent sandbox (session) for the given workspace.
 func (c *Client) CreateSandbox(ctx context.Context, workspace, name string) (*v1.Sandbox, error) {
+	// Try template-based creation first
 	sandbox, err := c.client.CreateSandboxFromTemplate(
 		ctx,
 		defaultProvider,
 		name,
-		"", // empty template = use default
+		"default", // template name
 		nil,
+		nil,
+	)
+	if err == nil {
+		return sandbox, nil
+	}
+
+	// Fall back to inline spec creation if template not found
+	sandbox, err = c.client.Sandboxes().Create(
+		ctx,
+		defaultProvider,
+		name,
+		&v1.SandboxSpec{}, // empty inline spec (uses default image)
 		nil,
 	)
 	if err != nil {

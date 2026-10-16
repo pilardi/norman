@@ -1,7 +1,7 @@
 # Session Workflow Proposal
 
-> **Status:** Partially Implemented (see ✅ / ⬜ markers below)  
-> **Date:** 2026-10-15  
+> **Status:** Fully Implemented (all ⬜ → ✅ as of 2026-10-16)  
+> **Date:** 2026-10-16  
 > **Author:** Pablo (via goose)
 
 ---
@@ -33,7 +33,7 @@ The architectural insight: **a session is an interactive conversation about a pa
                                                    completion/failure
 ```
 
-### 2.1 Session Creation ⬜ (auto-created on first task; explicit `POST /api/sessions` not yet implemented)
+### 2.1 Session Creation ✅
 
 **Request:** `POST /api/sessions`
 ```json
@@ -46,7 +46,9 @@ The architectural insight: **a session is an interactive conversation about a pa
 - `workspace_id`: binds the session to a specific workspace's OpenShell sandbox.
 - `client_type`: `"cli"`, `"web_ui"`, or `"custom"` (programmatic SDK/API usage).
 
-**Response:** `SessionId` + initial status (`"created"`). ⬜
+**Response:** `SessionId` + initial status (`"active"`). ✅ (fully implemented — persists session, returns full `Session` object)
+
+**Auto-create on `tasks send`:** If `--session <id>` is omitted from `norman tasks send`, the CLI automatically calls `POST /api/sessions` to create a real session and uses its returned ID. The user never needs to manually type a session ID.
 
 ### 2.2 WebSocket Subscription ✅
 
@@ -80,8 +82,8 @@ Each call creates a new task *within* the session's context. The agent loop:
 
 ### 2.4 Session Termination
 
-- **Explicit:** `DELETE /api/sessions/<id>` ✅ (implemented, wired up)
-- **Implicit:** After N minutes of idle (configurable), the session auto-cleans up. ⬜ (not yet implemented)
+- **Explicit:** `DELETE /api/sessions/<id>` ✅ (implemented, wired up via `handleSessionClose`)
+- **Implicit:** After N minutes of idle (configurable), the session auto-cleans up. ✅ (`idleCleanupLoop` goroutine, 30 min default, 5 min scan interval)
 
 ---
 
@@ -103,7 +105,7 @@ This allows tasks from the same session to share conversation context (growing w
 
 | Method | Path | Description | Status |
 |--------|------|-------------|--------|
-| POST | `/api/sessions` | Create a new session bound to a workspace | ⬜ (auto-created on demand) |
+| POST | `/api/sessions` | Create a new session bound to a workspace | ✅ (fully implemented, persists session) |
 | GET | `/api/sessions` | List active sessions (optionally filtered by `workspace_id`) | ✅ |
 | DELETE | `/api/sessions/:id` | Terminate a session | ✅ |
 | GET | `/ws?session_id=:id` | WebSocket subscription for real-time events | ✅ |
@@ -150,16 +152,16 @@ for {
 closeSession(session.ID)
 ```
 
-### 4.2 CLI Client (Simplified) ⬜ (not yet implemented)
+### 4.2 CLI Client (Simplified) ✅ (fully implemented, wired to REST endpoints)
 
-The `norman` binary no longer has `switch` or `run`. Proposed CLI wrappers:
+The `norman` binary no longer has `switch` or `run`. CLI wrappers are implemented:
 
 ```bash
-# Create a session for a workspace
+# Create a session for a workspace (explicit)
 norman sessions create --workspace my-project
 
-# Send prompts into that session (the client handles WS internally)
-norman tasks send "What files are in the attached directory?"
+# Send prompts into that session — auto-creates session if --session omitted
+norman tasks send "What files are in the attached directory?" --workspace my-project
 
 # List active sessions
 norman sessions list
@@ -168,7 +170,7 @@ norman sessions list
 norman sessions close <session-id>
 ```
 
-The CLI becomes a thin wrapper around the REST API + WS subscription, not a separate execution engine.
+The CLI is a thin wrapper around the REST API + WS subscription, not a separate execution engine. Each command delegates to `POST/GET/DELETE /api/sessions` or `POST /api/tasks`. If `--session` is omitted from `tasks send`, a real session is auto-created via `POST /api/sessions`.
 
 ---
 
@@ -194,7 +196,7 @@ The CLI becomes a thin wrapper around the REST API + WS subscription, not a sepa
 
 ## 6. Open Questions for Review ✅ (all resolved)
 
-1. **Auto-create sessions?** ✅ Resolved: tasks auto-create a session for the workspace if none exists. Explicit `POST /api/sessions` remains as an option.
+1. **Auto-create sessions?** ✅ Resolved: if `--session <id>` is omitted from `tasks send`, the CLI auto-creates a real session via `POST /api/sessions`. Explicit `norman sessions create --workspace <name>` remains as an option for manual control.
 2. **Conversation continuity?** ✅ Resolved: `session_id` field on `TaskCreateRequest` enables growing context window tied to a session.
 3. **Idle timeout?** ✅ Resolved: 30-minute default, 5-min scan interval; configurable via server config in future.
 
@@ -226,6 +228,7 @@ Usage: `wss://host/ws?session_id=<session-id>` for session-specific stream; `wss
 | `pkg/memory/store.go` | `DeleteSession()` and `ListSessions()` methods | ✅ Done |
 | `cmd/norman/main.go` | Remove `switch`/`run`; add thin `sessions create/close`, `tasks send` wrappers; WS subscription with session filtering | ✅ Done |
 | `cmd/norman/main.go` | Remove `switch`/`run`; add thin `sessions create/close`, `tasks send` wrappers | ✅ Done |
+| `pkg/memory/store.go` | Add `GetSession(sessionID string)` method for validation | ✅ Done |
 
 ---
 
@@ -243,8 +246,11 @@ Usage: `wss://host/ws?session_id=<session-id>` for session-specific stream; `wss
 - ✅ Idle timeout auto-cleanup goroutine (30 min default, 5 min scan interval)
 - ✅ CLI wrapper commands: `norman sessions create --workspace <name>`, `sessions close <id>`, `tasks send <prompt>`
 - ✅ **WS per-session filtering**: `/ws?session_id=<id>` query param; `BroadcastSession()` method; all task/session events scoped to session
-- ✅ **Explicit-only**: `tasks send` requires `--workspace <name> --session <id>`; server returns 400 if `session_id` missing (no auto-create, no guessing)
+- ✅ **Explicit-only**: `tasks send` requires `--workspace <name>`; `--session <id>` is optional — auto-creates a real session if omitted. Server returns 400 if `session_id` missing AND 404 if the provided ID doesn't exist.
+- ✅ **Session validation**: `CreateTask` calls `GetSession()` before submitting; non-existent IDs return HTTP 404 with error message.
+- ✅ **CLI ↔ REST wiring**: `handleSessionCreate` → `POST /api/sessions`; `handleTaskSend` → `POST /api/tasks`; `handleSessionsList` → `GET /api/sessions`; `handleSessionClose` → `DELETE /api/sessions/:id`
+- ✅ **Full session IDs in CLI output**: no more truncation to 8 chars; shows full UUID (e.g. `d65569d0-f8e1-4f05-b407-dfaed72ff108`)
 
 ---
 
-*This is a living document. Revisions welcome as implementation progresses.*
+*All ⬜ items resolved (2026-10-16). All endpoints wired, CLI ↔ REST fully connected.*

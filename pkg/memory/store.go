@@ -620,3 +620,22 @@ func (s *Store) Stats() (taskCount, sessionCount int, planCount int, workspaceCo
 
 	return taskCount, sessionCount, planCount, workspaceCount, nil
 }
+
+// GetSession returns a session by ID. Returns error if not found.
+func (s *Store) GetSession(sessionID string) (map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "sessions", sessionID+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("session %s not found: %w", sessionID, err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("invalid session data for %s: %w", sessionID, err)
+	}
+
+	return result, nil
+}

@@ -147,6 +147,11 @@ type ClientInterface interface {
 	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
 	ArchiveSession(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteSession Delete a session
+	//
+	// Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
+	DeleteSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSession Get session details
 	//
 	// Corresponds with GET /api/sessions/{id} (the `GetSession` operationId).
@@ -420,6 +425,21 @@ func (c *Client) ArchiveSessionWithBody(ctx context.Context, contentType string,
 // Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
 func (c *Client) ArchiveSession(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewArchiveSessionRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSession Delete a session
+//
+// Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
+func (c *Client) DeleteSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSessionRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -999,6 +1019,40 @@ func NewArchiveSessionRequestWithBody(server string, contentType string, body io
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSessionRequest constructs an http.Request for the DeleteSession method
+func NewDeleteSessionRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -1778,6 +1832,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
 	ArchiveSessionWithResponse(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error)
 
+	// DeleteSessionWithResponse Delete a session
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
+	DeleteSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error)
+
 	// GetSessionWithResponse Get session details
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2174,6 +2235,40 @@ func (r ArchiveSessionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ArchiveSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSessionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2993,6 +3088,19 @@ func (c *ClientWithResponses) ArchiveSessionWithResponse(ctx context.Context, bo
 	return ParseArchiveSessionResponse(rsp)
 }
 
+// DeleteSessionWithResponse Delete a session
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
+func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error) {
+	rsp, err := c.DeleteSession(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSessionResponse(rsp)
+}
+
 // GetSessionWithResponse Get session details
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3425,6 +3533,22 @@ func ParseArchiveSessionResponse(rsp *http.Response) (*ArchiveSessionResponse, e
 	}
 
 	response := &ArchiveSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSessionResponse parses an HTTP response from a DeleteSessionWithResponse call
+func ParseDeleteSessionResponse(rsp *http.Response) (*DeleteSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSessionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
