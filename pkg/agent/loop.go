@@ -172,6 +172,48 @@ func (l *Loop) GetLogs(ctx context.Context, sandboxID string) ([]string, error) 
 	return l.openShell.GetLogs(ctx, sandboxID)
 }
 
+// AgentResponse represents the structured response from processing a chat message.
+type AgentResponse struct {
+	SessionID  string   `json:"session_id"`
+	Response   string   `json:"response,omitempty"`
+	ToolsUsed  []string `json:"tools_used,omitempty"`
+	TaskCreated bool   `json:"task_created"`
+	TaskID     string   `json:"task_id,omitempty"`
+}
+
+// SendMessage processes a chat message synchronously and returns a structured response.
+// This is the primary interface for the chat-first agent model.
+func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string) (*AgentResponse, error) {
+	taskID := uuid.New().String()
+
+	task := &Task{
+		ID:        taskID,
+		Prompt:    message,
+		Status:    protocol.TaskStatusPending,
+		SessionId: sessionID,
+		CreatedAt: time.Now(),
+	}
+
+	l.mu.Lock()
+	l.tasks[taskID] = task
+	l.mu.Unlock()
+
+	// Process the message synchronously via execute (blocks until completion).
+	l.execute(ctx, task)
+
+	// Build response.
+	resp := &AgentResponse{
+		SessionID: sessionID,
+		Response:  string(task.Output),
+	}
+
+	if task.Error != "" {
+		resp.Response = fmt.Sprintf("Error: %s", task.Error)
+	}
+
+	return resp, nil
+}
+
 // CancelTask marks a task for cancellation.
 func (l *Loop) CancelTask(taskID string) error {
 	l.mu.Lock()

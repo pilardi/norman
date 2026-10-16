@@ -137,7 +137,7 @@ paths:
   /api/sessions/{id}:
     get:
       tags: [session]
-      summary: Get session details
+      summary: Get session status and details
       operationId: getSession
       parameters:
         - name: id
@@ -147,13 +147,41 @@ paths:
             type: string
       responses:
         "200":
-          description: Session details
+          description: Session status and details
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Session"
+                $ref: "#/components/schemas/SessionStatus"
         "404":
           description: Session not found
+    post:
+      tags: [session]
+      summary: Send a message to an active session (chat input)
+      operationId: sendMessage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "200":
+          description: Agent response (structured)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Session not found or inactive
+
     delete:
       tags: [session]
       summary: Delete a session
@@ -243,8 +271,9 @@ paths:
 
   /api/tasks:
     post:
+      deprecated: true
       tags: [task]
-      summary: Create a new task (user prompt)
+      summary: Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
       operationId: createTask
       requestBody:
         required: true
@@ -591,6 +620,89 @@ components:
         retry_count:
           type: integer
           default: 0
+
+    SendMessageRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: User message to send to the agent
+        attach_tools:
+          type: boolean
+          default: true
+          description: Whether to allow tool use in response
+
+    AgentResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Session ID that processed the message
+        response:
+          type: string
+          description: Agent's text response
+        tools_used:
+          type: array
+          items:
+            type: string
+          description: List of tool names invoked
+        task_created:
+          type: boolean
+          description: Whether an emergent task was created
+        task_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of newly created task (if task_created is true)
+        token_usage:
+          $ref: "#/components/schemas/TokenUsage"
+
+    SessionStatus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Session identifier
+        name:
+          type: string
+          description: Human-readable session name
+        workspace_id:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, crashed, recovered]
+        created_at:
+          type: string
+          format: date-time
+        last_message_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the last message sent to this session
+        token_budget_used:
+          type: integer
+          description: Tokens consumed in current session
+        token_budget_remaining:
+          type: integer
+          description: Remaining tokens in budget
+        active_skills:
+          type: array
+          items:
+            type: string
+          description: Currently activated skills
+
+    TokenUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
 
     TaskCompletion:
       type: object

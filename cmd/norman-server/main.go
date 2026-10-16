@@ -250,6 +250,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 	// Session archive endpoint (Step 7d)
 	e.POST("/api/sessions/archive", srv.ArchiveSession)
 
+	// Chat-first interface: send a message to an active session (Phase 1)
+	e.POST("/api/sessions/:id/messages", func(c echo.Context) error {
+		return srv.SendMessage(c, c.Param("id"))
+	})
+
 	// Notification endpoints (Step 8d)
 	e.GET("/api/notifications", srv.ListNotifications)
 	e.POST("/api/notifications", srv.CreateNotification)
@@ -386,6 +391,29 @@ func (s *server) GetSession(c echo.Context, id string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, data)
+}
+
+// SendMessage handles POST /api/sessions/{id}/messages — the chat-first interface.
+func (s *server) SendMessage(c echo.Context, id string) error {
+	var req struct {
+		Message    string `json:"message"`
+		AttachTools bool   `json:"attach_tools"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.Message == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message is required"})
+	}
+
+	ctx := c.Request().Context()
+	resp, err := s.loop.SendMessage(ctx, id, req.Message)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 func (s *server) DeleteSession(c echo.Context, id string) error {
