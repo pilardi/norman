@@ -126,7 +126,7 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | P3 — Chat CLI REPL | REPL mode (`norman chat`), slash-commands, in-chat `/history`, `/sessions`, `/switch`, `/archive` | ~3h | ✅ Done | Phase 0 complete (CLI infrastructure) |
 | P3b — Session Mgmt | Transcript persistence (`SaveTranscript`/`LoadTranscript`), incremental turn tracking, `idleCleanupLoop` wiring | ~2h | ✅ Done | Phase 1 complete |
 | P4 — Scheduler | Persistence callback, health endpoint | ~2h | ✅ Done | Phase 2 complete |
-| P5 — Spec Cleanup | Regenerate types from new OpenAPI spec | ~1h | ⬜ Pending | Phase 1 complete |
+| P5 — Spec Cleanup | Regenerate types from updated OpenAPI spec (add history, health endpoints; fix SessionStatus) | ~2h | ✅ Done | Phase 4 complete |
 
 **Total estimated effort:** ~18-20h (was ~13h; added ~5h for CLI REPL work)
 
