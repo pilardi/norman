@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -196,6 +197,8 @@ func main() {
 		handleSessions(args)
 	case "tasks":
 		handleTasks(args)
+	case "chat":
+		handleChat(args[1:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -229,6 +232,7 @@ Commands:
   tasks list                           List registered tasks
   tasks remove <id>                    Unregister a task
   tasks run <id>                       Trigger a task immediately
+  chat --workspace <name>              Enter interactive REPL chat mode
 
 Use "norman help <command>" for detailed help on a specific command.`)
 }
@@ -1043,6 +1047,286 @@ func handleTaskRun(args []string) {
 
 	id := args[0]
 	fmt.Printf("Triggered task '%s' immediately\n", id)
+}
+
+// parseSlashCommand checks if a line is a slash-command and returns the command + args.
+// Returns (command, args, isSlash) — only slash-commands trigger local actions.
+func parseSlashCommand(line string) (string, []string, bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "/") {
+		return "", nil, false
+	}
+	parts := strings.Fields(line[1:]) // strip leading '/' and split
+	if len(parts) == 0 {
+		return "", nil, false
+	}
+	return parts[0], parts[1:], true
+}
+
+// handleChat implements the interactive REPL chat mode.
+// Usage: norman chat --workspace <name> [--session <id>]
+func handleChat(args []string) {
+	workspaceID := ""
+	sessionID := ""
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--workspace" && i+1 < len(args) {
+			workspaceID = args[i+1]
+			i++
+		} else if args[i] == "--session" && i+1 < len(args) {
+			sessionID = args[i+1]
+			i++
+		} else if args[i] == "--help" || args[i] == "-h" {
+			printChatHelp()
+			return
+		} else {
+			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
+			printChatHelp()
+			os.Exit(1)
+		}
+	}
+
+	if workspaceID == "" && sessionID == "" {
+		fmt.Fprintln(os.Stderr, "Error: '--workspace <name>' or '--session <id>' is required")
+		printChatHelp()
+		os.Exit(1)
+	}
+
+	// If only workspace provided, find or create a session.
+	if workspaceID != "" && sessionID == "" {
+		fmt.Printf("Resolving workspace '%s'...\n", workspaceID)
+		workspacesBody, err := httpGet("/api/workspaces")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
+			os.Exit(1)
+		}
+		var workspaces []map[string]interface{}
+		if err := json.Unmarshal(workspacesBody, &workspaces); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing workspaces response: %v\n", err)
+			os.Exit(1)
+		}
+		foundID := ""
+		for _, w := range workspaces {
+			name, _ := w["name"].(string)
+			if name == workspaceID {
+				idStr, _ := w["id"].(string)
+				foundID = idStr
+				break
+			}
+		}
+		if foundID == "" {
+			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list'.\n", workspaceID)
+			os.Exit(1)
+		}
+
+		// Check if an active session already exists for this workspace.
+		sessionsBody, err := httpGet("/api/sessions")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
+			os.Exit(1)
+		}
+		var sessions []map[string]interface{}
+		if err := json.Unmarshal(sessionsBody, &sessions); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing sessions response: %v\n", err)
+			os.Exit(1)
+		}
+		for _, s := range sessions {
+			sid, _ := s["id"].(string)
+			status, _ := s["status"].(string)
+			if status == "active" {
+				sessionID = sid
+				fmt.Printf("Reusing existing active session '%s' for workspace '%s'\n", sid, workspaceID)
+				break
+			}
+		}
+
+		// No active session — create one.
+		if sessionID == "" {
+			fmt.Printf("Creating new session for workspace '%s'...\n", workspaceID)
+			sessBody := map[string]string{"workspace_id": foundID, "client_type": "cli"}
+			sessJSON, _ := json.Marshal(sessBody)
+			sessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(sessJSON))
+			sessReq.Header.Set("Content-Type", "application/json")
+			sessResp, err := (&http.Client{Timeout: 10 * time.Second}).Do(sessReq)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
+				os.Exit(1)
+			}
+			defer sessResp.Body.Close()
+			if sessResp.StatusCode >= 400 {
+				bodyBytes, _ := io.ReadAll(sessResp.Body)
+				fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", sessResp.StatusCode, string(bodyBytes))
+				os.Exit(1)
+			}
+			var sess map[string]interface{}
+			if err := json.NewDecoder(sessResp.Body).Decode(&sess); err != nil {
+				fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
+				os.Exit(1)
+			}
+			sessionID = sess["id"].(string)
+			fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceID)
+		}
+	}
+
+	// Enter REPL loop.
+	fmt.Println("\n=== Norman Chat Session ===")
+	fmt.Printf("Session: %s | Workspace resolved\n", sessionID)
+	fmt.Println("Type a message or use slash-commands (/help, /list tasks, /close, /new, /history [N])")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		line := scanner.Text()
+		cmd, cmdArgs, isSlash := parseSlashCommand(line)
+
+		if isSlash {
+			switch cmd {
+			case "help":
+				printChatHelp()
+			case "list", "tasks":
+				listEmergentTasks(sessionID)
+			case "close":
+				fmt.Println("Closing session...")
+				return
+			case "new":
+				// Start a new session (auto-create).
+				fmt.Printf("Creating new session...\n")
+				newSessBody := map[string]string{"client_type": "cli"}
+				newSessJSON, _ := json.Marshal(newSessBody)
+				newSessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(newSessJSON))
+				newSessReq.Header.Set("Content-Type", "application/json")
+				newSessResp, err := (&http.Client{Timeout: 10 * time.Second}).Do(newSessReq)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to create new session: %v\n", err)
+					continue
+				}
+				defer newSessResp.Body.Close()
+				var newSess map[string]interface{}
+				if err := json.NewDecoder(newSessResp.Body).Decode(&newSess); err != nil {
+					fmt.Fprintf(os.Stderr, "Error parsing new session response: %v\n", err)
+					continue
+				}
+				sessionID = newSess["id"].(string)
+				fmt.Printf("New session '%s' created.\n", sessionID)
+			case "history":
+				showHistory(sessionID, cmdArgs)
+			default:
+				fmt.Fprintf(os.Stderr, "Unknown slash-command: /%s\n", cmd)
+			}
+			continue
+		}
+
+		// Normal message — send to agent.
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		// POST to session messages endpoint (Phase 1).
+		body := map[string]string{"message": line}
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
+			continue
+		}
+
+		req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions/"+url.PathEscape(sessionID)+"/messages", bytes.NewReader(jsonBody))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 60 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "POST /api/sessions/%s/messages failed: %v\n", sessionID, err)
+			continue
+		}
+
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			fmt.Fprintf(os.Stderr, "HTTP %d: %s\n", resp.StatusCode, string(bodyBytes))
+			continue
+		}
+
+		// Parse and display response.
+		var result map[string]interface{}
+		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&result); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
+			continue
+		}
+
+		// Display agent response (structured or raw).
+		displayResponse(result)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Read error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// printChatHelp displays help for the chat REPL.
+func printChatHelp() {
+	fmt.Println(`chat — Interactive REPL chat mode
+
+Usage: norman chat --workspace <name> [--session <id>]
+
+Slash-commands (prefix with /):
+  /help             Show this help
+  /list tasks       List emergent scheduled tasks for current session
+  /close            Close the current session (save transcript)
+  /new              Start a new chat session
+  /history [N]      Show last N messages of current session
+
+Examples:
+  norman chat --workspace my-project
+  norman chat --workspace my-project --session abc12345`)
+}
+
+// listEmergentTasks lists tasks for the given session.
+func listEmergentTasks(sessionID string) {
+	body, err := httpGet("/api/tasks")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching tasks: %v\n", err)
+		return
+	}
+	fmt.Println("Emergent scheduled tasks:")
+	fmt.Printf("%s\n", string(body))
+}
+
+// showHistory displays the last N messages of a session.
+func showHistory(sessionID string, args []string) {
+	n := 10 // default
+	if len(args) > 0 {
+		if num, err := fmt.Sscanf(args[0], "%d", &n); err != nil || num == 0 {
+			fmt.Fprintf(os.Stderr, "Invalid number: %s\n", args[0])
+			return
+		}
+	}
+
+	body, err := httpGet("/api/sessions/" + url.PathEscape(sessionID) + "/history?limit=" + fmt.Sprintf("%d", n))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching history: %v\n", err)
+		return
+	}
+	fmt.Printf("\n--- Last %d messages ---\n%s\n---\n", n, string(body))
+}
+
+// displayResponse formats and prints the agent's response.
+func displayResponse(result map[string]interface{}) {
+	if resp, ok := result["response"].(string); ok {
+		fmt.Println(resp)
+		return
+	}
+	if msg, ok := result["message"].(string); ok {
+		fmt.Println(msg)
+		return
+	}
+	// Fallback: print as formatted JSON.
+	data, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Println(string(data))
 }
 
 // expandHome resolves ~ in paths.
