@@ -16,13 +16,13 @@ tags:
   - name: workspace
     description: Workspace lifecycle management
   - name: session
-    description: OpenShell session management
+    description: Chat session management (messages, history, status)
   - name: task
-    description: Task creation, status, and output
+    description: Emergent and manual task creation, status, and output
   - name: skill
     description: Skill discovery and management
   - name: scheduled
-    description: Recurring/cron task registration
+    description: Manual recurring/cron task registration
   - name: websocket
     description: Real-time push events to connected clients
 
@@ -320,7 +320,7 @@ paths:
 
     get:
       tags: [task]
-      summary: List active/scheduled tasks
+      summary: List active and scheduled (manual + emergent) tasks
       operationId: listTasks
       parameters:
         - name: status
@@ -375,7 +375,7 @@ paths:
   /api/tasks/{id}/log:
     get:
       tags: [task]
-      summary: Tail task output (for CLI polling)
+      summary: Tail task output (for CLI polling, both emergent and manual tasks)
       operationId: tailTaskLog
       parameters:
         - name: id
@@ -448,7 +448,7 @@ paths:
   /api/tasks/schedule:
     post:
       tags: [scheduled]
-      summary: Register a recurring task
+      summary: Register a manual recurring cron task
       operationId: scheduleTask
       requestBody:
         required: true

@@ -90,7 +90,7 @@ Workspace-level overrides (per-workspace in config.yaml):
   system_prompt  (empty = use system default)
 
 `+
-				"Norman agent server — HTTP API + WebSocket hub for workspace management.\n")
+				"Norman agent server — Session-centric chat engine with task scheduling.\n")
 			os.Exit(0)
 		}
 	}

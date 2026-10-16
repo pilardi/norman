@@ -209,7 +209,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`Norman CLI — Agent workspace manager
+	fmt.Println(`Norman CLI — Session-centric chat agent
 
 Usage: norman [-v|--verbose] <command> [args...]
 
@@ -217,22 +217,22 @@ Flags:
   -v, --verbose      Enable verbose/debug output (request details)
 
 Commands:
-  create <name>        Create a new workspace + persistent OpenShell session
+  create <name>        Create a new workspace directory
   list                 List available workspaces and their sessions
   config               Show or edit current configuration
   skills list          List installed skills
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
-  sessions create --workspace <name>   Create a new session for a workspace
-  sessions close <session_id>          Terminate a session
-  sessions list                        List active OpenShell sessions
-  sessions archive <task_id>           Archive a session for a given task
-  tasks send <prompt> [--session <id>] Send a prompt into an active session
-  tasks add <name> --schedule "<cron>" Register a recurring task
-  tasks list                           List registered tasks
-  tasks remove <id>                    Unregister a task
-  tasks run <id>                       Trigger a task immediately
-  chat --workspace <name>              Enter interactive REPL chat mode
+  sessions create --workspace <name>   Create a new chat session for a workspace
+  sessions close <session_id>          Close and save transcript for a session
+  sessions list                        List active chat sessions
+  sessions archive <session_id>        Archive a session's transcript to .norman/archived/
+  messages send <text> --workspace <name> [--session <id>] Send a message into a session
+  tasks add <name> --schedule "<cron>" Register a recurring manual task (e.g., "*/5 * * * *")
+  tasks list                           List registered manual tasks with next-run times
+  tasks remove <id>                    Unregister and stop a manual task
+  tasks run <id>                       Trigger a manual task immediately
+  chat --workspace <name> [--session <id>]   Enter interactive REPL chat mode
 
 Use "norman help <command>" for detailed help on a specific command.`)
 }
@@ -595,19 +595,19 @@ func handleSessions(args []string) {
 }
 
 func printSessionHelp() {
-	fmt.Println(`sessions — Manage OpenShell sessions
+	fmt.Println(`sessions — Manage chat sessions
 
 Usage: norman sessions <subcommand> [args...]
 
 Subcommands:
-  create [--workspace <name>]   Create a new session bound to a workspace
-  list                          List active OpenShell sessions
-  close <session_id>            Terminate a session (DELETE /api/sessions/:id)
-  archive <task_id>             Archive a session for a given task (POST /api/sessions/archive)
+  create [--workspace <name>]   Create a new chat session bound to a workspace
+  list                          List active chat sessions
+  close <session_id>            Close and save transcript for a session (POST /api/sessions/:id/close)
+  archive <session_id>          Archive a session's transcript to .norman/archived/
 
 Examples:
-  norman sessions create --workspace my-project    # auto-creates session for workspace
-  norman sessions close abc12345                     # terminates session by ID`)
+  norman sessions create --workspace my-project    # creates session for workspace
+  norman sessions close abc12345                     # closes and saves session by ID`)
 }
 
 func handleSessionList(args []string) {
@@ -837,16 +837,16 @@ func handleTasks(args []string) {
 }
 
 func printTaskHelp() {
-	fmt.Println(`tasks — Manage scheduled tasks
+	fmt.Println(`tasks — Manage manual scheduled tasks
 
 Usage: norman tasks <subcommand> [args...]
 
 Subcommands:
-  send <prompt> --workspace <name> --session <id>   Send a prompt into a specific session (POST /api/tasks)
-  add <name> --schedule "<cron>"   Register a recurring task (e.g., "*/5 * * * *")
-  list                             List registered tasks with next-run times
-  remove <id>                      Unregister and stop a task
-  run <id>                         Trigger a task immediately
+  send <text> --workspace <name> --session <id>   Send a message to a specific session (POST /api/sessions/{id}/messages)
+  add <name> --schedule "<cron>"   Register a recurring manual task (e.g., "*/5 * * * *")
+  list                             List registered manual tasks with next-run times
+  remove <id>                      Unregister and stop a manual task
+  run <id>                         Trigger a manual task immediately
 
 Examples:
   norman tasks send "What files are in the attached directory?" --workspace myproject --session abc12345
@@ -1171,7 +1171,7 @@ func handleChat(args []string) {
 	// Enter REPL loop.
 	fmt.Println("\n=== Norman Chat Session ===")
 	fmt.Printf("Session: %s | Workspace resolved\n", sessionID)
-	fmt.Println("Type a message or use slash-commands (/help, /list tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)")
+	fmt.Println("Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive)")
 
 	// Track turns for transcript persistence.
 	var turns []map[string]interface{}
@@ -1321,13 +1321,13 @@ Usage: norman chat --workspace <name> [--session <id>]
 
 Slash-commands (prefix with /):
   /help             Show this help
-  /list tasks       List emergent scheduled tasks for current session
+  /tasks            List emergent scheduled tasks for current session
   /close            Close the current session (save transcript)
   /new              Start a new chat session
   /history [N]      Show last N messages of current session
   /sessions         List all active sessions
   /switch <id>      Switch to another session by ID
-  /archive <id>     Archive a session's transcript
+  /archive          Archive current session's transcript
 
 Examples:
   norman chat --workspace my-project

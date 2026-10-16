@@ -20,7 +20,7 @@ import (
 	"github.com/norman/norman/pkg/skills"
 )
 
-// Task represents an in-flight task with its execution state.
+// Task represents an in-flight task (emergent or manual) with its execution state.
 type Task struct {
 	ID        string
 	Prompt    string
@@ -33,7 +33,7 @@ type Task struct {
 	CreatedAt time.Time
 }
 
-// Loop is the main agent loop managing task execution.
+// Loop is the main agent loop managing session messages and emergent/manual task execution.
 type Loop struct {
 	mu          sync.Mutex
 	tasks       map[string]*Task // taskID -> Task state
