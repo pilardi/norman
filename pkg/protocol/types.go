@@ -9,6 +9,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for HealthStatusStatus.
+const (
+	Degraded HealthStatusStatus = "degraded"
+	Healthy  HealthStatusStatus = "healthy"
+)
+
+// Valid indicates whether the value is a known member of the HealthStatusStatus enum.
+func (e HealthStatusStatus) Valid() bool {
+	switch e {
+	case Degraded:
+		return true
+	case Healthy:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotificationConfigPriority.
 const (
 	NotificationConfigPriorityHigh   NotificationConfigPriority = "high"
@@ -73,6 +91,7 @@ func (e ScheduledTaskStatus) Valid() bool {
 const (
 	SessionStatusActive    SessionStatus = "active"
 	SessionStatusCrashed   SessionStatus = "crashed"
+	SessionStatusInactive  SessionStatus = "inactive"
 	SessionStatusRecovered SessionStatus = "recovered"
 )
 
@@ -82,6 +101,8 @@ func (e SessionStatus) Valid() bool {
 	case SessionStatusActive:
 		return true
 	case SessionStatusCrashed:
+		return true
+	case SessionStatusInactive:
 		return true
 	case SessionStatusRecovered:
 		return true
@@ -105,6 +126,51 @@ func (e SessionCreateRequestClientType) Valid() bool {
 	case Custom:
 		return true
 	case WebUi:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionStatusStatus.
+const (
+	SessionStatusStatusActive    SessionStatusStatus = "active"
+	SessionStatusStatusCrashed   SessionStatusStatus = "crashed"
+	SessionStatusStatusInactive  SessionStatusStatus = "inactive"
+	SessionStatusStatusRecovered SessionStatusStatus = "recovered"
+)
+
+// Valid indicates whether the value is a known member of the SessionStatusStatus enum.
+func (e SessionStatusStatus) Valid() bool {
+	switch e {
+	case SessionStatusStatusActive:
+		return true
+	case SessionStatusStatusCrashed:
+		return true
+	case SessionStatusStatusInactive:
+		return true
+	case SessionStatusStatusRecovered:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionTurnRole.
+const (
+	Assistant SessionTurnRole = "assistant"
+	System    SessionTurnRole = "system"
+	User      SessionTurnRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the SessionTurnRole enum.
+func (e SessionTurnRole) Valid() bool {
+	switch e {
+	case Assistant:
+		return true
+	case System:
+		return true
+	case User:
 		return true
 	default:
 		return false
@@ -294,11 +360,42 @@ func (e ListTasksParamsStatus) Valid() bool {
 	}
 }
 
+// AgentResponse defines model for AgentResponse.
+type AgentResponse struct {
+	// Response Agent's text response
+	Response *string `json:"response,omitempty"`
+
+	// SessionId Session ID that processed the message
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// TaskCreated Whether an emergent task was created
+	TaskCreated *bool `json:"task_created,omitempty"`
+
+	// TaskId ID of newly created task (if task_created is true)
+	TaskId     *openapi_types.UUID `json:"task_id,omitempty"`
+	TokenUsage *TokenUsage         `json:"token_usage,omitempty"`
+
+	// ToolsUsed List of tool names invoked
+	ToolsUsed *[]string `json:"tools_used,omitempty"`
+}
+
 // ArchiveSessionRequest defines model for ArchiveSessionRequest.
 type ArchiveSessionRequest struct {
 	// TaskId ID of the task to archive
 	TaskId string `json:"task_id"`
 }
+
+// HealthStatus defines model for HealthStatus.
+type HealthStatus struct {
+	Scheduler *SchedulerStatus   `json:"scheduler,omitempty"`
+	Status    HealthStatusStatus `json:"status"`
+
+	// UptimeSeconds Service uptime in seconds
+	UptimeSeconds *int `json:"uptime_seconds,omitempty"`
+}
+
+// HealthStatusStatus defines model for HealthStatus.Status.
+type HealthStatusStatus string
 
 // NotificationConfig defines model for NotificationConfig.
 type NotificationConfig struct {
@@ -364,15 +461,33 @@ type ScheduledTaskRequest struct {
 	WorkspaceId string `json:"workspace_id"`
 }
 
+// SchedulerStatus defines model for SchedulerStatus.
+type SchedulerStatus struct {
+	// LastTick Time of the last scheduler tick
+	LastTick *time.Time `json:"last_tick,omitempty"`
+
+	// RegisteredTasks Number of registered scheduled tasks
+	RegisteredTasks *int `json:"registered_tasks,omitempty"`
+}
+
+// SendMessageRequest defines model for SendMessageRequest.
+type SendMessageRequest struct {
+	// AttachTools Whether to allow tool use in response
+	AttachTools *bool `json:"attach_tools,omitempty"`
+
+	// Message User message to send to the agent
+	Message string `json:"message"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	CreatedAt *time.Time          `json:"created_at,omitempty"`
 	Id        *openapi_types.UUID `json:"id,omitempty"`
 
 	// Name Human-readable session name
-	Name        *string        `json:"name,omitempty"`
-	Status      *SessionStatus `json:"status,omitempty"`
-	WorkspaceId *string        `json:"workspace_id,omitempty"`
+	Name          *string        `json:"name,omitempty"`
+	SessionStatus *SessionStatus `json:"status,omitempty"`
+	WorkspaceId   *string        `json:"workspace_id,omitempty"`
 }
 
 // SessionStatus defines model for Session.Status.
@@ -388,6 +503,43 @@ type SessionCreateRequest struct {
 
 // SessionCreateRequestClientType defines model for SessionCreateRequest.ClientType.
 type SessionCreateRequestClientType string
+
+// SessionDetail defines model for SessionStatus.
+type SessionDetail struct {
+	// ActiveSkills Currently activated skills
+	ActiveSkills *[]string  `json:"active_skills,omitempty"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
+
+	// Id Session identifier
+	Id *openapi_types.UUID `json:"id,omitempty"`
+
+	// LastMessageAt Timestamp of the last message sent to this session
+	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+
+	// Name Human-readable session name
+	Name   *string              `json:"name,omitempty"`
+	Status *SessionStatusStatus `json:"status,omitempty"`
+
+	// TokenBudgetRemaining Remaining tokens in budget
+	TokenBudgetRemaining *int `json:"token_budget_remaining,omitempty"`
+
+	// TokenBudgetUsed Tokens consumed in current session
+	TokenBudgetUsed *int    `json:"token_budget_used,omitempty"`
+	WorkspaceId     *string `json:"workspace_id,omitempty"`
+}
+
+// SessionStatusStatus defines model for SessionStatus.Status.
+type SessionStatusStatus string
+
+// SessionTurn defines model for SessionTurn.
+type SessionTurn struct {
+	Content   *string          `json:"content,omitempty"`
+	Role      *SessionTurnRole `json:"role,omitempty"`
+	Timestamp *time.Time       `json:"timestamp,omitempty"`
+}
+
+// SessionTurnRole defines model for SessionTurn.Role.
+type SessionTurnRole string
 
 // Skill defines model for Skill.
 type Skill struct {
@@ -471,6 +623,13 @@ type TaskCreateRequest struct {
 // TaskCreateRequestPriority defines model for TaskCreateRequest.Priority.
 type TaskCreateRequestPriority string
 
+// TokenUsage defines model for TokenUsage.
+type TokenUsage struct {
+	CompletionTokens *int `json:"completion_tokens,omitempty"`
+	PromptTokens     *int `json:"prompt_tokens,omitempty"`
+	TotalTokens      *int `json:"total_tokens,omitempty"`
+}
+
 // WebSocketEvent defines model for WebSocketEvent.
 type WebSocketEvent struct {
 	Channel         *string                 `json:"channel,omitempty"`
@@ -516,6 +675,11 @@ type WorkspaceCreateRequest struct {
 	Path string `json:"path"`
 }
 
+// SessionHistoryParams defines parameters for SessionHistory.
+type SessionHistoryParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {
 	Status *ListTasksParamsStatus `form:"status,omitempty" json:"status,omitempty"`
@@ -538,10 +702,15 @@ type CreateSessionJSONRequestBody = SessionCreateRequest
 // ArchiveSessionJSONRequestBody defines body for ArchiveSession for application/json ContentType.
 type ArchiveSessionJSONRequestBody = ArchiveSessionRequest
 
+// SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
+type SendMessageJSONRequestBody = SendMessageRequest
+
 // InstallSkillJSONRequestBody defines body for InstallSkill for application/json ContentType.
 type InstallSkillJSONRequestBody = SkillInstallRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
+//
+// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type CreateTaskJSONRequestBody = TaskCreateRequest
 
 // ScheduleTaskJSONRequestBody defines body for ScheduleTask for application/json ContentType.

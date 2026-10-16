@@ -35,9 +35,15 @@ type ServerInterface interface {
 	// DeleteSession Delete a session
 	// (DELETE /api/sessions/{id})
 	DeleteSession(ctx echo.Context, id string) error
-	// GetSession Get session details
+	// GetSession Get session status and details
 	// (GET /api/sessions/{id})
 	GetSession(ctx echo.Context, id string) error
+	// SendMessage Send a message to an active session (chat input)
+	// (POST /api/sessions/{id})
+	SendMessage(ctx echo.Context, id string) error
+	// SessionHistory Get conversation history turns for a session
+	// (GET /api/sessions/{id}/history)
+	SessionHistory(ctx echo.Context, id string, params protocol.SessionHistoryParams) error
 	// ListSkills List discovered skills (metadata only)
 	// (GET /api/skills)
 	ListSkills(ctx echo.Context) error
@@ -50,8 +56,10 @@ type ServerInterface interface {
 	// ListTasks List active/scheduled tasks
 	// (GET /api/tasks)
 	ListTasks(ctx echo.Context, params protocol.ListTasksParams) error
-	// CreateTask Create a new task (user prompt)
+	// CreateTask Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 	// (POST /api/tasks)
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTask(ctx echo.Context) error
 	// ScheduleTask Register a recurring task
 	// (POST /api/tasks/schedule)
@@ -62,7 +70,7 @@ type ServerInterface interface {
 	// UnscheduleTask Remove a scheduled task
 	// (DELETE /api/tasks/scheduled/{id})
 	UnscheduleTask(ctx echo.Context, id string) error
-	// CancelTask Cancel a running task
+	// CancelTask Delete a task (permanent removal)
 	// (DELETE /api/tasks/{id})
 	CancelTask(ctx echo.Context, id string) error
 	// GetTask Get task status and details
@@ -86,6 +94,9 @@ type ServerInterface interface {
 	// GetWorkspace Get workspace details
 	// (GET /api/workspaces/{name})
 	GetWorkspace(ctx echo.Context, name string) error
+	// HealthCheck Health check with scheduler status
+	// (GET /health)
+	HealthCheck(ctx echo.Context) error
 	// ConnectWebSocket WebSocket endpoint for real-time push events
 	// (GET /ws)
 	ConnectWebSocket(ctx echo.Context) error
@@ -186,6 +197,47 @@ func (w *ServerInterfaceWrapper) GetSession(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetSession(ctx, id)
+	return err
+}
+
+// SendMessage converts echo context to params.
+func (w *ServerInterfaceWrapper) SendMessage(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SendMessage(ctx, id)
+	return err
+}
+
+// SessionHistory converts echo context to params.
+func (w *ServerInterfaceWrapper) SessionHistory(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params protocol.SessionHistoryParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SessionHistory(ctx, id, params)
 	return err
 }
 
@@ -407,6 +459,15 @@ func (w *ServerInterfaceWrapper) GetWorkspace(ctx echo.Context) error {
 	return err
 }
 
+// HealthCheck converts echo context to params.
+func (w *ServerInterfaceWrapper) HealthCheck(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.HealthCheck(ctx)
+	return err
+}
+
 // ConnectWebSocket converts echo context to params.
 func (w *ServerInterfaceWrapper) ConnectWebSocket(ctx echo.Context) error {
 	var err error
@@ -471,6 +532,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/api/sessions", wrapper.CreateSession, options.OperationMiddlewares["createSession"]...)
 	router.DELETE(options.BaseURL+"/api/sessions/:id", wrapper.DeleteSession, options.OperationMiddlewares["deleteSession"]...)
 	router.GET(options.BaseURL+"/api/sessions/:id", wrapper.GetSession, options.OperationMiddlewares["getSession"]...)
+	router.POST(options.BaseURL+"/api/sessions/:id", wrapper.SendMessage, options.OperationMiddlewares["sendMessage"]...)
+	router.GET(options.BaseURL+"/api/sessions/:id/history", wrapper.SessionHistory, options.OperationMiddlewares["sessionHistory"]...)
 	router.POST(options.BaseURL+"/api/sessions/archive", wrapper.ArchiveSession, options.OperationMiddlewares["archiveSession"]...)
 	router.GET(options.BaseURL+"/api/notifications", wrapper.ListNotifications, options.OperationMiddlewares["listNotifications"]...)
 	router.POST(options.BaseURL+"/api/notifications", wrapper.CreateNotification, options.OperationMiddlewares["createNotification"]...)
@@ -487,6 +550,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/api/tasks/scheduled", wrapper.ListScheduledTasks, options.OperationMiddlewares["listScheduledTasks"]...)
 	router.DELETE(options.BaseURL+"/api/tasks/scheduled/:id", wrapper.UnscheduleTask, options.OperationMiddlewares["unscheduleTask"]...)
 	router.POST(options.BaseURL+"/api/tasks/:id/complete", wrapper.ReportTaskComplete, options.OperationMiddlewares["reportTaskComplete"]...)
+	router.GET(options.BaseURL+"/health", wrapper.HealthCheck, options.OperationMiddlewares["healthCheck"]...)
 	router.GET(options.BaseURL+"/ws", wrapper.ConnectWebSocket, options.OperationMiddlewares["connectWebSocket"]...)
 
 }

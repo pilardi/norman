@@ -1464,6 +1464,21 @@ func saveTranscriptLocally(path string, turns []map[string]interface{}) error {
 	return nil
 }
 
+// toInterfaceSlice converts a slice of TaskEntry to []interface{} for persistence.
+func toInterfaceSlice(entries []*scheduler.TaskEntry) []interface{} {
+	result := make([]interface{}, len(entries))
+	for i, entry := range entries {
+		result[i] = map[string]interface{}{
+			"id":       entry.ID,
+			"name":     entry.Name,
+			"schedule": entry.Schedule,
+			"command":  entry.Command,
+			"active":   entry.Active,
+		}
+	}
+	return result
+}
+
 // getConfigPath returns the standard config file path.
 func getConfigPath() string {
 	return filepath.Join(os.ExpandEnv("$HOME/.config/norman"), "config.yaml")

@@ -196,6 +196,33 @@ paths:
         "204":
           description: Session deleted
 
+  /api/sessions/{id}/history:
+    get:
+      tags: [session]
+      summary: Get conversation history turns for a session
+      operationId: sessionHistory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+      responses:
+        "200":
+          description: List of conversation turns (most recent N)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionTurn"
+
   /api/sessions/archive:
     post:
       tags: [session]
@@ -490,6 +517,19 @@ paths:
         "404":
           description: Task not found
 
+  /health:
+    get:
+      tags: [system]
+      summary: Health check with scheduler status
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
   /ws:
     get:
       tags: [websocket]
@@ -560,8 +600,9 @@ components:
         workspace_id:
           type: string
         status:
+          x-go-name: SessionStatus
           type: string
-          enum: [active, crashed, recovered]
+          enum: [active, inactive, crashed, recovered]
         created_at:
           type: string
           format: date-time
@@ -656,6 +697,7 @@ components:
           $ref: "#/components/schemas/TokenUsage"
 
     SessionStatus:
+      x-go-name: SessionDetail
       type: object
       properties:
         id:
@@ -895,6 +937,44 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    SessionTurn:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+          nullable: true
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        scheduler:
+          $ref: "#/components/schemas/SchedulerStatus"
+        uptime_seconds:
+          type: integer
+          description: Service uptime in seconds
+
+    SchedulerStatus:
+      type: object
+      properties:
+        registered_tasks:
+          type: integer
+          description: Number of registered scheduled tasks
+        last_tick:
+          type: string
+          format: date-time
+          nullable: true
+          description: Time of the last scheduler tick
 
     NotificationCreateRequest:
       type: object

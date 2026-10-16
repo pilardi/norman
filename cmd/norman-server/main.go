@@ -44,8 +44,9 @@ type server struct {
 	scheduler  *scheduler.Scheduler
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
-	mu        sync.Mutex
+	mu         sync.Mutex
 	workspaces map[string]*protocol.Workspace
+	startTime  time.Time
 }
 
 func main() {
@@ -214,6 +215,7 @@ Workspace-level overrides (per-workspace in config.yaml):
 		notifier:   notifier,
 		scheduler:  sched,
 		workspaces: make(map[string]*protocol.Workspace),
+		startTime:  time.Now(),
 	}
 
 	// Load persisted workspaces from disk on startup
@@ -308,7 +310,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 
 	// Session history (Phase 3)
 	e.GET("/api/sessions/:id/history", func(c echo.Context) error {
-		return srv.SessionHistory(c, c.Param("id"))
+		var params protocol.SessionHistoryParams
+		if q := c.QueryParam("limit"); q != "" {
+			fmt.Sscanf(q, "%d", &params.Limit)
+		}
+		return srv.SessionHistory(c, c.Param("id"), params)
 	})
 
 	// Notification endpoints (Step 8d)
@@ -472,6 +478,20 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// HealthCheck returns service health with scheduler status.
+func (s *server) HealthCheck(c echo.Context) error {
+	count, lastTick := s.scheduler.Status()
+	resp := map[string]interface{}{
+		"status":       "healthy",
+		"uptime_seconds": int(time.Since(s.startTime).Seconds()),
+		"scheduler": map[string]interface{}{
+			"registered_tasks": count,
+			"last_tick":        lastTick.Format(time.RFC3339),
+		},
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (s *server) DeleteSession(c echo.Context, id string) error {
 	// Support both short prefix and full UUID
 	var fullPath string
@@ -505,7 +525,7 @@ func (s *server) DeleteSession(c echo.Context, id string) error {
 }
 
 // SessionHistory returns the last N conversation turns for a session.
-func (s *server) SessionHistory(c echo.Context, id string) error {
+func (s *server) SessionHistory(c echo.Context, id string, params protocol.SessionHistoryParams) error {
 	limit := 10 // default
 	if q := c.QueryParam("limit"); q != "" {
 		fmt.Sscanf(q, "%d", &limit)
@@ -662,11 +682,11 @@ func (s *server) createSessionInternal(workspaceID string, clientType string) (*
 	status := protocol.SessionStatus("active")
 	sessionName := id.String()[:8] + "-session"
 	session := &protocol.Session{
-		Id:          &id,
-		Name:        strPtr(sessionName),
-		WorkspaceId: strPtr(workspaceID),
-		Status:      &status,
-		CreatedAt:   &now,
+		Id:            &id,
+		Name:          strPtr(sessionName),
+		WorkspaceId:   strPtr(workspaceID),
+		SessionStatus: &status,
+		CreatedAt:     &now,
 	}
 
 	s.store.SaveSession(id.String(), map[string]interface{}{

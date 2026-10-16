@@ -152,10 +152,29 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
 	DeleteSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetSession Get session details
+	// GetSession Get session status and details
 	//
 	// Corresponds with GET /api/sessions/{id} (the `GetSession` operationId).
 	GetSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendMessageWithBody Send a message to an active session (chat input)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+	SendMessageWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SendMessage Send a message to an active session (chat input)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+	SendMessage(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SessionHistory Get conversation history turns for a session
+	//
+	// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
+	SessionHistory(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSkills List discovered skills (metadata only)
 	//
@@ -186,18 +205,22 @@ type ClientInterface interface {
 	// Corresponds with GET /api/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateTaskWithBody Create a new task (user prompt)
+	// CreateTaskWithBody Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateTask Create a new task (user prompt)
+	// CreateTask Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTask(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ScheduleTaskWithBody Register a recurring task
@@ -224,7 +247,7 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/tasks/scheduled/{id} (the `UnscheduleTask` operationId).
 	UnscheduleTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CancelTask Cancel a running task
+	// CancelTask Delete a task (permanent removal)
 	//
 	// Corresponds with DELETE /api/tasks/{id} (the `CancelTask` operationId).
 	CancelTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -281,6 +304,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/workspaces/{name} (the `GetWorkspace` operationId).
 	GetWorkspace(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// HealthCheck Health check with scheduler status
+	//
+	// Corresponds with GET /health (the `HealthCheck` operationId).
+	HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ConnectWebSocket WebSocket endpoint for real-time push events
 	//
@@ -450,11 +478,60 @@ func (c *Client) DeleteSession(ctx context.Context, id string, reqEditors ...Req
 	return c.Client.Do(req)
 }
 
-// GetSession Get session details
+// GetSession Get session status and details
 //
 // Corresponds with GET /api/sessions/{id} (the `GetSession` operationId).
 func (c *Client) GetSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSessionRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendMessageWithBody Send a message to an active session (chat input)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+func (c *Client) SendMessageWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendMessageRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SendMessage Send a message to an active session (chat input)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+func (c *Client) SendMessage(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSendMessageRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SessionHistory Get conversation history turns for a session
+//
+// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
+func (c *Client) SessionHistory(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSessionHistoryRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -544,11 +621,12 @@ func (c *Client) ListTasks(ctx context.Context, params *ListTasksParams, reqEdit
 	return c.Client.Do(req)
 }
 
-// CreateTaskWithBody Create a new task (user prompt)
+// CreateTaskWithBody Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 //
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) CreateTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateTaskRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -561,11 +639,12 @@ func (c *Client) CreateTaskWithBody(ctx context.Context, contentType string, bod
 	return c.Client.Do(req)
 }
 
-// CreateTask Create a new task (user prompt)
+// CreateTask Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) CreateTask(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateTaskRequest(c.Server, body)
 	if err != nil {
@@ -642,7 +721,7 @@ func (c *Client) UnscheduleTask(ctx context.Context, id string, reqEditors ...Re
 	return c.Client.Do(req)
 }
 
-// CancelTask Cancel a running task
+// CancelTask Delete a task (permanent removal)
 //
 // Corresponds with DELETE /api/tasks/{id} (the `CancelTask` operationId).
 func (c *Client) CancelTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -790,6 +869,21 @@ func (c *Client) DeleteWorkspace(ctx context.Context, name string, reqEditors ..
 // Corresponds with GET /api/workspaces/{name} (the `GetWorkspace` operationId).
 func (c *Client) GetWorkspace(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetWorkspaceRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// HealthCheck Health check with scheduler status
+//
+// Corresponds with GET /health (the `HealthCheck` operationId).
+func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewHealthCheckRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1081,6 +1175,114 @@ func NewGetSessionRequest(server string, id string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSendMessageRequest calls the generic SendMessage builder with application/json body
+func NewSendMessageRequest(server string, id string, body SendMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSendMessageRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewSendMessageRequestWithBody constructs an http.Request for the SendMessage method, with any body, and a specified content type
+func NewSendMessageRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSessionHistoryRequest constructs an http.Request for the SessionHistory method
+func NewSessionHistoryRequest(server string, id string, params *SessionHistoryParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/history", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -1698,6 +1900,33 @@ func NewGetWorkspaceRequest(server string, name string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewHealthCheckRequest constructs an http.Request for the HealthCheck method
+func NewHealthCheckRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewConnectWebSocketRequest constructs an http.Request for the ConnectWebSocket method
 func NewConnectWebSocketRequest(server string) (*http.Request, error) {
 	var err error
@@ -1839,12 +2068,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
 	DeleteSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error)
 
-	// GetSessionWithResponse Get session details
+	// GetSessionWithResponse Get session status and details
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/sessions/{id} (the `GetSession` operationId).
 	GetSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetSessionResponse, error)
+
+	// SendMessageWithBodyWithResponse Send a message to an active session (chat input)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+	SendMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendMessageResponse, error)
+
+	// SendMessageWithResponse Send a message to an active session (chat input)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+	SendMessageWithResponse(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SendMessageResponse, error)
+
+	// SessionHistoryWithResponse Get conversation history turns for a session
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
+	SessionHistoryWithResponse(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*SessionHistoryResponse, error)
 
 	// ListSkillsWithResponse List discovered skills (metadata only)
 	//
@@ -1881,18 +2131,22 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/tasks (the `ListTasks` operationId).
 	ListTasksWithResponse(ctx context.Context, params *ListTasksParams, reqEditors ...RequestEditorFn) (*ListTasksResponse, error)
 
-	// CreateTaskWithBodyWithResponse Create a new task (user prompt)
+	// CreateTaskWithBodyWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error)
 
-	// CreateTaskWithResponse Create a new task (user prompt)
+	// CreateTaskWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTaskWithResponse(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error)
 
 	// ScheduleTaskWithBodyWithResponse Register a recurring task
@@ -1923,7 +2177,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/tasks/scheduled/{id} (the `UnscheduleTask` operationId).
 	UnscheduleTaskWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*UnscheduleTaskResponse, error)
 
-	// CancelTaskWithResponse Cancel a running task
+	// CancelTaskWithResponse Delete a task (permanent removal)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -1992,6 +2246,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/workspaces/{name} (the `GetWorkspace` operationId).
 	GetWorkspaceWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetWorkspaceResponse, error)
+
+	// HealthCheckWithResponse Health check with scheduler status
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /health (the `HealthCheck` operationId).
+	HealthCheckWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckResponse, error)
 
 	// ConnectWebSocketWithResponse WebSocket endpoint for real-time push events
 	//
@@ -2279,11 +2540,11 @@ type GetSessionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Session
+	JSON200 *SessionDetail
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetSessionResponse) GetJSON200() *Session {
+func (r GetSessionResponse) GetJSON200() *SessionDetail {
 	return r.JSON200
 }
 
@@ -2310,6 +2571,88 @@ func (r GetSessionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SendMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SendMessageResponse) GetJSON200() *AgentResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r SendMessageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SendMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SendMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SendMessageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SessionHistoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]SessionTurn
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SessionHistoryResponse) GetJSON200() *[]SessionTurn {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r SessionHistoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SessionHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SessionHistoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SessionHistoryResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2930,6 +3273,47 @@ func (r GetWorkspaceResponse) ContentType() string {
 	return ""
 }
 
+type HealthCheckResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HealthStatus
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r HealthCheckResponse) GetJSON200() *HealthStatus {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r HealthCheckResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r HealthCheckResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r HealthCheckResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r HealthCheckResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ConnectWebSocketResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3101,7 +3485,7 @@ func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, id 
 	return ParseDeleteSessionResponse(rsp)
 }
 
-// GetSessionWithResponse Get session details
+// GetSessionWithResponse Get session status and details
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3112,6 +3496,45 @@ func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, id str
 		return nil, err
 	}
 	return ParseGetSessionResponse(rsp)
+}
+
+// SendMessageWithBodyWithResponse Send a message to an active session (chat input)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+func (c *ClientWithResponses) SendMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendMessageResponse, error) {
+	rsp, err := c.SendMessageWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendMessageResponse(rsp)
+}
+
+// SendMessageWithResponse Send a message to an active session (chat input)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+func (c *ClientWithResponses) SendMessageWithResponse(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SendMessageResponse, error) {
+	rsp, err := c.SendMessage(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendMessageResponse(rsp)
+}
+
+// SessionHistoryWithResponse Get conversation history turns for a session
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
+func (c *ClientWithResponses) SessionHistoryWithResponse(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*SessionHistoryResponse, error) {
+	rsp, err := c.SessionHistory(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSessionHistoryResponse(rsp)
 }
 
 // ListSkillsWithResponse List discovered skills (metadata only)
@@ -3179,11 +3602,13 @@ func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, params 
 	return ParseListTasksResponse(rsp)
 }
 
-// CreateTaskWithBodyWithResponse Create a new task (user prompt)
+// CreateTaskWithBodyWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
+//
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) CreateTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error) {
 	rsp, err := c.CreateTaskWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -3192,11 +3617,12 @@ func (c *ClientWithResponses) CreateTaskWithBodyWithResponse(ctx context.Context
 	return ParseCreateTaskResponse(rsp)
 }
 
-// CreateTaskWithResponse Create a new task (user prompt)
+// CreateTaskWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) CreateTaskWithResponse(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error) {
 	rsp, err := c.CreateTask(ctx, body, reqEditors...)
 	if err != nil {
@@ -3257,7 +3683,7 @@ func (c *ClientWithResponses) UnscheduleTaskWithResponse(ctx context.Context, id
 	return ParseUnscheduleTaskResponse(rsp)
 }
 
-// CancelTaskWithResponse Cancel a running task
+// CancelTaskWithResponse Delete a task (permanent removal)
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3385,6 +3811,19 @@ func (c *ClientWithResponses) GetWorkspaceWithResponse(ctx context.Context, name
 		return nil, err
 	}
 	return ParseGetWorkspaceResponse(rsp)
+}
+
+// HealthCheckWithResponse Health check with scheduler status
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /health (the `HealthCheck` operationId).
+func (c *ClientWithResponses) HealthCheckWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckResponse, error) {
+	rsp, err := c.HealthCheck(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseHealthCheckResponse(rsp)
 }
 
 // ConnectWebSocketWithResponse WebSocket endpoint for real-time push events
@@ -3571,7 +4010,7 @@ func ParseGetSessionResponse(rsp *http.Response) (*GetSessionResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Session
+		var dest SessionDetail
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -3579,6 +4018,64 @@ func ParseGetSessionResponse(rsp *http.Response) (*GetSessionResponse, error) {
 
 	case rsp.StatusCode == 404:
 		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseSendMessageResponse parses an HTTP response from a SendMessageWithResponse call
+func ParseSendMessageResponse(rsp *http.Response) (*SendMessageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SendMessageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 400:
+		break // No content-type
+
+	case rsp.StatusCode == 404:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseSessionHistoryResponse parses an HTTP response from a SessionHistoryWithResponse call
+func ParseSessionHistoryResponse(rsp *http.Response) (*SessionHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SessionHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []SessionTurn
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	}
 
@@ -3950,6 +4447,32 @@ func ParseGetWorkspaceResponse(rsp *http.Response) (*GetWorkspaceResponse, error
 
 	case rsp.StatusCode == 404:
 		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseHealthCheckResponse parses an HTTP response from a HealthCheckWithResponse call
+func ParseHealthCheckResponse(rsp *http.Response) (*HealthCheckResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &HealthCheckResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HealthStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	}
 
