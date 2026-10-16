@@ -95,17 +95,19 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | 17 | Add `Store.LoadTranscript(sessionID)` — reads markdown transcript | `pkg/memory/store.go` | For `/history` CLI command to display past sessions. ✅ Implemented |
 | 18 | Wire incremental transcript saving in chat loop (user + agent turns) | `cmd/norman/main.go` | Each turn tracked and saved on `/close`. ✅ Implemented |
 
-### Phase 4 — Scheduler Integration (P2) ⬜ Pending
+### Phase 4 — Scheduler Integration (P2) ✅ DONE
 
 **Goal:** Tasks are fully integrated with the chat-first model; scheduler is a background service, not a primary feature.
 
 | # | Change | Files | Notes |
 |---|--------|-------|-------|
-| 18 | Add `Store.SaveScheduledTasks()` / `LoadScheduledTasks()` for crash recovery | `pkg/memory/store.go` | Persist task registry to `.norman/sessions/<id>/tasks.yaml`. |
-| 19 | Connect scheduler `OutputHandler` callback to WS push events | `main.go`, `pkg/scheduler/scheduler.go` | Real-time progress updates during scheduled task execution. |
-| 20 | Add `GET /health` with scheduler status (tasks registered, last tick time) | `main.go` | Health check includes background service health. |
+| 18 | Add `Store.SaveScheduledTasks()` / `LoadScheduledTasks()` for crash recovery | `pkg/memory/store.go` | Persist task registry to `.norman/sessions/<id>/tasks.yaml`. ✅ Implemented |
+| 19 | Connect scheduler `OutputHandler` callback to WS push events via `WithOutputHandler` | `cmd/norman-server/main.go`, `pkg/scheduler/scheduler.go` | Real-time progress updates during scheduled task execution. ✅ Implemented |
+| 20 | Add `GET /health` with scheduler status (tasks registered, last tick time) | `cmd/norman-server/main.go` | Health check includes background service health. ✅ Implemented |
+| 21 | Wire `ScheduleTask`/`UnscheduleTask` to persist via `SaveScheduledTasks` | `cmd/norman-server/main.go` | CRUD operations on scheduled tasks now persist to disk. ✅ Implemented |
+| 22 | Load persisted scheduled tasks into scheduler on startup | `cmd/norman-server/main.go` | Crash recovery — re-register tasks from `.norman/tasks/scheduled_tasks.json`. ✅ Implemented |
 
-### Phase 5 — OpenAPI Spec Cleanup (P2)
+### Phase 5 — OpenAPI Spec Cleanup (P2) ⬜ Pending
 
 **Goal:** The generated API types match the chat-first model.
 
@@ -123,7 +125,7 @@ Norman is a **chat agent**. You talk to it in a session within a workspace. Task
 | P2 — Emergent Tasks | `Agent.CreateTask()`, `SendMessageWithTask`, GET/DELETE /api/tasks/{id} | ~3-4h | ✅ Done | Phase 1 complete |
 | P3 — Chat CLI REPL | REPL mode (`norman chat`), slash-commands, in-chat `/history`, `/sessions`, `/switch`, `/archive` | ~3h | ✅ Done | Phase 0 complete (CLI infrastructure) |
 | P3b — Session Mgmt | Transcript persistence (`SaveTranscript`/`LoadTranscript`), incremental turn tracking, `idleCleanupLoop` wiring | ~2h | ✅ Done | Phase 1 complete |
-| P4 — Scheduler | Persistence callback, health endpoint | ~2h | ⬜ Pending | Phase 2 complete |
+| P4 — Scheduler | Persistence callback, health endpoint | ~2h | ✅ Done | Phase 2 complete |
 | P5 — Spec Cleanup | Regenerate types from new OpenAPI spec | ~1h | ⬜ Pending | Phase 1 complete |
 
 **Total estimated effort:** ~18-20h (was ~13h; added ~5h for CLI REPL work)

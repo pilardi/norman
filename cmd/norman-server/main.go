@@ -189,6 +189,18 @@ Workspace-level overrides (per-workspace in config.yaml):
 		return openShellClient.RunCommand(ctx, provider, sandbox, cmd)
 	})
 
+	// Wire OutputHandler to push WS events for real-time progress updates.
+	sched.WithOutputHandler(func(result string, err error) {
+		msg := result
+		if err != nil {
+			msg = fmt.Sprintf("Task completed with error: %v", err)
+		}
+		wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			Message: strPtr(msg),
+		})
+	})
+
 	loop = loop.WithNotifier(notifier).WithResultsChannel(resultsCh)
 
 	// Build server with all dependencies
@@ -229,6 +241,39 @@ Workspace-level overrides (per-workspace in config.yaml):
 		log.Printf("server: loaded %d persisted workspaces from disk", len(srv.workspaces))
 	}
 
+	// Load persisted scheduled tasks into the scheduler on startup.
+	if scheduled, err := store.LoadScheduledTasks(); err != nil {
+		log.Printf("scheduler: failed to load scheduled tasks from disk: %v", err)
+	} else if scheduled != nil {
+		for _, entryMap := range scheduled {
+			entry, ok := entryMap.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			name, _ := entry["name"].(string)
+			schedule, _ := entry["schedule"].(string)
+			command, _ := entry["command"].(string)
+			active, _ := entry["active"].(bool)
+			entryID, _ := entry["id"].(string)
+
+			if entryID == "" || name == "" {
+				continue
+			}
+
+			schedEntry := scheduler.TaskEntry{
+				ID:       entryID,
+				Name:     name,
+				Schedule: schedule,
+				Command:  command,
+				Active:   active,
+			}
+			if err := sched.Add(schedEntry); err != nil {
+				log.Printf("scheduler: failed to add task %s: %v", entryID[:8], err)
+			}
+		}
+		log.Printf("scheduler: loaded %d persisted scheduled tasks from disk", len(scheduled))
+	}
+
 	e := echo.New()
 	e.Use(middleware.Recover())
 
@@ -237,9 +282,15 @@ Workspace-level overrides (per-workspace in config.yaml):
 		e.Use(middleware.Logger())
 	}
 
-	// Health check endpoint
+	// Health check endpoint — includes scheduler status (Phase 4).
 	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+		taskCount, lastTick := srv.scheduler.Status()
+		resp := map[string]interface{}{
+			"status":       "ok",
+			"scheduler_tasks": taskCount,
+			"last_tick":   lastTick.Format(time.RFC3339),
+		}
+		return c.JSON(http.StatusOK, resp)
 	})
 
 	// Config endpoint — returns full system config (with unresolved secret placeholders).
@@ -678,10 +729,26 @@ func (s *server) ScheduleTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	entry := scheduler.TaskEntry{
+		ID:       uuid.New().String(),
+		Name:     req.Name,
+		Schedule: req.Schedule,
+		Command:  "", // MVP: command derived from config or skill
+		Active:   true,
+	}
+	if err := s.scheduler.Add(entry); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
-		Message: strPtr("Scheduled task: " + req.Name),
+		Message: strPtr("Scheduled task: " + entry.Name),
 	})
+
+	// Persist scheduled tasks to disk.
+	if err := s.store.SaveScheduledTasks(s.scheduler.ToInterfaceSlice()); err != nil {
+		log.Printf("scheduler: failed to persist scheduled tasks: %v", err)
+	}
 
 	return c.NoContent(http.StatusCreated)
 }
@@ -711,10 +778,19 @@ func (s *server) ListScheduledTasks(c echo.Context) error {
 }
 
 func (s *server) UnscheduleTask(c echo.Context, id string) error {
+	if err := s.scheduler.Remove(id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Unscheduling task: " + id[:8]),
 	})
+
+	// Persist scheduled tasks to disk.
+	if err := s.store.SaveScheduledTasks(s.scheduler.ToInterfaceSlice()); err != nil {
+		log.Printf("scheduler: failed to persist scheduled tasks: %v", err)
+	}
 
 	return c.NoContent(http.StatusOK)
 }

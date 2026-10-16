@@ -702,3 +702,54 @@ func (s *Store) GetSession(sessionID string) (map[string]interface{}, error) {
 
 	return result, nil
 }
+
+// SaveScheduledTasks persists a list of scheduled task entries as JSON.
+func (s *Store) SaveScheduledTasks(entries []interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "tasks")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create tasks dir: %w", err)
+	}
+
+	path := filepath.Join(dir, "scheduled_tasks.json")
+	content, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal scheduled tasks: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		return fmt.Errorf("write scheduled tasks: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename scheduled tasks: %w", err)
+	}
+
+	return nil
+}
+
+// LoadScheduledTasks loads scheduled task entries from disk.
+func (s *Store) LoadScheduledTasks() ([]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "tasks", "scheduled_tasks.json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // no scheduled tasks yet
+		}
+		return nil, fmt.Errorf("read scheduled tasks: %w", err)
+	}
+
+	var result []interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("parse scheduled tasks: %w", err)
+	}
+
+	return result, nil
+}
