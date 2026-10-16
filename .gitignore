@@ -5,3 +5,5 @@ internal/api/handlers.go
 
 # Build artifacts
 dist/
+norman
+norman-server

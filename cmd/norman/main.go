@@ -220,9 +220,12 @@ Commands:
   skills list          List installed skills
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
-  sessions list        List active OpenShell sessions
-  sessions archive <id> Archive a session for a given task
-  tasks add <name> --schedule "<cron>"  Register a recurring task
+  sessions create --workspace <name>   Create a new session for a workspace
+  sessions close <session_id>          Terminate a session
+  sessions list                        List active OpenShell sessions
+  sessions archive <task_id>           Archive a session for a given task
+  tasks send <prompt> [--session <id>] Send a prompt into an active session
+  tasks add <name> --schedule "<cron>" Register a recurring task
   tasks list                           List registered tasks
   tasks remove <id>                    Unregister a task
   tasks run <id>                       Trigger a task immediately
@@ -574,6 +577,10 @@ func handleSessions(args []string) {
 		handleSessionList(subargs)
 	case "archive":
 		handleSessionArchive(subargs)
+	case "create":
+		handleSessionCreate(subargs)
+	case "close":
+		handleSessionClose(subargs)
 	case "--help", "-h":
 		printSessionHelp()
 	default:
@@ -589,8 +596,14 @@ func printSessionHelp() {
 Usage: norman sessions <subcommand> [args...]
 
 Subcommands:
-  list                 List active OpenShell sessions
-  archive <task_id>    Archive a session for a given task (POST /api/sessions/archive)`)
+  create [--workspace <name>]   Create a new session bound to a workspace
+  list                          List active OpenShell sessions
+  close <session_id>            Terminate a session (DELETE /api/sessions/:id)
+  archive <task_id>             Archive a session for a given task (POST /api/sessions/archive)
+
+Examples:
+  norman sessions create --workspace my-project    # auto-creates session for workspace
+  norman sessions close abc12345                     # terminates session by ID`)
 }
 
 func handleSessionList(args []string) {
@@ -683,6 +696,112 @@ func handleSessionArchive(args []string) {
 	}
 }
 
+// handleSessionCreate creates a new session bound to a workspace.
+func handleSessionCreate(args []string) {
+	workspaceID := ""
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--workspace" && i+1 < len(args) {
+			workspaceID = args[i+1]
+			i++
+		}
+	}
+
+	if workspaceID == "" {
+		fmt.Fprintln(os.Stderr, "Error: 'create' requires --workspace flag")
+		fmt.Fprintln(os.Stderr, "Usage: norman sessions create --workspace <name>")
+		os.Exit(1)
+	}
+
+	// Resolve workspace ID from the name by querying workspaces list.
+	workspacesBody, err := httpGet("/api/workspaces")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
+		os.Exit(1)
+	}
+
+	var workspaces []map[string]interface{}
+	if err := json.Unmarshal(workspacesBody, &workspaces); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing workspace response: %v\n", err)
+		os.Exit(1)
+	}
+
+	foundID := ""
+	for _, w := range workspaces {
+		name, _ := w["name"].(string)
+		if name == workspaceID {
+			idStr, _ := w["id"].(string)
+			foundID = idStr
+			break
+		}
+	}
+
+	if foundID == "" {
+		fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list' to see available workspaces.\n", workspaceID)
+		os.Exit(1)
+	}
+
+	// POST /api/sessions with workspace_id and client_type=cli
+	body := map[string]string{
+		"workspace_id": foundID,
+		"client_type":  "cli",
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
+		os.Exit(1)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(jsonBody))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "POST /api/sessions failed: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", resp.StatusCode, string(bodyBytes))
+		os.Exit(1)
+	}
+
+	// Parse response to extract session ID
+	var session map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
+		os.Exit(1)
+	}
+
+	sessionID, _ := session["id"].(string)
+	status, _ := session["status"].(string)
+	fmt.Printf("Created session '%s' for workspace '%s' (status=%s)\n", sessionID[:8], workspaceID, status)
+}
+
+// handleSessionClose terminates a session by ID.
+func handleSessionClose(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: 'close' requires a session_id argument")
+		fmt.Fprintln(os.Stderr, "Usage: norman sessions close <session_id>")
+		os.Exit(1)
+	}
+
+	sessionID := args[0]
+	if err := httpDelete("/api/sessions/" + url.PathEscape(sessionID)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error closing session '%s': %v\n", sessionID[:8], err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Session '%s' closed\n", sessionID[:8])
+}
+
 // handleTasks manages scheduled tasks via CLI.
 func handleTasks(args []string) {
 	if len(args) == 0 {
@@ -694,6 +813,8 @@ func handleTasks(args []string) {
 	subargs := args[1:]
 
 	switch subcommand {
+	case "send":
+		handleTaskSend(subargs)
 	case "add":
 		handleTaskAdd(subargs)
 	case "list":
@@ -717,13 +838,145 @@ func printTaskHelp() {
 Usage: norman tasks <subcommand> [args...]
 
 Subcommands:
+  send <prompt> --workspace <name> --session <id>   Send a prompt into a specific session (POST /api/tasks)
   add <name> --schedule "<cron>"   Register a recurring task (e.g., "*/5 * * * *")
   list                             List registered tasks with next-run times
   remove <id>                      Unregister and stop a task
   run <id>                         Trigger a task immediately
 
-Cron format: 6-field (second minute hour day month weekday) or 5-field (minute hour day month weekday)
-Example: norman tasks add health-check --schedule "*/5 * * * *"`)
+Examples:
+  norman tasks send "What files are in the attached directory?" --workspace myproject --session abc12345
+  norman tasks send "Explain this code" --workspace myproject --session abc12345
+
+Cron format: 6-field (second minute hour day month weekday) or 5-field (minute hour day month weekday)`)
+}
+
+// handleTaskSend sends a prompt into an active session via POST /api/tasks.
+func handleTaskSend(args []string) {
+	prompt := ""
+	sessionID := ""
+	workspaceID := ""
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--session" && i+1 < len(args) {
+			sessionID = args[i+1]
+			i++
+		} else if args[i] == "--workspace" && i+1 < len(args) {
+			workspaceID = args[i+1]
+			i++
+		} else if prompt == "" {
+			prompt = args[i]
+		}
+	}
+
+	if prompt == "" {
+		fmt.Fprintln(os.Stderr, "Error: 'send' requires a prompt argument")
+		fmt.Fprintln(os.Stderr, "Usage: norman tasks send <prompt> --workspace <name> [--session <id>]")
+		os.Exit(1)
+	}
+
+	if workspaceID == "" {
+		fmt.Fprintln(os.Stderr, "Error: '--workspace <name>' is required")
+		os.Exit(1)
+	}
+
+	// If no session ID provided, auto-create one via POST /api/sessions.
+	if sessionID == "" {
+		fmt.Fprintf(os.Stderr, "No --session provided — auto-creating session for workspace '%s'...\n", workspaceID)
+
+		// Resolve workspace name → ID.
+		workspacesBody, err := httpGet("/api/workspaces")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
+			os.Exit(1)
+		}
+		var workspaces []map[string]interface{}
+		if err := json.Unmarshal(workspacesBody, &workspaces); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing workspaces: %v\n", err)
+			os.Exit(1)
+		}
+		foundID := ""
+		for _, w := range workspaces {
+			name, _ := w["name"].(string)
+			if name == workspaceID {
+				idStr, _ := w["id"].(string)
+				foundID = idStr
+				break
+			}
+		}
+		if foundID == "" {
+			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list'.\n", workspaceID)
+			os.Exit(1)
+		}
+
+		// POST /api/sessions to create a real session.
+		sessBody := map[string]string{"workspace_id": foundID, "client_type": "cli"}
+		sessJSON, _ := json.Marshal(sessBody)
+		sessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(sessJSON))
+		sessReq.Header.Set("Content-Type", "application/json")
+		sessResp, err := (&http.Client{Timeout: 10 * time.Second}).Do(sessReq)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to auto-create session: %v\n", err)
+			os.Exit(1)
+		}
+		defer sessResp.Body.Close()
+		if sessResp.StatusCode >= 400 {
+			bodyBytes, _ := io.ReadAll(sessResp.Body)
+			fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", sessResp.StatusCode, string(bodyBytes))
+			os.Exit(1)
+		}
+		var sess map[string]interface{}
+		if err := json.NewDecoder(sessResp.Body).Decode(&sess); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
+			os.Exit(1)
+		}
+		sessionID = sess["id"].(string)
+		fmt.Printf("Auto-created session '%s' for workspace '%s'\n", sessionID, workspaceID)
+	}
+
+	// Build request body.
+	body := map[string]string{
+		"prompt":       prompt,
+		"workspace_id": workspaceID,
+		"session_id":   sessionID,
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
+		os.Exit(1)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/tasks", bytes.NewReader(jsonBody))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "POST /api/tasks failed: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "Task send failed (HTTP %d): %s\n", resp.StatusCode, string(bodyBytes))
+		os.Exit(1)
+	}
+
+	// Parse response to get task ID
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing task response: %v\n", err)
+		os.Exit(1)
+	}
+
+	taskID, _ := result["id"].(string)
+	fmt.Printf("Task '%s' submitted (session=%s)\n", taskID, sessionID)
 }
 
 func handleTaskAdd(args []string) {

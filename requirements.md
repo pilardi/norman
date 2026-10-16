@@ -22,7 +22,7 @@ A **thin client** + **Agent Server backbone** architecture that works on **tasks
   - Web UI (browser-based dashboard)
   - Any custom client implementing the server protocol
 - Conversational interface: user describes a task in natural language, agent works on it and returns results.
-- Commands: `list`, `switch <workspace>`, `create <name>`, `run` (or just interactive chat mode).
+- Commands: `list`, `sessions create --workspace <name>`, `tasks send <prompt> --workspace <name> [--session <id>]`, `sessions close <id>`, `sessions list`. All interaction happens via sessions bound to workspaces; no global `switch` or bare `run`.
 - **No host constraint**: Clients can run on any machine that can reach the server (local, remote, cloud). The client is purely a protocol endpoint — it does not need access to the workspace filesystem or environment.
 - **Single-user identity (MVP)**: There is no authentication layer. Any client connecting to the server is treated as "the user." Workspace ownership and per-user session tracking are deferred; for MVP, all clients share the same logical identity against the server.
 

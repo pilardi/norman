@@ -366,10 +366,13 @@ type ScheduledTaskRequest struct {
 
 // Session defines model for Session.
 type Session struct {
-	CreatedAt   *time.Time          `json:"created_at,omitempty"`
-	Id          *openapi_types.UUID `json:"id,omitempty"`
-	Status      *SessionStatus      `json:"status,omitempty"`
-	WorkspaceId *string             `json:"workspace_id,omitempty"`
+	CreatedAt *time.Time          `json:"created_at,omitempty"`
+	Id        *openapi_types.UUID `json:"id,omitempty"`
+
+	// Name Human-readable session name
+	Name        *string        `json:"name,omitempty"`
+	Status      *SessionStatus `json:"status,omitempty"`
+	WorkspaceId *string        `json:"workspace_id,omitempty"`
 }
 
 // SessionStatus defines model for Session.Status.
@@ -458,6 +461,9 @@ type TaskCreateRequest struct {
 	// Prompt Natural language task description
 	Prompt string `json:"prompt"`
 
+	// SessionId Target session for this task
+	SessionId string `json:"session_id"`
+
 	// WorkspaceId Target workspace for this task
 	WorkspaceId string `json:"workspace_id"`
 }
@@ -472,6 +478,7 @@ type WebSocketEvent struct {
 	Message         *string                 `json:"message,omitempty"`
 	Priority        *WebSocketEventPriority `json:"priority,omitempty"`
 	RemainingTokens *int                    `json:"remaining_tokens,omitempty"`
+	SessionId       *string                 `json:"session_id,omitempty"`
 	Step            *int                    `json:"step,omitempty"`
 	TaskId          *string                 `json:"task_id,omitempty"`
 

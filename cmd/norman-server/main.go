@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -266,7 +267,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 		if err != nil {
 			return err
 		}
-		wsHub.Add(conn)
+		// Extract optional session_id from query params for per-session filtering
+		sessionID := c.QueryParam("session_id")
+		wsHub.Add(conn, sessionID)
 		defer wsHub.Remove(conn)
 
 		for {
@@ -285,6 +288,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 	// Start scheduler background goroutine
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	sched.Start(schedCtx)
+
+	// Start idle timeout auto-cleanup goroutine (cleanup sessions inactive for >30min by default).
+	go srv.idleCleanupLoop(30 * time.Minute)
 
 	if err := e.Start(host + ":" + fmt.Sprintf("%d", port)); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
@@ -306,11 +312,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 // --- Real handler implementations ---
 
 func (s *server) ListSessions(c echo.Context) error {
-	tasks, err := s.store.ListTasks()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	sessions := s.store.ListSessions()
+	if len(sessions) == 0 {
+		return c.JSON(http.StatusOK, []map[string]interface{}{})
 	}
-	return c.JSON(http.StatusOK, tasks)
+	return c.JSON(http.StatusOK, sessions)
 }
 
 func (s *server) CreateSession(c echo.Context) error {
@@ -319,12 +325,21 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	clientType := "custom"
+	if req.ClientType != nil {
+		clientType = string(*req.ClientType)
+	}
+	session, err := s.createSessionInternal(req.WorkspaceId, clientType)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	s.wsHub.BroadcastSession(session.Id.String(), protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session created for workspace " + req.WorkspaceId),
 	})
 
-	return c.NoContent(http.StatusCreated)
+	return c.JSON(http.StatusCreated, session)
 }
 
 func (s *server) ArchiveSession(c echo.Context) error {
@@ -362,6 +377,38 @@ func (s *server) GetSession(c echo.Context, id string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, data)
+}
+
+func (s *server) DeleteSession(c echo.Context, id string) error {
+	// Support both short prefix and full UUID
+	var fullPath string
+	dir := filepath.Join(s.store.Base(), "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), id+"-") || entry.Name() == id+".json" {
+			fullPath = filepath.Join(dir, entry.Name())
+			break
+		}
+	}
+
+	if fullPath == "" {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
+	}
+
+	if err := os.Remove(fullPath); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.SessionEvent,
+		Message: strPtr("Session " + id[:8] + " closed"),
+	})
+
+	return c.NoContent(http.StatusOK)
 }
 
 func (s *server) ListSkills(c echo.Context) error {
@@ -463,17 +510,97 @@ func (s *server) CreateTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId)
+	// session_id is required — no auto-creation or guessing
+	if req.SessionId == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "session_id is required"})
+	}
+	sessionID := req.SessionId
+
+	// Validate session exists.
+	if _, err := s.store.GetSession(sessionID); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": fmt.Sprintf("session %s not found", sessionID)})
+	}
+
+	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId, sessionID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"id":          task.ID,
-		"status":      string(task.Status),
-		"prompt":      task.Prompt,
+		"id":           task.ID,
+		"status":       string(task.Status),
+		"prompt":       task.Prompt,
 		"workspace_id": task.Workspace,
+		"session_id":   sessionID,
 	})
+}
+
+// createSessionInternal creates a new session bound to a workspace.
+func (s *server) createSessionInternal(workspaceID string, clientType string) (*protocol.Session, error) {
+	id := uuid.New()
+	now := time.Now()
+	status := protocol.SessionStatus("active")
+	sessionName := id.String()[:8] + "-session"
+	session := &protocol.Session{
+		Id:          &id,
+		Name:        strPtr(sessionName),
+		WorkspaceId: strPtr(workspaceID),
+		Status:      &status,
+		CreatedAt:   &now,
+	}
+
+	s.store.SaveSession(id.String(), map[string]interface{}{
+		"id":           id.String(),
+		"name":         sessionName,
+		"workspace_id": workspaceID,
+		"client_type":  clientType,
+		"status":       "active",
+		"created_at":   now.Format(time.RFC3339),
+	})
+
+	s.wsHub.BroadcastSession(id.String(), protocol.WebSocketEvent{
+		Event:   protocol.SessionEvent,
+		Message: strPtr("Session created for workspace " + workspaceID),
+	})
+
+	return session, nil
+}
+
+// idleCleanupLoop periodically scans sessions and deletes those that have been
+// active for longer than the given timeout. Runs in a background goroutine.
+func (s *server) idleCleanupLoop(timeout time.Duration) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		sessions := s.store.ListSessions()
+
+		now := time.Now()
+		for _, sessMap := range sessions {
+			createdAtStr, ok := sessMap["created_at"].(string)
+			if !ok {
+				continue
+			}
+			createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+			if err != nil {
+				log.Printf("idle cleanup: bad created_at in session file: %v", err)
+				continue
+			}
+
+			if now.Sub(createdAt) > timeout {
+				sessionID, _ := sessMap["id"].(string)
+				log.Printf("idle cleanup: deleting session %s (inactive for %v)", sessionID[:8], now.Sub(createdAt).Round(time.Minute))
+				if err := s.store.DeleteSession(sessionID); err != nil {
+					log.Printf("idle cleanup: failed to delete session %s: %v", sessionID, err)
+				} else {
+					s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+						Event:   protocol.SessionEvent,
+						Message: strPtr("Session " + sessionID[:8] + " auto-closed (idle timeout)"),
+					})
+				}
+			}
+		}
+	}
 }
 
 func (s *server) ScheduleTask(c echo.Context) error {
@@ -663,7 +790,9 @@ func (s *server) ConnectWebSocket(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	s.wsHub.Add(conn)
+	// Extract optional session_id from query params for per-session filtering
+	sessionID := c.QueryParam("session_id")
+	s.wsHub.Add(conn, sessionID)
 	defer s.wsHub.Remove(conn)
 
 	for {
@@ -858,15 +987,17 @@ func resolveGatewayAddress() string {
 // --- WSHub (moved from stub to real implementation) ---
 
 type WSHub struct {
-	mu        sync.RWMutex
-	clients   map[*websocket.Conn]struct{}
-	broadcast chan []byte
+	mu            sync.RWMutex
+	clients       map[*websocket.Conn]struct{}          // global clients (no session filter)
+	sessionClients map[string]map[*websocket.Conn]struct{} // per-session client maps
+	broadcast     chan []byte
 }
 
 func NewWSHub() *WSHub {
 	return &WSHub{
-		clients:   make(map[*websocket.Conn]struct{}),
-		broadcast: make(chan []byte, 256),
+		clients:        make(map[*websocket.Conn]struct{}),
+		sessionClients: make(map[string]map[*websocket.Conn]struct{}),
+		broadcast:      make(chan []byte, 256),
 	}
 }
 
@@ -901,16 +1032,45 @@ func (h *WSHub) BroadcastEvent(event protocol.WebSocketEvent) {
 	h.Broadcast(data)
 }
 
-func (h *WSHub) Add(c *websocket.Conn) {
+// BroadcastSession sends a WebSocketEvent only to clients subscribed to the given session_id.
+func (h *WSHub) BroadcastSession(sessionID string, event protocol.WebSocketEvent) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("ws marshal error: %v", err)
+		return
+	}
+	h.mu.RLock()
+	subs := h.sessionClients[sessionID]
+	for c := range subs {
+		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+			log.Printf("ws session write error for %s: %v", sessionID[:8], err)
+		}
+	}
+	h.mu.RUnlock()
+}
+
+// Add registers a WebSocket connection with an optional session_id.
+// If sessionID is empty, the client joins the global broadcast pool.
+func (h *WSHub) Add(c *websocket.Conn, sessionID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.clients[c] = struct{}{}
+	if sessionID != "" {
+		if h.sessionClients[sessionID] == nil {
+			h.sessionClients[sessionID] = make(map[*websocket.Conn]struct{})
+		}
+		h.sessionClients[sessionID][c] = struct{}{}
+	}
 }
 
+// Remove unregisters a WebSocket connection from both global and session pools.
 func (h *WSHub) Remove(c *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.clients, c)
+	for _, subs := range h.sessionClients {
+		delete(subs, c)
+	}
 }
 
 func (h *WSHub) writeLoop() {

@@ -26,6 +26,7 @@ type Task struct {
 	Prompt    string
 	Status    protocol.TaskStatus
 	Workspace string
+	SessionId string
 	Output    []byte
 	Error     string
 	RetryCount int
@@ -84,6 +85,7 @@ type OpenShellClient interface {
 // WSHubPublisher sends WebSocket push events.
 type WSHubPublisher interface {
 	BroadcastEvent(event protocol.WebSocketEvent)
+	BroadcastSession(sessionID string, event protocol.WebSocketEvent)
 }
 
 // New creates a new agent loop with the given dependencies.
@@ -120,7 +122,7 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 }
 
 // Submit enqueues a task and begins execution.
-func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string) (*Task, error) {
+func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, sessionID string) (*Task, error) {
 	taskID := uuid.New().String()
 
 	task := &Task{
@@ -128,6 +130,7 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string) (*
 		Prompt:    prompt,
 		Status:    protocol.TaskStatusPending,
 		Workspace: workspaceID,
+		SessionId: sessionID,
 		CreatedAt: time.Now(),
 	}
 
@@ -140,8 +143,8 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string) (*
 		log.Printf("agent: failed to persist task %s: %v", taskID, err)
 	}
 
-	// Push progress event
-	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	// Push progress event (session-aware)
+	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &taskID,
 		Message: strPtr(fmt.Sprintf("Task %s submitted", taskID)),
@@ -203,8 +206,8 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		l.checkAndCompress(ctx, task.ID)
 	}
 
-	// Phase 1: Skill resolution and activation
-	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	// Phase 1: Skill resolution and activation (session-aware)
+	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &task.ID,
 		Message: strPtr("Resolving skills..."),
@@ -221,14 +224,14 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		}
 
 		activeSkills := l.activator.Active()
-		l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 			Event:   protocol.TaskProgress,
 			TaskId:  &task.ID,
 			Message: strPtr(fmt.Sprintf("Activated skills: %s", strings.Join(activeSkills, ", "))),
 			Step:    intPtr(2),
 		})
 	} else {
-		l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 			Event:   protocol.TaskProgress,
 			TaskId:  &task.ID,
 			Message: strPtr("Activated skills: (none)"),
@@ -236,15 +239,15 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		})
 	}
 
-	// Phase 2: Sandbox creation
-	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	// Phase 2: Sandbox creation (session-aware)
+	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &task.ID,
 		Message: strPtr("Creating sandbox..."),
 		Step:    intPtr(3),
 	})
 
-	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:8])
+	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:7])
 	sandboxID, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
@@ -259,8 +262,8 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		l.checkAndCompress(ctx, task.ID)
 	}
 
-	// Phase 3: Wait for ready
-	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	// Phase 3: Wait for ready (session-aware)
+	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &task.ID,
 		Message: strPtr("Waiting for sandbox ready..."),
@@ -279,7 +282,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	task.Status = protocol.TaskStatusRunning
 	l.mu.Unlock()
 
-	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &task.ID,
 		Message: strPtr("Executing task..."),
@@ -397,8 +400,16 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 		}
 	}
 
-	// Broadcast WebSocket notification
-	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+	// Broadcast WebSocket notification (session-aware)
+	l.mu.Lock()
+	task := l.tasks[taskID]
+	sessionID := ""
+	if task != nil {
+		sessionID = task.SessionId
+	}
+	l.mu.Unlock()
+
+	l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &taskID,
 		Message: strPtr(fmt.Sprintf("Context budget at %.0f%% — compressing session", l.budget.UsedFraction()*100)),
@@ -478,7 +489,7 @@ func (l *Loop) pushCompletion(task *Task) {
 		completionEvent.Message = strPtr(task.Error)
 	}
 
-	l.wsHub.BroadcastEvent(completionEvent)
+	l.wsHub.BroadcastSession(task.SessionId, completionEvent)
 
 	// Push notification via notifier (if configured)
 	if l.notifier != nil {

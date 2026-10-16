@@ -4,8 +4,10 @@ package memory
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -236,6 +238,57 @@ func (s *Store) LoadSession(sessionID string) (map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+// DeleteSession removes a session's state from disk.
+func (s *Store) DeleteSession(sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.base, "sessions", sessionID+".json")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("session %s not found", sessionID)
+		}
+		return fmt.Errorf("delete session file: %w", err)
+	}
+
+	return nil
+}
+
+// ListSessions returns all active sessions.
+func (s *Store) ListSessions() []map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	dir := filepath.Join(s.base, "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	var sessions []map[string]interface{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			log.Printf("memory: failed to read session file %s: %v", entry.Name(), err)
+			continue
+		}
+
+		var session map[string]interface{}
+		if err := json.Unmarshal(data, &session); err != nil {
+			log.Printf("memory: failed to parse session file %s: %v", entry.Name(), err)
+			continue
+		}
+
+		sessions = append(sessions, session)
+	}
+
+	return sessions
 }
 
 // Prune removes completed tasks older than the given age.
@@ -566,4 +619,23 @@ func (s *Store) Stats() (taskCount, sessionCount int, planCount int, workspaceCo
 	}
 
 	return taskCount, sessionCount, planCount, workspaceCount, nil
+}
+
+// GetSession returns a session by ID. Returns error if not found.
+func (s *Store) GetSession(sessionID string) (map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "sessions", sessionID+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("session %s not found: %w", sessionID, err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("invalid session data for %s: %w", sessionID, err)
+	}
+
+	return result, nil
 }
