@@ -222,7 +222,6 @@ Commands:
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
   sessions create --workspace <name>   Create a new chat session for a workspace
-  sessions close <session_id>          Close and save transcript for a session
   sessions list                        List active chat sessions
   sessions archive <session_id>        Archive a session's transcript to .norman/archived/
   chat --workspace <name> [--session <id>]   Enter interactive REPL chat mode
@@ -576,8 +575,6 @@ func handleSessions(args []string) {
 		handleSessionArchive(subargs)
 	case "create":
 		handleSessionCreate(subargs)
-	case "close":
-		handleSessionClose(subargs)
 	case "--help", "-h":
 		printSessionHelp()
 	default:
@@ -595,12 +592,10 @@ Usage: norman sessions <subcommand> [args...]
 Subcommands:
   create [--workspace <name>]   Create a new chat session bound to a workspace
   list                          List active chat sessions
-  close <session_id>            Close and save transcript for a session (POST /api/sessions/:id/close)
   archive <session_id>          Archive a session's transcript to .norman/archived/
 
 Examples:
-  norman sessions create --workspace my-project    # creates session for workspace
-  norman sessions close abc12345                     # closes and saves session by ID`)
+  norman sessions create --workspace my-project    # creates session for workspace`)
 }
 
 func handleSessionList(args []string) {
@@ -780,23 +775,6 @@ func handleSessionCreate(args []string) {
 	sessionID, _ := session["id"].(string)
 	status, _ := session["status"].(string)
 	fmt.Printf("Created session '%s' for workspace '%s' (status=%s)\n", sessionID[:8], workspaceID, status)
-}
-
-// handleSessionClose terminates a session by ID.
-func handleSessionClose(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: 'close' requires a session_id argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman sessions close <session_id>")
-		os.Exit(1)
-	}
-
-	sessionID := args[0]
-	if err := httpDelete("/api/sessions/" + url.PathEscape(sessionID)); err != nil {
-		fmt.Fprintf(os.Stderr, "Error closing session '%s': %v\n", sessionID[:8], err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Session '%s' closed\n", sessionID[:8])
 }
 
 // handleTaskAdd — removed (manual task creation no longer part of client API).
