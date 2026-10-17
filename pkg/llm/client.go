@@ -201,22 +201,49 @@ type Tool struct {
 }
 
 // ParseToolCalls extracts tool calls from a completion response's message.
+// Supports both OpenAI-style structured tool_calls array and legacy JSON-in-content format.
 func ParseToolCalls(msg Message) []ToolCall {
-	// For MVP, we parse the content as JSON if it looks like a tool call
-	// In a real implementation, this would check for structured tool_call fields
 	var calls []ToolCall
 
-	if msg.Role == "assistant" && len(msg.Content) > 0 {
-		// Try to parse as a tool call JSON object
-		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(msg.Content), &raw); err == nil {
-			if name, ok := raw["name"].(string); ok {
+	if msg.Role != "assistant" || len(msg.Content) == 0 {
+		return calls
+	}
+
+	// Strategy 1: Check for structured tool_calls field in message (OpenAI API response).
+	// This is the canonical format: message.tool_calls = [{id, function: {name, arguments}}]
+	var rawMsg map[string]interface{}
+	if err := json.Unmarshal([]byte(msg.Content), &rawMsg); err == nil {
+		if toolCalls, ok := rawMsg["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
+			for _, tcRaw := range toolCalls {
+				tcMap, ok := tcRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				id, _ := tcMap["id"].(string)
+				fnRaw, _ := tcMap["function"].(map[string]interface{})
+				name, _ := fnRaw["name"].(string)
+				argsRaw, _ := fnRaw["arguments"].(string)
+
 				calls = append(calls, ToolCall{
-					ID:      fmt.Sprintf("call_%d", time.Now().UnixNano()),
-					Name:    name,
-					Arguments: []byte(fmt.Sprintf("%v", raw)),
+					ID:        id,
+					Name:      name,
+					Arguments: []byte(argsRaw),
 				})
 			}
+			return calls // Structured format found — no need for fallback
+		}
+	}
+
+	// Strategy 2: Legacy JSON-in-content (MVP heuristic).
+	// Try to parse the content as a single tool call JSON object.
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(msg.Content), &raw); err == nil {
+		if name, ok := raw["name"].(string); ok {
+			calls = append(calls, ToolCall{
+				ID:        fmt.Sprintf("call_%d", time.Now().UnixNano()),
+				Name:      name,
+				Arguments: []byte(fmt.Sprintf("%v", raw)),
+			})
 		}
 	}
 

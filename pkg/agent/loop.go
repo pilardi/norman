@@ -541,8 +541,9 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			Step:    intPtr(6 + turn),
 		})
 
-		// Call the LLM API (pass empty tools slice for MVP; extend later with dynamic tool registry)
-		resp, err := l.llmClient.Complete(ctx, systemPrompt, messages, nil)
+		// Build tools from active skills and pass to LLM
+		tools := l.buildTools()
+		resp, err := l.llmClient.Complete(ctx, systemPrompt, messages, tools)
 		if err != nil {
 			log.Printf("agent: LLM call failed at turn %d: %v", turn, err)
 			task.Status = protocol.TaskStatusFailed
@@ -632,6 +633,39 @@ Rules:
 	}
 
 	return strings.Join(parts, "\n")
+}
+
+// buildTools converts active skills into llm.Tool definitions for the LLM API.
+func (l *Loop) buildTools() []llm.Tool {
+	var tools []llm.Tool
+
+	if l.activator == nil {
+		return tools
+	}
+
+	for _, entry := range l.activator.Registry() {
+		// Only include activated skills as available tools
+		if !contains(l.activator.Active(), entry.Name) {
+			continue
+		}
+
+		tools = append(tools, llm.Tool{
+			Name:        entry.Name,
+			Description: entry.Description,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"args": map[string]interface{}{
+						"type":        "object",
+						"description": "Tool-specific arguments",
+					},
+				},
+				"required": []string{"args"},
+			},
+		})
+	}
+
+	return tools
 }
 
 // buildMessages assembles conversation messages from session history, raw sources, and skills.
