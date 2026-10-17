@@ -298,9 +298,8 @@ paths:
 
   /api/tasks:
     post:
-      deprecated: true
       tags: [task]
-      summary: Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+      summary: Create a new task (internal agent use)
       operationId: createTask
       requestBody:
         required: true
@@ -315,8 +314,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
-        "400":
-          description: Invalid request
 
     get:
       tags: [task]
@@ -359,19 +356,6 @@ paths:
         "404":
           description: Task not found
 
-    delete:
-      tags: [task]
-      summary: Delete a task (permanent removal)
-      operationId: cancelTask
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Task deleted
   /api/tasks/{id}/log:
     get:
       tags: [task]
@@ -452,25 +436,6 @@ paths:
         "204":
           description: Skill removed
 
-  /api/tasks/schedule:
-    post:
-      tags: [scheduled]
-      summary: Register a manual recurring cron task
-      operationId: scheduleTask
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ScheduledTaskRequest"
-      responses:
-        "201":
-          description: Scheduled task registered
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ScheduledTask"
-
   /api/tasks/scheduled:
     get:
       tags: [scheduled]
@@ -485,21 +450,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ScheduledTask"
-
-  /api/tasks/scheduled/{id}:
-    delete:
-      tags: [scheduled]
-      summary: Remove a scheduled task
-      operationId: unscheduleTask
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Scheduled task removed
 
   /api/tasks/{id}/complete:
     post:
@@ -656,7 +606,6 @@ components:
 
     TaskCreateRequest:
       type: object
-      required: [workspace_id, prompt, session_id]
       properties:
         workspace_id:
           type: string
@@ -670,6 +619,7 @@ components:
         priority:
           type: string
           enum: [low, normal, high]
+          description: Task execution priority
           default: "normal"
 
     Task:

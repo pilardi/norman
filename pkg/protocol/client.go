@@ -224,52 +224,24 @@ type ClientInterface interface {
 	// Corresponds with GET /api/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateTaskWithBody Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+	// CreateTaskWithBody Create a new task (internal agent use)
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateTask Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+	// CreateTask Create a new task (internal agent use)
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTask(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ScheduleTaskWithBody Register a manual recurring cron task
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-	ScheduleTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ScheduleTask Register a manual recurring cron task
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-	ScheduleTask(ctx context.Context, body ScheduleTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListScheduledTasks List scheduled tasks
 	//
 	// Corresponds with GET /api/tasks/scheduled (the `ListScheduledTasks` operationId).
 	ListScheduledTasks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// UnscheduleTask Remove a scheduled task
-	//
-	// Corresponds with DELETE /api/tasks/scheduled/{id} (the `UnscheduleTask` operationId).
-	UnscheduleTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CancelTask Delete a task (permanent removal)
-	//
-	// Corresponds with DELETE /api/tasks/{id} (the `CancelTask` operationId).
-	CancelTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTask Get task status and details
 	//
@@ -689,12 +661,11 @@ func (c *Client) ListTasks(ctx context.Context, params *ListTasksParams, reqEdit
 	return c.Client.Do(req)
 }
 
-// CreateTaskWithBody Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+// CreateTaskWithBody Create a new task (internal agent use)
 //
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) CreateTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateTaskRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -707,48 +678,13 @@ func (c *Client) CreateTaskWithBody(ctx context.Context, contentType string, bod
 	return c.Client.Do(req)
 }
 
-// CreateTask Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+// CreateTask Create a new task (internal agent use)
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) CreateTask(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateTaskRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ScheduleTaskWithBody Register a manual recurring cron task
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-func (c *Client) ScheduleTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewScheduleTaskRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ScheduleTask Register a manual recurring cron task
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-func (c *Client) ScheduleTask(ctx context.Context, body ScheduleTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewScheduleTaskRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -764,36 +700,6 @@ func (c *Client) ScheduleTask(ctx context.Context, body ScheduleTaskJSONRequestB
 // Corresponds with GET /api/tasks/scheduled (the `ListScheduledTasks` operationId).
 func (c *Client) ListScheduledTasks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListScheduledTasksRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// UnscheduleTask Remove a scheduled task
-//
-// Corresponds with DELETE /api/tasks/scheduled/{id} (the `UnscheduleTask` operationId).
-func (c *Client) UnscheduleTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUnscheduleTaskRequest(c.Server, id)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CancelTask Delete a task (permanent removal)
-//
-// Corresponds with DELETE /api/tasks/{id} (the `CancelTask` operationId).
-func (c *Client) CancelTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCancelTaskRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -1650,46 +1556,6 @@ func NewCreateTaskRequestWithBody(server string, contentType string, body io.Rea
 	return req, nil
 }
 
-// NewScheduleTaskRequest calls the generic ScheduleTask builder with application/json body
-func NewScheduleTaskRequest(server string, body ScheduleTaskJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewScheduleTaskRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewScheduleTaskRequestWithBody constructs an http.Request for the ScheduleTask method, with any body, and a specified content type
-func NewScheduleTaskRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/tasks/schedule")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewListScheduledTasksRequest constructs an http.Request for the ListScheduledTasks method
 func NewListScheduledTasksRequest(server string) (*http.Request, error) {
 	var err error
@@ -1710,74 +1576,6 @@ func NewListScheduledTasksRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewUnscheduleTaskRequest constructs an http.Request for the UnscheduleTask method
-func NewUnscheduleTaskRequest(server string, id string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/tasks/scheduled/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewCancelTaskRequest constructs an http.Request for the CancelTask method
-func NewCancelTaskRequest(server string, id string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/tasks/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2314,37 +2112,19 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/tasks (the `ListTasks` operationId).
 	ListTasksWithResponse(ctx context.Context, params *ListTasksParams, reqEditors ...RequestEditorFn) (*ListTasksResponse, error)
 
-	// CreateTaskWithBodyWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+	// CreateTaskWithBodyWithResponse Create a new task (internal agent use)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error)
 
-	// CreateTaskWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+	// CreateTaskWithResponse Create a new task (internal agent use)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTaskWithResponse(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error)
-
-	// ScheduleTaskWithBodyWithResponse Register a manual recurring cron task
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-	ScheduleTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ScheduleTaskResponse, error)
-
-	// ScheduleTaskWithResponse Register a manual recurring cron task
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-	ScheduleTaskWithResponse(ctx context.Context, body ScheduleTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*ScheduleTaskResponse, error)
 
 	// ListScheduledTasksWithResponse List scheduled tasks
 	//
@@ -2352,20 +2132,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/tasks/scheduled (the `ListScheduledTasks` operationId).
 	ListScheduledTasksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListScheduledTasksResponse, error)
-
-	// UnscheduleTaskWithResponse Remove a scheduled task
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /api/tasks/scheduled/{id} (the `UnscheduleTask` operationId).
-	UnscheduleTaskWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*UnscheduleTaskResponse, error)
-
-	// CancelTaskWithResponse Delete a task (permanent removal)
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /api/tasks/{id} (the `CancelTask` operationId).
-	CancelTaskWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*CancelTaskResponse, error)
 
 	// GetTaskWithResponse Get task status and details
 	//
@@ -3121,47 +2887,6 @@ func (r CreateTaskResponse) ContentType() string {
 	return ""
 }
 
-type ScheduleTaskResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *ScheduledTask
-}
-
-// GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r ScheduleTaskResponse) GetJSON201() *ScheduledTask {
-	return r.JSON201
-}
-
-// GetBody returns the raw response body bytes
-func (r ScheduleTaskResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ScheduleTaskResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ScheduleTaskResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ScheduleTaskResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type ListScheduledTasksResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3197,74 +2922,6 @@ func (r ListScheduledTasksResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListScheduledTasksResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type UnscheduleTaskResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-}
-
-// GetBody returns the raw response body bytes
-func (r UnscheduleTaskResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r UnscheduleTaskResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r UnscheduleTaskResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r UnscheduleTaskResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type CancelTaskResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-}
-
-// GetBody returns the raw response body bytes
-func (r CancelTaskResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r CancelTaskResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CancelTaskResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r CancelTaskResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3918,13 +3575,11 @@ func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, params 
 	return ParseListTasksResponse(rsp)
 }
 
-// CreateTaskWithBodyWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+// CreateTaskWithBodyWithResponse Create a new task (internal agent use)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
-//
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) CreateTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error) {
 	rsp, err := c.CreateTaskWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
@@ -3933,44 +3588,17 @@ func (c *ClientWithResponses) CreateTaskWithBodyWithResponse(ctx context.Context
 	return ParseCreateTaskResponse(rsp)
 }
 
-// CreateTaskWithResponse Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+// CreateTaskWithResponse Create a new task (internal agent use)
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) CreateTaskWithResponse(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error) {
 	rsp, err := c.CreateTask(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseCreateTaskResponse(rsp)
-}
-
-// ScheduleTaskWithBodyWithResponse Register a manual recurring cron task
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-func (c *ClientWithResponses) ScheduleTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ScheduleTaskResponse, error) {
-	rsp, err := c.ScheduleTaskWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseScheduleTaskResponse(rsp)
-}
-
-// ScheduleTaskWithResponse Register a manual recurring cron task
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
-func (c *ClientWithResponses) ScheduleTaskWithResponse(ctx context.Context, body ScheduleTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*ScheduleTaskResponse, error) {
-	rsp, err := c.ScheduleTask(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseScheduleTaskResponse(rsp)
 }
 
 // ListScheduledTasksWithResponse List scheduled tasks
@@ -3984,32 +3612,6 @@ func (c *ClientWithResponses) ListScheduledTasksWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseListScheduledTasksResponse(rsp)
-}
-
-// UnscheduleTaskWithResponse Remove a scheduled task
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /api/tasks/scheduled/{id} (the `UnscheduleTask` operationId).
-func (c *ClientWithResponses) UnscheduleTaskWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*UnscheduleTaskResponse, error) {
-	rsp, err := c.UnscheduleTask(ctx, id, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUnscheduleTaskResponse(rsp)
-}
-
-// CancelTaskWithResponse Delete a task (permanent removal)
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /api/tasks/{id} (the `CancelTask` operationId).
-func (c *ClientWithResponses) CancelTaskWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*CancelTaskResponse, error) {
-	rsp, err := c.CancelTask(ctx, id, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCancelTaskResponse(rsp)
 }
 
 // GetTaskWithResponse Get task status and details
@@ -4558,35 +4160,6 @@ func ParseCreateTaskResponse(rsp *http.Response) (*CreateTaskResponse, error) {
 		}
 		response.JSON201 = &dest
 
-	case rsp.StatusCode == 400:
-		break // No content-type
-
-	}
-
-	return response, nil
-}
-
-// ParseScheduleTaskResponse parses an HTTP response from a ScheduleTaskWithResponse call
-func ParseScheduleTaskResponse(rsp *http.Response) (*ScheduleTaskResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ScheduleTaskResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest ScheduledTask
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
 	}
 
 	return response, nil
@@ -4613,38 +4186,6 @@ func ParseListScheduledTasksResponse(rsp *http.Response) (*ListScheduledTasksRes
 		}
 		response.JSON200 = &dest
 
-	}
-
-	return response, nil
-}
-
-// ParseUnscheduleTaskResponse parses an HTTP response from a UnscheduleTaskWithResponse call
-func ParseUnscheduleTaskResponse(rsp *http.Response) (*UnscheduleTaskResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &UnscheduleTaskResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseCancelTaskResponse parses an HTTP response from a CancelTaskWithResponse call
-func ParseCancelTaskResponse(rsp *http.Response) (*CancelTaskResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CancelTaskResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
 	}
 
 	return response, nil

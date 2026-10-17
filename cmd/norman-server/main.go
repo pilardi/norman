@@ -653,17 +653,26 @@ func (s *server) CreateTask(c echo.Context) error {
 	}
 
 	// session_id is required — no auto-creation or guessing
-	if req.SessionId == "" {
+	if req.SessionId == nil || *req.SessionId == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "session_id is required"})
 	}
-	sessionID := req.SessionId
+	sessionID := *req.SessionId
 
 	// Validate session exists.
 	if _, err := s.store.GetSession(sessionID); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": fmt.Sprintf("session %s not found", sessionID)})
 	}
 
-	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId, sessionID)
+	prompt := ""
+	if req.Prompt != nil {
+		prompt = *req.Prompt
+	}
+	workspaceID := ""
+	if req.WorkspaceId != nil {
+		workspaceID = *req.WorkspaceId
+	}
+
+	task, err := s.loop.Submit(context.Background(), prompt, workspaceID, sessionID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -745,36 +754,6 @@ func (s *server) idleCleanupLoop(timeout time.Duration) {
 	}
 }
 
-func (s *server) ScheduleTask(c echo.Context) error {
-	var req protocol.ScheduledTaskRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-	}
-
-	entry := scheduler.TaskEntry{
-		ID:       uuid.New().String(),
-		Name:     req.Name,
-		Schedule: req.Schedule,
-		Command:  "", // MVP: command derived from config or skill
-		Active:   true,
-	}
-	if err := s.scheduler.Add(entry); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		Message: strPtr("Scheduled task: " + entry.Name),
-	})
-
-	// Persist scheduled tasks to disk.
-	if err := s.store.SaveScheduledTasks(s.scheduler.ToInterfaceSlice()); err != nil {
-		log.Printf("scheduler: failed to persist scheduled tasks: %v", err)
-	}
-
-	return c.NoContent(http.StatusCreated)
-}
-
 func (s *server) ListScheduledTasks(c echo.Context) error {
 	entries := s.scheduler.List()
 	result := make([]protocol.ScheduledTask, 0, len(entries))
@@ -797,39 +776,6 @@ func (s *server) ListScheduledTasks(c echo.Context) error {
 		})
 	}
 	return c.JSON(http.StatusOK, result)
-}
-
-func (s *server) UnscheduleTask(c echo.Context, id string) error {
-	if err := s.scheduler.Remove(id); err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-	}
-
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		Message: strPtr("Unscheduling task: " + id[:8]),
-	})
-
-	// Persist scheduled tasks to disk.
-	if err := s.store.SaveScheduledTasks(s.scheduler.ToInterfaceSlice()); err != nil {
-		log.Printf("scheduler: failed to persist scheduled tasks: %v", err)
-	}
-
-	return c.NoContent(http.StatusOK)
-}
-
-func (s *server) CancelTask(c echo.Context, id string) error {
-	err := s.loop.DeleteTask(id)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-	}
-
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &id,
-		Message: strPtr("Task deleted"),
-	})
-
-	return c.NoContent(http.StatusOK)
 }
 
 func (s *server) GetTask(c echo.Context, id string) error {

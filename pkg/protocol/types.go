@@ -27,24 +27,6 @@ func (e HealthStatusStatus) Valid() bool {
 	}
 }
 
-// Defines values for NotificationConfigPriority.
-const (
-	NotificationConfigPriorityHigh   NotificationConfigPriority = "high"
-	NotificationConfigPriorityNormal NotificationConfigPriority = "normal"
-)
-
-// Valid indicates whether the value is a known member of the NotificationConfigPriority enum.
-func (e NotificationConfigPriority) Valid() bool {
-	switch e {
-	case NotificationConfigPriorityHigh:
-		return true
-	case NotificationConfigPriorityNormal:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ScheduledTaskStatus.
 const (
 	ScheduledTaskStatusActive ScheduledTaskStatus = "active"
@@ -376,16 +358,6 @@ type HealthStatus struct {
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
 
-// NotificationConfig defines model for NotificationConfig.
-type NotificationConfig struct {
-	// Channel Target channel (e.g., "slack", "#ops")
-	Channel  *string                     `json:"channel,omitempty"`
-	Priority *NotificationConfigPriority `json:"priority,omitempty"`
-}
-
-// NotificationConfigPriority defines model for NotificationConfig.Priority.
-type NotificationConfigPriority string
-
 // NotificationCreateRequest defines model for NotificationCreateRequest.
 type NotificationCreateRequest struct {
 	// Body Notification body text
@@ -442,19 +414,6 @@ type ScheduledTask struct {
 
 // ScheduledTaskStatus defines model for ScheduledTask.Status.
 type ScheduledTaskStatus string
-
-// ScheduledTaskRequest defines model for ScheduledTaskRequest.
-type ScheduledTaskRequest struct {
-	Config    *map[string]interface{} `json:"config,omitempty"`
-	Name      string                  `json:"name"`
-	OnFailure *NotificationConfig     `json:"on_failure,omitempty"`
-	OnSuccess *NotificationConfig     `json:"on_success,omitempty"`
-
-	// Schedule Cron expression (5-field or 6-field)
-	Schedule    string `json:"schedule"`
-	Skill       string `json:"skill"`
-	WorkspaceId string `json:"workspace_id"`
-}
 
 // SchedulerStatus defines model for SchedulerStatus.
 type SchedulerStatus struct {
@@ -637,19 +596,20 @@ type TaskCompletionStatus string
 
 // TaskCreateRequest defines model for TaskCreateRequest.
 type TaskCreateRequest struct {
+	// Priority Task execution priority
 	Priority *TaskCreateRequestPriority `json:"priority,omitempty"`
 
 	// Prompt Natural language task description
-	Prompt string `json:"prompt"`
+	Prompt *string `json:"prompt,omitempty"`
 
 	// SessionId Target session for this task
-	SessionId string `json:"session_id"`
+	SessionId *string `json:"session_id,omitempty"`
 
 	// WorkspaceId Target workspace for this task
-	WorkspaceId string `json:"workspace_id"`
+	WorkspaceId *string `json:"workspace_id,omitempty"`
 }
 
-// TaskCreateRequestPriority defines model for TaskCreateRequest.Priority.
+// TaskCreateRequestPriority Task execution priority
 type TaskCreateRequestPriority string
 
 // TokenUsage defines model for TokenUsage.
@@ -749,12 +709,7 @@ type SendMessageJSONRequestBody = SendMessageRequest
 type AddDiscoveryPathsJSONRequestBody = SkillInstallRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type CreateTaskJSONRequestBody = TaskCreateRequest
-
-// ScheduleTaskJSONRequestBody defines body for ScheduleTask for application/json ContentType.
-type ScheduleTaskJSONRequestBody = ScheduledTaskRequest
 
 // ReportTaskCompleteJSONRequestBody defines body for ReportTaskComplete for application/json ContentType.
 type ReportTaskCompleteJSONRequestBody = TaskCompletion

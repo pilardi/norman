@@ -62,23 +62,12 @@ type ServerInterface interface {
 	// ListTasks List active and scheduled (manual + emergent) tasks
 	// (GET /api/tasks)
 	ListTasks(ctx echo.Context, params protocol.ListTasksParams) error
-	// CreateTask Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
+	// CreateTask Create a new task (internal agent use)
 	// (POST /api/tasks)
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTask(ctx echo.Context) error
-	// ScheduleTask Register a manual recurring cron task
-	// (POST /api/tasks/schedule)
-	ScheduleTask(ctx echo.Context) error
 	// ListScheduledTasks List scheduled tasks
 	// (GET /api/tasks/scheduled)
 	ListScheduledTasks(ctx echo.Context) error
-	// UnscheduleTask Remove a scheduled task
-	// (DELETE /api/tasks/scheduled/{id})
-	UnscheduleTask(ctx echo.Context, id string) error
-	// CancelTask Delete a task (permanent removal)
-	// (DELETE /api/tasks/{id})
-	CancelTask(ctx echo.Context, id string) error
 	// GetTask Get task status and details
 	// (GET /api/tasks/{id})
 	GetTask(ctx echo.Context, id string) error
@@ -335,53 +324,12 @@ func (w *ServerInterfaceWrapper) CreateTask(ctx echo.Context) error {
 	return err
 }
 
-// ScheduleTask converts echo context to params.
-func (w *ServerInterfaceWrapper) ScheduleTask(ctx echo.Context) error {
-	var err error
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ScheduleTask(ctx)
-	return err
-}
-
 // ListScheduledTasks converts echo context to params.
 func (w *ServerInterfaceWrapper) ListScheduledTasks(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ListScheduledTasks(ctx)
-	return err
-}
-
-// UnscheduleTask converts echo context to params.
-func (w *ServerInterfaceWrapper) UnscheduleTask(ctx echo.Context) error {
-	var err error
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
-	}
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UnscheduleTask(ctx, id)
-	return err
-}
-
-// CancelTask converts echo context to params.
-func (w *ServerInterfaceWrapper) CancelTask(ctx echo.Context) error {
-	var err error
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
-	}
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CancelTask(ctx, id)
 	return err
 }
 
@@ -573,15 +521,12 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/api/notifications/:id", wrapper.DeleteNotification, options.OperationMiddlewares["deleteNotification"]...)
 	router.GET(options.BaseURL+"/api/tasks", wrapper.ListTasks, options.OperationMiddlewares["listTasks"]...)
 	router.POST(options.BaseURL+"/api/tasks", wrapper.CreateTask, options.OperationMiddlewares["createTask"]...)
-	router.DELETE(options.BaseURL+"/api/tasks/:id", wrapper.CancelTask, options.OperationMiddlewares["cancelTask"]...)
 	router.GET(options.BaseURL+"/api/tasks/:id", wrapper.GetTask, options.OperationMiddlewares["getTask"]...)
 	router.GET(options.BaseURL+"/api/tasks/:id/log", wrapper.TailTaskLog, options.OperationMiddlewares["tailTaskLog"]...)
 	router.GET(options.BaseURL+"/api/skills", wrapper.ListSkills, options.OperationMiddlewares["listSkills"]...)
 	router.POST(options.BaseURL+"/api/skills/paths", wrapper.AddDiscoveryPaths, options.OperationMiddlewares["addDiscoveryPaths"]...)
 	router.DELETE(options.BaseURL+"/api/skills/:name", wrapper.RemoveSkill, options.OperationMiddlewares["removeSkill"]...)
-	router.POST(options.BaseURL+"/api/tasks/schedule", wrapper.ScheduleTask, options.OperationMiddlewares["scheduleTask"]...)
 	router.GET(options.BaseURL+"/api/tasks/scheduled", wrapper.ListScheduledTasks, options.OperationMiddlewares["listScheduledTasks"]...)
-	router.DELETE(options.BaseURL+"/api/tasks/scheduled/:id", wrapper.UnscheduleTask, options.OperationMiddlewares["unscheduleTask"]...)
 	router.POST(options.BaseURL+"/api/tasks/:id/complete", wrapper.ReportTaskComplete, options.OperationMiddlewares["reportTaskComplete"]...)
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck, options.OperationMiddlewares["healthCheck"]...)
 	router.GET(options.BaseURL+"/api/config", wrapper.GetConfig, options.OperationMiddlewares["getConfig"]...)
