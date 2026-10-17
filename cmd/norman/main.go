@@ -861,11 +861,12 @@ func handleChat(args []string) {
 				sessionID = cmdArgs[0]
 				fmt.Printf("Switched to session '%s'\n", sessionID[:8])
 			case "archive":
+				id := cmdArgs[0]
 				if len(cmdArgs) == 0 {
-					fmt.Fprintln(os.Stderr, "Usage: /archive <session-id>")
-					continue
+					// Auto-archive current session.
+					id = sessionID
 				}
-				archiveSession(cmdArgs[0])
+				archiveSession(id)
 			default:
 				fmt.Fprintf(os.Stderr, "Unknown slash-command: /%s\n", cmd)
 			}
@@ -999,7 +1000,28 @@ func showHistory(sessionID string, args []string) {
 		fmt.Fprintf(os.Stderr, "Error fetching history: %v\n", err)
 		return
 	}
-	fmt.Printf("\n--- Last %d messages ---\n%s\n---\n", n, string(body))
+
+	var turns []map[string]interface{}
+	if err := json.Unmarshal(body, &turns); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing history: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\n--- Last %d messages ---\n", n)
+	for i, t := range turns {
+		role, _ := t["role"].(string)
+		content, _ := t["content"].(string)
+		ts, _ := t["timestamp"].(string)
+		if ts != "" {
+			fmt.Printf("[%s] %s: %s\n", ts, role, content)
+		} else {
+			fmt.Printf("%s: %s\n", role, content)
+		}
+		if i < len(turns)-1 {
+			fmt.Println("---")
+		}
+	}
+	fmt.Printf("---\n")
 }
 
 // resolveSessionID resolves a session name/short ID to the actual UUID.
