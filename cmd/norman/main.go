@@ -222,7 +222,7 @@ Commands:
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
   sessions list                        List active chat sessions
-  sessions archive <session_id>        Archive a session's transcript to .norman/archived/
+  sessions archive <session_id>        Archive a session's transcript via POST /api/sessions/{id}
   sessions open <workspace_name> [<session_id>]       Open an interactive REPL chat session
 
 Use "norman help <command>" for detailed help on a specific command.`)
@@ -591,7 +591,8 @@ Usage: norman sessions <subcommand> [args...]
 Subcommands:
   open <workspace_name> [<session_id>]   Open an interactive REPL chat session
   list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript to .norman/archived/`)
+  archive <session_id>          Archive a session's transcript via POST /api/sessions/{id}
+`)
 }
 
 func handleSessionList(args []string) {
@@ -630,58 +631,44 @@ func handleSessionList(args []string) {
 	}
 }
 
-// handleSessionArchive archives a session for the given task ID via REST API.
+// handleSessionArchive archives a session's transcript via POST /api/sessions/{id}.
 func handleSessionArchive(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: 'archive' requires a task_id argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman sessions archive <task_id>")
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		fmt.Fprintln(os.Stderr, "Error: 'archive' requires a session_id argument")
+		fmt.Fprintln(os.Stderr, "Usage: norman sessions archive <session_id>")
 		os.Exit(1)
 	}
 
-	taskID := args[0]
+	sessionID := args[0]
 
-	// Load config to get server port
-	cfg, err := config.LoadDefault()
+	url := serverURL() + "/api/sessions/" + url.PathEscape(sessionID)
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error creating archive request: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Build request body
-	body := map[string]string{"task_id": taskID}
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
-		os.Exit(1)
-	}
-
-	// POST to server archive endpoint
-	url := fmt.Sprintf("http://localhost:%d/api/sessions/archive", cfg.System.ServerPort)
-	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBody))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		os.Exit(1)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error calling archive endpoint: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", shortID(sessionID), err)
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNoContent {
-		fmt.Printf("Session archived for task '%s'\n", taskID)
-	} else if resp.StatusCode == http.StatusNotFound {
-		fmt.Fprintf(os.Stderr, "Task '%s' not found\n", taskID)
-		os.Exit(1)
-	} else {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "Archive failed (HTTP %d): %s\n", resp.StatusCode, string(bodyBytes))
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "HTTP %d archiving session %s: %s\n", resp.StatusCode, shortID(sessionID), string(body))
 		os.Exit(1)
 	}
+	fmt.Printf("Session '%s' archived successfully.\n", shortID(sessionID))
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
 }
 
 // handleTaskAdd — removed (manual task creation no longer part of client API).
