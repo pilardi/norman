@@ -53,7 +53,7 @@ type ServerInterface interface {
 	// RemoveSkill Remove a skill
 	// (DELETE /api/skills/{name})
 	RemoveSkill(ctx echo.Context, name string) error
-	// ListTasks List active/scheduled tasks
+	// ListTasks List active and scheduled (manual + emergent) tasks
 	// (GET /api/tasks)
 	ListTasks(ctx echo.Context, params protocol.ListTasksParams) error
 	// CreateTask Create a new task (user prompt) — DEPRECATED. Use POST /api/sessions/{id}/messages instead.
@@ -61,7 +61,7 @@ type ServerInterface interface {
 	//
 	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTask(ctx echo.Context) error
-	// ScheduleTask Register a recurring task
+	// ScheduleTask Register a manual recurring cron task
 	// (POST /api/tasks/schedule)
 	ScheduleTask(ctx echo.Context) error
 	// ListScheduledTasks List scheduled tasks
@@ -79,7 +79,7 @@ type ServerInterface interface {
 	// ReportTaskComplete Environment reports task completion (internal)
 	// (POST /api/tasks/{id}/complete)
 	ReportTaskComplete(ctx echo.Context, id string) error
-	// TailTaskLog Tail task output (for CLI polling)
+	// TailTaskLog Tail task output (for CLI polling, both emergent and manual tasks)
 	// (GET /api/tasks/{id}/log)
 	TailTaskLog(ctx echo.Context, id string, params protocol.TailTaskLogParams) error
 	// ListWorkspaces List all workspaces

@@ -200,7 +200,7 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/skills/{name} (the `RemoveSkill` operationId).
 	RemoveSkill(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListTasks List active/scheduled tasks
+	// ListTasks List active and scheduled (manual + emergent) tasks
 	//
 	// Corresponds with GET /api/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -223,14 +223,14 @@ type ClientInterface interface {
 	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTask(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ScheduleTaskWithBody Register a recurring task
+	// ScheduleTaskWithBody Register a manual recurring cron task
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
 	ScheduleTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ScheduleTask Register a recurring task
+	// ScheduleTask Register a manual recurring cron task
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -271,7 +271,7 @@ type ClientInterface interface {
 	// Corresponds with POST /api/tasks/{id}/complete (the `ReportTaskComplete` operationId).
 	ReportTaskComplete(ctx context.Context, id string, body ReportTaskCompleteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// TailTaskLog Tail task output (for CLI polling)
+	// TailTaskLog Tail task output (for CLI polling, both emergent and manual tasks)
 	//
 	// Corresponds with GET /api/tasks/{id}/log (the `TailTaskLog` operationId).
 	TailTaskLog(ctx context.Context, id string, params *TailTaskLogParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -606,7 +606,7 @@ func (c *Client) RemoveSkill(ctx context.Context, name string, reqEditors ...Req
 	return c.Client.Do(req)
 }
 
-// ListTasks List active/scheduled tasks
+// ListTasks List active and scheduled (manual + emergent) tasks
 //
 // Corresponds with GET /api/tasks (the `ListTasks` operationId).
 func (c *Client) ListTasks(ctx context.Context, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -657,7 +657,7 @@ func (c *Client) CreateTask(ctx context.Context, body CreateTaskJSONRequestBody,
 	return c.Client.Do(req)
 }
 
-// ScheduleTaskWithBody Register a recurring task
+// ScheduleTaskWithBody Register a manual recurring cron task
 //
 // Takes any type of body and a specified content type.
 //
@@ -674,7 +674,7 @@ func (c *Client) ScheduleTaskWithBody(ctx context.Context, contentType string, b
 	return c.Client.Do(req)
 }
 
-// ScheduleTask Register a recurring task
+// ScheduleTask Register a manual recurring cron task
 //
 // Takes a body of the `application/json` content type.
 //
@@ -785,7 +785,7 @@ func (c *Client) ReportTaskComplete(ctx context.Context, id string, body ReportT
 	return c.Client.Do(req)
 }
 
-// TailTaskLog Tail task output (for CLI polling)
+// TailTaskLog Tail task output (for CLI polling, both emergent and manual tasks)
 //
 // Corresponds with GET /api/tasks/{id}/log (the `TailTaskLog` operationId).
 func (c *Client) TailTaskLog(ctx context.Context, id string, params *TailTaskLogParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2124,7 +2124,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/skills/{name} (the `RemoveSkill` operationId).
 	RemoveSkillWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*RemoveSkillResponse, error)
 
-	// ListTasksWithResponse List active/scheduled tasks
+	// ListTasksWithResponse List active and scheduled (manual + emergent) tasks
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2149,14 +2149,14 @@ type ClientWithResponsesInterface interface {
 	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	CreateTaskWithResponse(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error)
 
-	// ScheduleTaskWithBodyWithResponse Register a recurring task
+	// ScheduleTaskWithBodyWithResponse Register a manual recurring cron task
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/tasks/schedule (the `ScheduleTask` operationId).
 	ScheduleTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ScheduleTaskResponse, error)
 
-	// ScheduleTaskWithResponse Register a recurring task
+	// ScheduleTaskWithResponse Register a manual recurring cron task
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2205,7 +2205,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/tasks/{id}/complete (the `ReportTaskComplete` operationId).
 	ReportTaskCompleteWithResponse(ctx context.Context, id string, body ReportTaskCompleteJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportTaskCompleteResponse, error)
 
-	// TailTaskLogWithResponse Tail task output (for CLI polling)
+	// TailTaskLogWithResponse Tail task output (for CLI polling, both emergent and manual tasks)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -3589,7 +3589,7 @@ func (c *ClientWithResponses) RemoveSkillWithResponse(ctx context.Context, name 
 	return ParseRemoveSkillResponse(rsp)
 }
 
-// ListTasksWithResponse List active/scheduled tasks
+// ListTasksWithResponse List active and scheduled (manual + emergent) tasks
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3631,7 +3631,7 @@ func (c *ClientWithResponses) CreateTaskWithResponse(ctx context.Context, body C
 	return ParseCreateTaskResponse(rsp)
 }
 
-// ScheduleTaskWithBodyWithResponse Register a recurring task
+// ScheduleTaskWithBodyWithResponse Register a manual recurring cron task
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3644,7 +3644,7 @@ func (c *ClientWithResponses) ScheduleTaskWithBodyWithResponse(ctx context.Conte
 	return ParseScheduleTaskResponse(rsp)
 }
 
-// ScheduleTaskWithResponse Register a recurring task
+// ScheduleTaskWithResponse Register a manual recurring cron task
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3735,7 +3735,7 @@ func (c *ClientWithResponses) ReportTaskCompleteWithResponse(ctx context.Context
 	return ParseReportTaskCompleteResponse(rsp)
 }
 
-// TailTaskLogWithResponse Tail task output (for CLI polling)
+// TailTaskLogWithResponse Tail task output (for CLI polling, both emergent and manual tasks)
 //
 // Returns a wrapper object for the known response body format(s).
 //
