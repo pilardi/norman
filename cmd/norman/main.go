@@ -228,10 +228,7 @@ Commands:
   sessions list                        List active chat sessions
   sessions archive <session_id>        Archive a session's transcript to .norman/archived/
   messages send <text> --workspace <name> [--session <id>] Send a message into a session
-  tasks add <name> --schedule "<cron>" Register a recurring manual task (e.g., "*/5 * * * *")
-  tasks list                           List registered manual tasks with next-run times
-  tasks remove <id>                    Unregister and stop a manual task
-  tasks run <id>                       Trigger a manual task immediately
+  tasks send <text> --workspace <name> [--session <id>] Send a message into a session
   chat --workspace <name> [--session <id>]   Enter interactive REPL chat mode
 
 Use "norman help <command>" for detailed help on a specific command.`)
@@ -819,14 +816,6 @@ func handleTasks(args []string) {
 	switch subcommand {
 	case "send":
 		handleTaskSend(subargs)
-	case "add":
-		handleTaskAdd(subargs)
-	case "list":
-		handleTaskList(subargs)
-	case "remove":
-		handleTaskRemove(subargs)
-	case "run":
-		handleTaskRun(subargs)
 	case "--help", "-h":
 		printTaskHelp()
 	default:
@@ -837,25 +826,22 @@ func handleTasks(args []string) {
 }
 
 func printTaskHelp() {
-	fmt.Println(`tasks — Manage manual scheduled tasks
+	fmt.Println(`tasks — Send a prompt to trigger a session/task
 
-Usage: norman tasks <subcommand> [args...]
+Usage: norman tasks send <prompt> --workspace <name> [--session <id>]
 
 Subcommands:
-  send <text> --workspace <name> --session <id>   Send a message to a specific session (POST /api/sessions/{id}/messages)
-  add <name> --schedule "<cron>"   Register a recurring manual task (e.g., "*/5 * * * *")
-  list                             List registered manual tasks with next-run times
-  remove <id>                      Unregister and stop a manual task
-  run <id>                         Trigger a manual task immediately
+  send <text> --workspace <name> [--session <id>]   Send a message into a session (POST /api/sessions/{id}/messages)
 
 Examples:
   norman tasks send "What files are in the attached directory?" --workspace myproject --session abc12345
-  norman tasks send "Explain this code" --workspace myproject --session abc12345
+  norman tasks send "Explain this code" --workspace myproject
 
-Cron format: 6-field (second minute hour day month weekday) or 5-field (minute hour day month weekday)`)
+Note: Tasks are emergent — created automatically from chat interactions.
+Use 'norma sessions list' to see active sessions.`)
 }
 
-// handleTaskSend sends a prompt into an active session via POST /api/tasks.
+// handleTaskSend sends a prompt into an active session via POST /api/sessions/{id}/messages.
 func handleTaskSend(args []string) {
 	prompt := ""
 	sessionID := ""
@@ -940,9 +926,7 @@ func handleTaskSend(args []string) {
 
 	// Build request body.
 	body := map[string]string{
-		"prompt":       prompt,
-		"workspace_id": workspaceID,
-		"session_id":   sessionID,
+		"prompt": prompt,
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -951,7 +935,7 @@ func handleTaskSend(args []string) {
 		os.Exit(1)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/tasks", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions/"+sessionID+"/messages", bytes.NewReader(jsonBody))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
 		os.Exit(1)
@@ -983,71 +967,10 @@ func handleTaskSend(args []string) {
 	fmt.Printf("Task '%s' submitted (session=%s)\n", taskID, sessionID)
 }
 
-func handleTaskAdd(args []string) {
-	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "Error: 'add' requires a task name and --schedule flag")
-		fmt.Fprintln(os.Stderr, "Usage: norman tasks add <name> --schedule \"<cron-expression>\"")
-		os.Exit(1)
-	}
-
-	name := args[0]
-	schedule := ""
-
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--schedule" && i+1 < len(args) {
-			schedule = args[i+1]
-			i++
-		}
-	}
-
-	if schedule == "" {
-		fmt.Fprintln(os.Stderr, "Error: --schedule flag is required")
-		os.Exit(1)
-	}
-
-	// Generate a simple ID from the name
-	id := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
-
-	_ = scheduler.TaskEntry{
-		ID:      id,
-		Name:    name,
-		Schedule: schedule,
-		Command: fmt.Sprintf("echo 'Task %s executed at %v'", name, time.Now()),
-	}
-
-	fmt.Printf("Registered task '%s' (id=%s) with schedule: %s\n", name, id, schedule)
-	fmt.Println("(Scheduler not yet connected to agent server — task registered locally)")
-}
-
-func handleTaskList(args []string) {
-	if len(args) > 0 && (args[0] == "--json") {
-		fmt.Println(`{"tasks": []}`)
-		return
-	}
-
-	fmt.Println("Registered tasks:")
-	fmt.Println("(No tasks registered — use 'norman tasks add <name> --schedule \"<cron>\"')")
-}
-
-func handleTaskRemove(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: 'remove' requires a task ID")
-		os.Exit(1)
-	}
-
-	id := args[0]
-	fmt.Printf("Removed task '%s'\n", id)
-}
-
-func handleTaskRun(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: 'run' requires a task ID")
-		os.Exit(1)
-	}
-
-	id := args[0]
-	fmt.Printf("Triggered task '%s' immediately\n", id)
-}
+// handleTaskAdd — removed (manual task creation no longer part of client API).
+// handleTaskList  — removed.
+// handleTaskRemove— removed.
+// handleTaskRun   — removed.
 
 // parseSlashCommand checks if a line is a slash-command and returns the command + args.
 // Returns (command, args, isSlash) — only slash-commands trigger local actions.
