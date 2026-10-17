@@ -311,13 +311,13 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 
 		// Output snake_case for consistency with CLI display.
 		output := map[string]interface{}{
-			"default_model":        cfg.DefaultModel,
-			"server_port":          cfg.ServerPort,
-			"host":                 cfg.Host,
-			"max_active_skills":    cfg.Skills.MaxActive,
-			"bell_enabled":         cfg.Notify.BellEnabled,
-			"rate_limit_per_min":   cfg.Notify.RateLimitPerMin,
-			"openshell_address":    resolvedGateway,
+			"default_model":      cfg.DefaultModel,
+			"server_port":        cfg.ServerPort,
+			"host":               cfg.Host,
+			"max_active_skills":  cfg.Skills.MaxActive,
+			"bell_enabled":       cfg.Notify.BellEnabled,
+			"rate_limit_per_min": cfg.Notify.RateLimitPerMin,
+			"openshell_address":  resolvedGateway,
 		}
 		data, _ := json.MarshalIndent(output, "", "  ")
 		fmt.Println(string(data))
@@ -362,8 +362,8 @@ func getConfig() (*config.SystemConfig, string, error) {
 	}
 
 	var result struct {
-		System  *config.SystemConfig `json:"system"`
-		OpenShell string             `json:"openshell"`
+		System    *config.SystemConfig `json:"system"`
+		OpenShell string               `json:"openshell"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, "", fmt.Errorf("decode config response: %w", err)
@@ -591,8 +591,7 @@ Usage: norman sessions <subcommand> [args...]
 Subcommands:
   open <workspace_name> [<session_id>]   Open an interactive REPL chat session
   list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript via POST /api/sessions/{id}
-`)
+  archive <session_id>          Archive a session's transcript via POST /api/sessions/{id}`)
 }
 
 func handleSessionList(args []string) {
@@ -639,9 +638,9 @@ func handleSessionArchive(args []string) {
 		os.Exit(1)
 	}
 
-	sessionID := args[0]
+	actualID := resolveSessionID(args[0])
 
-	url := serverURL() + "/api/sessions/" + url.PathEscape(sessionID)
+	url := serverURL() + "/api/sessions/" + url.PathEscape(actualID)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating archive request: %v\n", err)
@@ -651,17 +650,17 @@ func handleSessionArchive(args []string) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", shortID(sessionID), err)
+		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", shortID(actualID), err)
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "HTTP %d archiving session %s: %s\n", resp.StatusCode, shortID(sessionID), string(body))
+		fmt.Fprintf(os.Stderr, "HTTP %d archiving session %s: %s\n", resp.StatusCode, shortID(actualID), string(body))
 		os.Exit(1)
 	}
-	fmt.Printf("Session '%s' archived successfully.\n", shortID(sessionID))
+	fmt.Printf("Session '%s' archived successfully.\n", shortID(actualID))
 }
 
 func shortID(id string) string {
@@ -709,7 +708,7 @@ func handleChat(args []string) {
 		} else if workspaceName == "" {
 			workspaceName = args[i]
 		} else if sessionID == "" {
-			sessionID = args[i]
+			sessionID = resolveSessionID(args[i])
 		} else {
 			fmt.Fprintf(os.Stderr, "Too many arguments. Usage: norman sessions open <workspace_name> [<session_id>]\n")
 			printChatHelp()
@@ -922,14 +921,14 @@ func handleChat(args []string) {
 		}
 
 		turns = append(turns, map[string]interface{}{
-			"role": "user",
-			"content": line,
+			"role":      "user",
+			"content":   line,
 			"timestamp": time.Now().Format(time.RFC3339),
 		})
 		if responseText != "" {
 			turns = append(turns, map[string]interface{}{
-				"role": "assistant",
-				"content": responseText,
+				"role":      "assistant",
+				"content":   responseText,
 				"timestamp": time.Now().Format(time.RFC3339),
 			})
 		}
@@ -986,12 +985,35 @@ func showHistory(sessionID string, args []string) {
 		}
 	}
 
-	body, err := httpGet("/api/sessions/" + url.PathEscape(sessionID) + "/history?limit=" + fmt.Sprintf("%d", n))
+	// Resolve session name to actual UUID if needed.
+	actualID := resolveSessionID(sessionID)
+
+	body, err := httpGet("/api/sessions/" + url.PathEscape(actualID) + "/history?limit=" + fmt.Sprintf("%d", n))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching history: %v\n", err)
 		return
 	}
 	fmt.Printf("\n--- Last %d messages ---\n%s\n---\n", n, string(body))
+}
+
+// resolveSessionID resolves a session name/short ID to the actual UUID.
+func resolveSessionID(input string) string {
+	body, err := httpGet("/api/sessions")
+	if err != nil {
+		return input // fall back to original
+	}
+	var sessions []map[string]interface{}
+	if err := json.Unmarshal(body, &sessions); err != nil {
+		return input
+	}
+	for _, s := range sessions {
+		name, _ := s["name"].(string)
+		id, _ := s["id"].(string)
+		if name == input || strings.HasPrefix(id[:8], input[:8]) {
+			return id
+		}
+	}
+	return input
 }
 
 // listSessions lists all active sessions via GET /api/sessions.
@@ -1006,7 +1028,9 @@ func listSessions() {
 
 // archiveSession archives a session's transcript via POST /api/sessions/{id}.
 func archiveSession(sessionID string) {
-	url := serverURL() + "/api/sessions/" + url.PathEscape(sessionID)
+	actualID := resolveSessionID(sessionID)
+
+	url := serverURL() + "/api/sessions/" + url.PathEscape(actualID)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating archive request: %v\n", err)
@@ -1015,17 +1039,17 @@ func archiveSession(sessionID string) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", sessionID[:8], err)
+		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", shortID(actualID), err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "HTTP %d archiving session %s: %s\n", resp.StatusCode, sessionID[:8], string(body))
+		fmt.Fprintf(os.Stderr, "HTTP %d archiving session %s: %s\n", resp.StatusCode, shortID(actualID), string(body))
 		return
 	}
-	fmt.Printf("Session '%s' archived successfully.\n", sessionID[:8])
+	fmt.Printf("Session '%s' archived successfully.\n", shortID(actualID))
 }
 
 // displayResponse formats and prints the agent's response.
