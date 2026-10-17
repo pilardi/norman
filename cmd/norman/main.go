@@ -812,9 +812,8 @@ func handleChat(args []string) {
 	fmt.Printf("Session: %s | Workspace resolved\n", sessionID)
 	fmt.Println("Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)")
 
-	// Track turns for transcript persistence.
+	// Track turns for server-side transcript persistence.
 	var turns []map[string]interface{}
-	transcriptPath := filepath.Join(os.ExpandEnv("$HOME"), ".norman", "sessions", sessionID+".md")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -828,12 +827,7 @@ func handleChat(args []string) {
 			case "list", "tasks":
 				listEmergentTasks(sessionID)
 			case "close":
-				fmt.Println("Closing session... saving transcript.")
-				if err := saveTranscriptLocally(transcriptPath, turns); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to save transcript: %v\n", err)
-				} else {
-					fmt.Printf("Transcript saved to %s\n", transcriptPath)
-				}
+				fmt.Println("Closing session...")
 				return
 			case "new":
 				// Start a new session (auto-create).
@@ -1096,45 +1090,6 @@ func expandHome(path string) (string, error) {
 }
 
 // saveTranscriptLocally writes conversation turns as markdown to a local transcript file.
-func saveTranscriptLocally(path string, turns []map[string]interface{}) error {
-	var lines []string
-	lines = append(lines, "# Session Transcript\n")
-	lines = append(lines, fmt.Sprintf("**Session ID:** `%s`\n\n", filepath.Base(filepath.Dir(path))))
-	lines = append(lines, fmt.Sprintf("**Created:** %s\n\n---\n\n", time.Now().Format(time.RFC3339)))
-
-	for i, turn := range turns {
-		role, _ := turn["role"].(string)
-		content, _ := turn["content"].(string)
-		ts, _ := turn["timestamp"].(string)
-
-		lines = append(lines, fmt.Sprintf("## Turn %d: %s", i+1, role))
-		if ts != "" {
-			lines = append(lines, fmt.Sprintf("\n\n*%s*\n", ts))
-		} else {
-			lines = append(lines, "\n")
-		}
-		lines = append(lines, content+"\n")
-		lines = append(lines, "\n---\n\n")
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("create transcript dir: %w", err)
-	}
-
-	tmp := path + ".tmp"
-	content := strings.Join(lines, "")
-	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
-		return fmt.Errorf("write transcript: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("rename transcript: %w", err)
-	}
-
-	return nil
-}
-
 // toInterfaceSlice converts a slice of TaskEntry to []interface{} for persistence.
 func toInterfaceSlice(entries []*scheduler.TaskEntry) []interface{} {
 	result := make([]interface{}, len(entries))
