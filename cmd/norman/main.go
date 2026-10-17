@@ -227,8 +227,7 @@ Commands:
   sessions close <session_id>          Close and save transcript for a session
   sessions list                        List active chat sessions
   sessions archive <session_id>        Archive a session's transcript to .norman/archived/
-  messages send <text> --workspace <name> [--session <id>] Send a message into a session
-  tasks send <text> --workspace <name> [--session <id>] Send a message into a session
+  tasks send <text> --workspace <name> [--session <id>] Send a message into a session (triggers an emergent task)
   chat --workspace <name> [--session <id>]   Enter interactive REPL chat mode
 
 Use "norman help <command>" for detailed help on a specific command.`)
