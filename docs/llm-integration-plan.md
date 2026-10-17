@@ -9,11 +9,12 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `pkg/llm/client.go` | ✅ Created | OpenAI-compatible API client with `Complete()` signature |
-| `pkg/llm/prompt_builder.go` | ✅ Created | `BuildContext()` assembles messages from raw sources + skills + session history |
-| `pkg/agent/loop.go` | ✅ Fixed (2026-10-17) | `WithLLMClient` now accepts `*llm.Client`; `executeWithLLM` passes 4th arg to `Complete()` |
-| `cmd/norman-server/main.go` | ⚠️ Not wired | LLM client not yet injected into the loop at startup |
-| Build (`go build ./...`) | ✅ Clean | Compiles without errors |
+| `pkg/llm/client.go` | ✅ Complete | OpenAI-compatible API client with `Complete()` signature + `Caller` interface |
+| `pkg/llm/prompt_builder.go` | ✅ Complete | `BuildContext()` assembles messages from raw sources + skills + session history |
+| `pkg/agent/loop.go` | ✅ Fixed (2026-10-17) | `WithLLMClient` accepts `llm.Caller`; `executeWithLLM` passes tools; `buildTools()` implemented |
+| `cmd/norman-server/main.go` | ✅ Wired | LLM client injected at startup via `loop.WithLLMClient(llm.NewClient(cfg.System))` |
+| `pkg/agent/loop_test.go` | ✅ Extended | 3 integration tests for multi-turn, max-turns, shell-only fallback |
+| Build (`go build ./...`) | ✅ Clean | Compiles without errors; all tests pass |
 
 ---
 
@@ -172,13 +173,15 @@ The current flow is:
 
 | # | Item | Priority | Owner |
 |---|------|----------|-------|
-| 1 | Wire `llm.NewClient(cfg.System)` into `main.go` | **High** | — |
-| 2 | Add `TestSendMessageMultiTurn` integration test | **High** | — |
-| 3 | Extend `ParseToolCalls` to support OpenAI `tool_calls` array format | Medium | — |
-| 4 | Pass active skills as `[]llm.Tool` to `Complete()` (remove `nil`) | Medium | — |
-| 5 | Add `persistTurn()` to memory store for LLM conversation turns | Low | — |
-| 6 | Emit WebSocket events for tool call results in multi-turn loop | Low | — |
-| 7 | Add sandbox keepalive/heartbeat between tool executions | Low | — |
+| # | Item | Priority | Status | Notes |
+|---|------|----------|--------|-------|
+| 1 | Wire `llm.NewClient(cfg.System)` into `main.go` | **High** | ✅ Done | Committed 2026-10-17 |
+| 2 | Add `TestSendMessageMultiTurn` integration test | **High** | ✅ Done | 3 tests: tool-call, max-turns, shell-only fallback |
+| 3 | Extend `ParseToolCalls` to support OpenAI `tool_calls` array format | Medium | ✅ Done | Dual-strategy: structured + legacy JSON-in-content |
+| 4 | Pass active skills as `[]llm.Tool` to `Complete()` (remove `nil`) | Medium | ✅ Done | `buildTools()` converts activated skills to tool definitions |
+| 5 | Add `persistTurn()` to memory store for LLM conversation turns | Low | ⏳ Pending | Requires extending `memory.Store` API |
+| 6 | Emit WebSocket events for tool call results in multi-turn loop | Low | ⏳ Pending | Currently only broadcasts turn-level progress |
+| 7 | Add sandbox keepalive heartbeat between tool executions | Low | ⏳ Pending | Prevents idle-timeout deletion during long multi-turn loops |
 
 ---
 
@@ -191,4 +194,4 @@ The current flow is:
 
 ---
 
-*This plan is a living document. Update items as they are completed or new issues surface during integration testing.*
+*Last updated: 2026-10-17. Items 1–4 completed in commits `a886c1f` and `70413dd`. Items 5–7 remain for future work.*
