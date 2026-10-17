@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 // SDKAdapter wraps *Client and adapts its methods to match the
@@ -53,6 +55,15 @@ func (a *SDKAdapter) RunCommand(ctx context.Context, sandboxID, command string) 
 	exitCode := result.ExitCode
 	output := string(result.Stdout)
 	return output, exitCode, nil
+}
+
+// GetSandbox adapts env.Client.GetSandbox to return the sandbox object.
+func (a *SDKAdapter) GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error) {
+	sb, err := a.client.GetSandbox(ctx, provider, name)
+	if err != nil {
+		return nil, fmt.Errorf("get sandbox: %w", err)
+	}
+	return sb, nil
 }
 
 // GetLogs adapts env.Client.GetSandbox to return log lines as []string.

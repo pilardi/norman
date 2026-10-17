@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/google/uuid"
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
@@ -77,6 +78,7 @@ type OpenShellClient interface {
 	CreateSandbox(ctx context.Context, workspace, name string) (string, error)
 	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) error
 	RunCommand(ctx context.Context, sandboxID, command string) (string, int, error)
+	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
 	GetLogs(ctx context.Context, sandboxID string) ([]string, error)
 	DeleteSandbox(ctx context.Context, workspace, name string) error
 	ListSandboxes(ctx context.Context, workspace string) ([]string, error)
@@ -425,6 +427,17 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		l.pushCompletion(task)
 		return
 	}
+
+	// Refresh sandbox ID after WaitReady — the UUID may have changed
+	// since creation (e.g., sandbox recreated by idle timeout).
+	sb, err := l.openShell.GetSandbox(ctx, "default", sandboxName)
+	if err != nil {
+		task.Status = protocol.TaskStatusFailed
+		task.Error = fmt.Sprintf("sandbox not found after ready: %v", err)
+		l.pushCompletion(task)
+		return
+	}
+	sandboxID = sb.ID
 
 	// Phase 4: Execute — inject raw sources context into prompt
 	l.mu.Lock()
@@ -834,7 +847,7 @@ func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))
-	f.sandboxes[workspace+"."+name] = sid
+	f.sandboxes[name] = sid
 	return sid, nil
 }
 
@@ -846,6 +859,16 @@ func (f *FakeOpenShellClient) WaitReady(ctx context.Context, workspace, name str
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (f *FakeOpenShellClient) GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sid, ok := f.sandboxes[name]
+	if !ok {
+		return nil, fmt.Errorf("sandbox %s not found", name)
+	}
+	return &v1.Sandbox{ID: sid}, nil
 }
 
 func (f *FakeOpenShellClient) RunCommand(ctx context.Context, sandboxID, command string) (string, int, error) {
