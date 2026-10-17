@@ -52,6 +52,11 @@ type CompletionResponse struct {
 	Usage   Usage         `json:"usage"`
 }
 
+// Caller is the interface that LLM clients must implement for the agent loop.
+type Caller interface {
+	Complete(ctx context.Context, systemPrompt string, messages []Message, tools []Tool) (*CompletionResponse, error)
+}
+
 // Client wraps an OpenAI-compatible chat completions API call.
 type Client struct {
 	BaseURL    string

@@ -44,7 +44,7 @@ type Loop struct {
 	activator   *skills.Activator
 	config      *config.Config
 	openShell   OpenShellClient
-	llmClient   *llm.Client      // LLM API client (optional, nil = shell-only mode)
+	llmClient   llm.Caller         // LLM API client (optional, nil = shell-only mode)
 	wsHub       WSHubPublisher
 	notifier    *notify.Notifier
 	resultsCh   chan scheduler.TaskResult // results from scheduler (nil if not wired)
@@ -54,6 +54,9 @@ type Loop struct {
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
 func (l *Loop) WorkspaceConfig(workspaceID string) *config.WorkspaceConfig {
+	if l.config == nil {
+		return &config.WorkspaceConfig{BaseDir: "", Model: "", MaxTokens: 0, Temperature: 0}
+	}
 	return l.config.MergeWorkspaceConfig(workspaceID, nil)
 }
 
@@ -126,7 +129,7 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 }
 
 // WithLLMClient injects an LLM API client into the loop for multi-turn conversation processing.
-func (l *Loop) WithLLMClient(client *llm.Client) *Loop {
+func (l *Loop) WithLLMClient(client llm.Caller) *Loop {
 	l.llmClient = client
 	return l
 }

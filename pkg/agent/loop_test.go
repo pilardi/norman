@@ -2,12 +2,14 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
@@ -522,5 +524,141 @@ func TestRawSourcesNilInLoop(t *testing.T) {
 	}
 	if task.Error != "" {
 		t.Errorf("unexpected error: %v", task.Error)
+	}
+}
+
+// --- LLM Multi-Turn Integration Tests ---
+
+// mockLLMClient is a test double for llm.Client that returns controlled responses.
+type mockLLMClient struct {
+	responses []llm.CompletionResponse
+	index     int
+}
+
+func (m *mockLLMClient) Complete(ctx context.Context, systemPrompt string, messages []llm.Message, tools []llm.Tool) (*llm.CompletionResponse, error) {
+	if m.index >= len(m.responses) {
+		return nil, fmt.Errorf("mock LLM: no more responses configured")
+	}
+	resp := m.responses[m.index]
+	m.index++
+	return &resp, nil
+}
+
+func TestSendMessageMultiTurnWithToolCall(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+	fakeClient := NewFakeOpenShellClient()
+
+	act := skills.NewActivator(nil, 0)
+
+	// Mock LLM responses:
+	// Turn 1: tool call (ls command)
+	// Turn 2: final text response
+	mockClient := &mockLLMClient{
+		responses: []llm.CompletionResponse{
+			{
+				Model: "gpt-4o",
+				Choices: []llm.ResponseChoice{
+					{
+						Message: llm.Message{
+							Role:    "assistant",
+							Content: `{"name": "ls", "arguments": {"path": "/tmp"}}`,
+						},
+					},
+				},
+			},
+			{
+				Model: "gpt-4o",
+				Choices: []llm.ResponseChoice{
+					{
+						Message: llm.Message{
+							Role:    "assistant",
+							Content: "The /tmp directory contains:\n- file1.txt\n- file2.log",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+
+	resp, err := loop.SendMessage(context.Background(), "session-1", "List files in /tmp")
+	if err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+
+	if resp.Response == "" {
+		t.Error("expected non-empty response")
+	}
+	if !strings.Contains(resp.Response, "/tmp") {
+		t.Errorf("expected response to contain '/tmp', got: %s", resp.Response)
+	}
+}
+
+func TestSendMessageMultiTurnMaxTurnsReached(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+	fakeClient := NewFakeOpenShellClient()
+
+	act := skills.NewActivator(nil, 0)
+
+	// Mock LLM that always returns a tool call (never terminates) — 8 identical responses for max turns
+	mockClient := &mockLLMClient{
+		responses: make([]llm.CompletionResponse, 8),
+	}
+	for i := range mockClient.responses {
+		mockClient.responses[i] = llm.CompletionResponse{
+			Model: "gpt-4o",
+			Choices: []llm.ResponseChoice{
+				{
+					Message: llm.Message{
+						Role:    "assistant",
+						Content: `{"name": "echo", "arguments": {"msg": "still going"}}`,
+					},
+				},
+			},
+		}
+	}
+
+	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+
+	resp, err := loop.SendMessage(context.Background(), "session-1", "Keep calling tools")
+	if err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+
+	// Should fail with max turns message after 8 iterations
+	if !strings.Contains(resp.Response, "max turns") && !strings.Contains(resp.Response, "reached") {
+		t.Errorf("expected max turns error, got: %s", resp.Response)
+	}
+}
+
+func TestSendMessageShellOnlyFallback(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+	fakeClient := NewFakeOpenShellClient()
+
+	act := skills.NewActivator(nil, 0)
+
+	// No LLM client wired — should fall back to shell-only path
+	loop := New(nil, store, nil, act, fakeWSHub, fakeClient) // no WithLLMClient call
+
+	resp, err := loop.SendMessage(context.Background(), "session-1", "echo hello world")
+	if err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+
+	if !strings.Contains(resp.Response, "hello world") {
+		t.Errorf("expected 'hello world' in response, got: %s", resp.Response)
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/skills"
 )
 
@@ -177,6 +178,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 
 	// Create agent loop
 	loop := agent.New(cfg, store, rawSources, activator, wsHub, loopClient)
+
+	// Wire LLM client if an endpoint is configured (enables multi-turn conversation mode)
+	if cfg.System.OpenShell.Address != "" {
+		loop = loop.WithLLMClient(llm.NewClient(cfg.System))
+	}
 
 	// Initialize notification notifier from config
 	notifier := notify.New(wsHub, cfg.System.Notify.BellEnabled, cfg.System.Notify.SlackWebhook, cfg.System.Notify.RateLimitPerMin)
