@@ -829,9 +829,6 @@ func handleChat(args []string) {
 				listEmergentTasks(sessionID)
 			case "close":
 				fmt.Println("Closing session... saving transcript.")
-				// Archive the session on the server.
-				archiveSession(sessionID)
-				// Save full transcript to disk.
 				if err := saveTranscriptLocally(transcriptPath, turns); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to save transcript: %v\n", err)
 				} else {
