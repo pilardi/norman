@@ -14,6 +14,12 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetConfig Get system configuration (with optional workspace merge)
+	// (GET /api/config)
+	GetConfig(ctx echo.Context, params protocol.GetConfigParams) error
+	// PutConfig Update system configuration (partial update)
+	// (PUT /api/config)
+	PutConfig(ctx echo.Context) error
 	// ListNotifications List notification entries
 	// (GET /api/notifications)
 	ListNotifications(ctx echo.Context) error
@@ -47,10 +53,10 @@ type ServerInterface interface {
 	// ListSkills List discovered skills (metadata only)
 	// (GET /api/skills)
 	ListSkills(ctx echo.Context) error
-	// InstallSkill Install a skill from discovery path
-	// (POST /api/skills/install)
-	InstallSkill(ctx echo.Context) error
-	// RemoveSkill Remove a skill
+	// AddDiscoveryPaths Add discovery paths for skill scanning (replaces legacy /install)
+	// (POST /api/skills/paths)
+	AddDiscoveryPaths(ctx echo.Context) error
+	// RemoveSkill Remove a skill (handler exists; route not yet wired)
 	// (DELETE /api/skills/{name})
 	RemoveSkill(ctx echo.Context, name string) error
 	// ListTasks List active and scheduled (manual + emergent) tasks
@@ -76,7 +82,7 @@ type ServerInterface interface {
 	// GetTask Get task status and details
 	// (GET /api/tasks/{id})
 	GetTask(ctx echo.Context, id string) error
-	// ReportTaskComplete Environment reports task completion (internal)
+	// ReportTaskComplete Report task completion (internal)
 	// (POST /api/tasks/{id}/complete)
 	ReportTaskComplete(ctx echo.Context, id string) error
 	// TailTaskLog Tail task output (for CLI polling, both emergent and manual tasks)
@@ -105,6 +111,33 @@ type ServerInterface interface {
 // ServerInterfaceWrapper converts echo contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler ServerInterface
+}
+
+// GetConfig converts echo context to params.
+func (w *ServerInterfaceWrapper) GetConfig(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params protocol.GetConfigParams
+	// ------------- Optional query parameter "workspace_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "workspace_id", ctx.QueryParams(), &params.WorkspaceId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter workspace_id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetConfig(ctx, params)
+	return err
+}
+
+// PutConfig converts echo context to params.
+func (w *ServerInterfaceWrapper) PutConfig(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PutConfig(ctx)
+	return err
 }
 
 // ListNotifications converts echo context to params.
@@ -250,12 +283,12 @@ func (w *ServerInterfaceWrapper) ListSkills(ctx echo.Context) error {
 	return err
 }
 
-// InstallSkill converts echo context to params.
-func (w *ServerInterfaceWrapper) InstallSkill(ctx echo.Context) error {
+// AddDiscoveryPaths converts echo context to params.
+func (w *ServerInterfaceWrapper) AddDiscoveryPaths(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.InstallSkill(ctx)
+	err = w.Handler.AddDiscoveryPaths(ctx)
 	return err
 }
 
@@ -544,13 +577,15 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/api/tasks/:id", wrapper.GetTask, options.OperationMiddlewares["getTask"]...)
 	router.GET(options.BaseURL+"/api/tasks/:id/log", wrapper.TailTaskLog, options.OperationMiddlewares["tailTaskLog"]...)
 	router.GET(options.BaseURL+"/api/skills", wrapper.ListSkills, options.OperationMiddlewares["listSkills"]...)
-	router.POST(options.BaseURL+"/api/skills/install", wrapper.InstallSkill, options.OperationMiddlewares["installSkill"]...)
+	router.POST(options.BaseURL+"/api/skills/paths", wrapper.AddDiscoveryPaths, options.OperationMiddlewares["addDiscoveryPaths"]...)
 	router.DELETE(options.BaseURL+"/api/skills/:name", wrapper.RemoveSkill, options.OperationMiddlewares["removeSkill"]...)
 	router.POST(options.BaseURL+"/api/tasks/schedule", wrapper.ScheduleTask, options.OperationMiddlewares["scheduleTask"]...)
 	router.GET(options.BaseURL+"/api/tasks/scheduled", wrapper.ListScheduledTasks, options.OperationMiddlewares["listScheduledTasks"]...)
 	router.DELETE(options.BaseURL+"/api/tasks/scheduled/:id", wrapper.UnscheduleTask, options.OperationMiddlewares["unscheduleTask"]...)
 	router.POST(options.BaseURL+"/api/tasks/:id/complete", wrapper.ReportTaskComplete, options.OperationMiddlewares["reportTaskComplete"]...)
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck, options.OperationMiddlewares["healthCheck"]...)
+	router.GET(options.BaseURL+"/api/config", wrapper.GetConfig, options.OperationMiddlewares["getConfig"]...)
+	router.PUT(options.BaseURL+"/api/config", wrapper.PutConfig, options.OperationMiddlewares["putConfig"]...)
 	router.GET(options.BaseURL+"/ws", wrapper.ConnectWebSocket, options.OperationMiddlewares["connectWebSocket"]...)
 
 }

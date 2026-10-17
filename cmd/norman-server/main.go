@@ -297,7 +297,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 
 	// Config endpoint — returns full system config (with unresolved secret placeholders).
 	// Per-workspace overrides are included if workspace_id query param is provided.
-	e.GET("/api/config", srv.GetConfig)
+	e.GET("/api/config", func(c echo.Context) error {
+		return srv.GetConfig(c, protocol.GetConfigParams{})
+	})
 	e.PUT("/api/config", srv.PutConfig)
 
 	// Session archive endpoint (Step 7d)
@@ -1071,8 +1073,11 @@ func (s *server) DeleteNotification(c echo.Context, id string) error {
 // GetConfig returns the system config (with unresolved secret placeholders).
 // If workspace_id query param is provided, returns merged per-workspace config.
 // The response also includes the resolved OpenShell gateway address.
-func (s *server) GetConfig(c echo.Context) error {
-	workspaceID := c.QueryParam("workspace_id")
+func (s *server) GetConfig(c echo.Context, params protocol.GetConfigParams) error {
+	var workspaceID string
+	if params.WorkspaceId != nil {
+		workspaceID = *params.WorkspaceId
+	}
 
 	if workspaceID != "" {
 		// Return merged config for a specific workspace

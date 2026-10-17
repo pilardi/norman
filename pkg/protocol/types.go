@@ -45,27 +45,6 @@ func (e NotificationConfigPriority) Valid() bool {
 	}
 }
 
-// Defines values for NotificationCreateRequestSeverity.
-const (
-	Error NotificationCreateRequestSeverity = "error"
-	Info  NotificationCreateRequestSeverity = "info"
-	Warn  NotificationCreateRequestSeverity = "warn"
-)
-
-// Valid indicates whether the value is a known member of the NotificationCreateRequestSeverity enum.
-func (e NotificationCreateRequestSeverity) Valid() bool {
-	switch e {
-	case Error:
-		return true
-	case Info:
-		return true
-	case Warn:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ScheduledTaskStatus.
 const (
 	ScheduledTaskStatusActive ScheduledTaskStatus = "active"
@@ -410,20 +389,15 @@ type NotificationConfigPriority string
 // NotificationCreateRequest defines model for NotificationCreateRequest.
 type NotificationCreateRequest struct {
 	// Body Notification body text
-	Body string `json:"body"`
+	Body     string `json:"body"`
+	Severity string `json:"severity"`
 
-	// Severity Severity level
-	Severity NotificationCreateRequestSeverity `json:"severity"`
-
-	// TaskId Optional task ID associated with this notification
+	// TaskId Optional task ID to associate with this notification
 	TaskId *string `json:"task_id,omitempty"`
 
 	// Title Notification title
 	Title string `json:"title"`
 }
-
-// NotificationCreateRequestSeverity Severity level
-type NotificationCreateRequestSeverity string
 
 // NotificationEntry defines model for NotificationEntry.
 type NotificationEntry struct {
@@ -433,6 +407,27 @@ type NotificationEntry struct {
 	Severity  *string    `json:"severity,omitempty"`
 	TaskId    *string    `json:"task_id,omitempty"`
 	Title     *string    `json:"title,omitempty"`
+}
+
+// NotifyConfig defines model for NotifyConfig.
+type NotifyConfig struct {
+	// BellEnabled Enable desktop notification bell
+	BellEnabled *bool `json:"bell_enabled,omitempty"`
+
+	// RateLimitPerMin Maximum notifications per minute
+	RateLimitPerMin *int `json:"rate_limit_per_min,omitempty"`
+}
+
+// OpenShellConfig defines model for OpenShellConfig.
+type OpenShellConfig struct {
+	// Address OpenShell gateway address
+	Address *string `json:"address,omitempty"`
+
+	// MtlsCert mTLS client certificate path
+	MtlsCert *string `json:"mtls_cert,omitempty"`
+
+	// MtlsKey mTLS client key path
+	MtlsKey *string `json:"mtls_key,omitempty"`
 }
 
 // ScheduledTask defines model for ScheduledTask.
@@ -569,6 +564,40 @@ type SkillTool struct {
 // SkillToolType defines model for SkillTool.Type.
 type SkillToolType string
 
+// SkillsConfig defines model for SkillsConfig.
+type SkillsConfig struct {
+	// DiscoveryPaths Paths to scan for SKILL.md files
+	DiscoveryPaths *[]string `json:"discovery_paths,omitempty"`
+
+	// MaxActive Max concurrent active skills (0 = unlimited)
+	MaxActive *int `json:"max_active,omitempty"`
+}
+
+// SystemConfig Full system configuration including server, skills, notifications, and OpenShell settings
+type SystemConfig struct {
+	// DefaultModel Default LLM model name
+	DefaultModel *string `json:"default_model,omitempty"`
+
+	// Host Bind address (e.g., "127.0.0.1")
+	Host    *string `json:"host,omitempty"`
+	Logging *struct {
+		// Level Log level (debug, info, warn, error)
+		Level *string `json:"level,omitempty"`
+	} `json:"logging,omitempty"`
+
+	// MaxTokens Global default max tokens (0 = use system default)
+	MaxTokens *int             `json:"max_tokens,omitempty"`
+	Notify    *NotifyConfig    `json:"notify,omitempty"`
+	Openshell *OpenShellConfig `json:"openshell,omitempty"`
+
+	// ServerPort HTTP server port number
+	ServerPort *int          `json:"server_port,omitempty"`
+	Skills     *SkillsConfig `json:"skills,omitempty"`
+
+	// Temperature Global default temperature (0 = use model default)
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
 // Task defines model for Task.
 type Task struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
@@ -675,6 +704,14 @@ type WorkspaceCreateRequest struct {
 	Path string `json:"path"`
 }
 
+// GetConfigParams defines parameters for GetConfig.
+type GetConfigParams struct {
+	WorkspaceId *string `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
+}
+
+// PutConfigJSONBody defines parameters for PutConfig.
+type PutConfigJSONBody map[string]interface{}
+
 // SessionHistoryParams defines parameters for SessionHistory.
 type SessionHistoryParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -693,6 +730,9 @@ type TailTaskLogParams struct {
 	Lines *int `form:"lines,omitempty" json:"lines,omitempty"`
 }
 
+// PutConfigJSONRequestBody defines body for PutConfig for application/json ContentType.
+type PutConfigJSONRequestBody PutConfigJSONBody
+
 // CreateNotificationJSONRequestBody defines body for CreateNotification for application/json ContentType.
 type CreateNotificationJSONRequestBody = NotificationCreateRequest
 
@@ -705,8 +745,8 @@ type ArchiveSessionJSONRequestBody = ArchiveSessionRequest
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
 
-// InstallSkillJSONRequestBody defines body for InstallSkill for application/json ContentType.
-type InstallSkillJSONRequestBody = SkillInstallRequest
+// AddDiscoveryPathsJSONRequestBody defines body for AddDiscoveryPaths for application/json ContentType.
+type AddDiscoveryPathsJSONRequestBody = SkillInstallRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 //

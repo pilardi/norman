@@ -90,6 +90,25 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// GetConfig Get system configuration (with optional workspace merge)
+	//
+	// Corresponds with GET /api/config (the `GetConfig` operationId).
+	GetConfig(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutConfigWithBody Update system configuration (partial update)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/config (the `PutConfig` operationId).
+	PutConfigWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutConfig Update system configuration (partial update)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/config (the `PutConfig` operationId).
+	PutConfig(ctx context.Context, body PutConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListNotifications List notification entries
 	//
 	// Corresponds with GET /api/notifications (the `ListNotifications` operationId).
@@ -181,21 +200,21 @@ type ClientInterface interface {
 	// Corresponds with GET /api/skills (the `ListSkills` operationId).
 	ListSkills(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// InstallSkillWithBody Install a skill from discovery path
+	// AddDiscoveryPathsWithBody Add discovery paths for skill scanning (replaces legacy /install)
 	//
 	// Takes any type of body and a specified content type.
 	//
-	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-	InstallSkillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+	AddDiscoveryPathsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// InstallSkill Install a skill from discovery path
+	// AddDiscoveryPaths Add discovery paths for skill scanning (replaces legacy /install)
 	//
 	// Takes a body of the `application/json` content type.
 	//
-	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-	InstallSkill(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+	AddDiscoveryPaths(ctx context.Context, body AddDiscoveryPathsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RemoveSkill Remove a skill
+	// RemoveSkill Remove a skill (handler exists; route not yet wired)
 	//
 	// Corresponds with DELETE /api/skills/{name} (the `RemoveSkill` operationId).
 	RemoveSkill(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -257,14 +276,14 @@ type ClientInterface interface {
 	// Corresponds with GET /api/tasks/{id} (the `GetTask` operationId).
 	GetTask(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ReportTaskCompleteWithBody Environment reports task completion (internal)
+	// ReportTaskCompleteWithBody Report task completion (internal)
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/tasks/{id}/complete (the `ReportTaskComplete` operationId).
 	ReportTaskCompleteWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ReportTaskComplete Environment reports task completion (internal)
+	// ReportTaskComplete Report task completion (internal)
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -314,6 +333,55 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /ws (the `ConnectWebSocket` operationId).
 	ConnectWebSocket(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// GetConfig Get system configuration (with optional workspace merge)
+//
+// Corresponds with GET /api/config (the `GetConfig` operationId).
+func (c *Client) GetConfig(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConfigRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutConfigWithBody Update system configuration (partial update)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/config (the `PutConfig` operationId).
+func (c *Client) PutConfigWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutConfigRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutConfig Update system configuration (partial update)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/config (the `PutConfig` operationId).
+func (c *Client) PutConfig(ctx context.Context, body PutConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutConfigRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // ListNotifications List notification entries
@@ -557,13 +625,13 @@ func (c *Client) ListSkills(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
-// InstallSkillWithBody Install a skill from discovery path
+// AddDiscoveryPathsWithBody Add discovery paths for skill scanning (replaces legacy /install)
 //
 // Takes any type of body and a specified content type.
 //
-// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-func (c *Client) InstallSkillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewInstallSkillRequestWithBody(c.Server, contentType, body)
+// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+func (c *Client) AddDiscoveryPathsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddDiscoveryPathsRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -574,13 +642,13 @@ func (c *Client) InstallSkillWithBody(ctx context.Context, contentType string, b
 	return c.Client.Do(req)
 }
 
-// InstallSkill Install a skill from discovery path
+// AddDiscoveryPaths Add discovery paths for skill scanning (replaces legacy /install)
 //
 // Takes a body of the `application/json` content type.
 //
-// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-func (c *Client) InstallSkill(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewInstallSkillRequest(c.Server, body)
+// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+func (c *Client) AddDiscoveryPaths(ctx context.Context, body AddDiscoveryPathsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddDiscoveryPathsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -591,7 +659,7 @@ func (c *Client) InstallSkill(ctx context.Context, body InstallSkillJSONRequestB
 	return c.Client.Do(req)
 }
 
-// RemoveSkill Remove a skill
+// RemoveSkill Remove a skill (handler exists; route not yet wired)
 //
 // Corresponds with DELETE /api/skills/{name} (the `RemoveSkill` operationId).
 func (c *Client) RemoveSkill(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -751,7 +819,7 @@ func (c *Client) GetTask(ctx context.Context, id string, reqEditors ...RequestEd
 	return c.Client.Do(req)
 }
 
-// ReportTaskCompleteWithBody Environment reports task completion (internal)
+// ReportTaskCompleteWithBody Report task completion (internal)
 //
 // Takes any type of body and a specified content type.
 //
@@ -768,7 +836,7 @@ func (c *Client) ReportTaskCompleteWithBody(ctx context.Context, id string, cont
 	return c.Client.Do(req)
 }
 
-// ReportTaskComplete Environment reports task completion (internal)
+// ReportTaskComplete Report task completion (internal)
 //
 // Takes a body of the `application/json` content type.
 //
@@ -907,6 +975,100 @@ func (c *Client) ConnectWebSocket(ctx context.Context, reqEditors ...RequestEdit
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewGetConfigRequest constructs an http.Request for the GetConfig method
+func NewGetConfigRequest(server string, params *GetConfigParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkspaceId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "workspace_id", *params.WorkspaceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutConfigRequest calls the generic PutConfig builder with application/json body
+func NewPutConfigRequest(server string, body PutConfigJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutConfigRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPutConfigRequestWithBody constructs an http.Request for the PutConfig method, with any body, and a specified content type
+func NewPutConfigRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
 }
 
 // NewListNotificationsRequest constructs an http.Request for the ListNotifications method
@@ -1320,19 +1482,19 @@ func NewListSkillsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewInstallSkillRequest calls the generic InstallSkill builder with application/json body
-func NewInstallSkillRequest(server string, body InstallSkillJSONRequestBody) (*http.Request, error) {
+// NewAddDiscoveryPathsRequest calls the generic AddDiscoveryPaths builder with application/json body
+func NewAddDiscoveryPathsRequest(server string, body AddDiscoveryPathsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewInstallSkillRequestWithBody(server, "application/json", bodyReader)
+	return NewAddDiscoveryPathsRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewInstallSkillRequestWithBody constructs an http.Request for the InstallSkill method, with any body, and a specified content type
-func NewInstallSkillRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewAddDiscoveryPathsRequestWithBody constructs an http.Request for the AddDiscoveryPaths method, with any body, and a specified content type
+func NewAddDiscoveryPathsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1340,7 +1502,7 @@ func NewInstallSkillRequestWithBody(server string, contentType string, body io.R
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/skills/install")
+	operationPath := fmt.Sprintf("/api/skills/paths")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1998,6 +2160,27 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// GetConfigWithResponse Get system configuration (with optional workspace merge)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/config (the `GetConfig` operationId).
+	GetConfigWithResponse(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*GetConfigResponse, error)
+
+	// PutConfigWithBodyWithResponse Update system configuration (partial update)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/config (the `PutConfig` operationId).
+	PutConfigWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutConfigResponse, error)
+
+	// PutConfigWithResponse Update system configuration (partial update)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/config (the `PutConfig` operationId).
+	PutConfigWithResponse(ctx context.Context, body PutConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*PutConfigResponse, error)
+
 	// ListNotificationsWithResponse List notification entries
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2103,21 +2286,21 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/skills (the `ListSkills` operationId).
 	ListSkillsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSkillsResponse, error)
 
-	// InstallSkillWithBodyWithResponse Install a skill from discovery path
+	// AddDiscoveryPathsWithBodyWithResponse Add discovery paths for skill scanning (replaces legacy /install)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-	InstallSkillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error)
+	// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+	AddDiscoveryPathsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddDiscoveryPathsResponse, error)
 
-	// InstallSkillWithResponse Install a skill from discovery path
+	// AddDiscoveryPathsWithResponse Add discovery paths for skill scanning (replaces legacy /install)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-	InstallSkillWithResponse(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error)
+	// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+	AddDiscoveryPathsWithResponse(ctx context.Context, body AddDiscoveryPathsJSONRequestBody, reqEditors ...RequestEditorFn) (*AddDiscoveryPathsResponse, error)
 
-	// RemoveSkillWithResponse Remove a skill
+	// RemoveSkillWithResponse Remove a skill (handler exists; route not yet wired)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2191,14 +2374,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/tasks/{id} (the `GetTask` operationId).
 	GetTaskWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetTaskResponse, error)
 
-	// ReportTaskCompleteWithBodyWithResponse Environment reports task completion (internal)
+	// ReportTaskCompleteWithBodyWithResponse Report task completion (internal)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/tasks/{id}/complete (the `ReportTaskComplete` operationId).
 	ReportTaskCompleteWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportTaskCompleteResponse, error)
 
-	// ReportTaskCompleteWithResponse Environment reports task completion (internal)
+	// ReportTaskCompleteWithResponse Report task completion (internal)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2260,6 +2443,81 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /ws (the `ConnectWebSocket` operationId).
 	ConnectWebSocketWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ConnectWebSocketResponse, error)
+}
+
+type GetConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SystemConfig
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetConfigResponse) GetJSON200() *SystemConfig {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetConfigResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetConfigResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r PutConfigResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutConfigResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type ListNotificationsResponse struct {
@@ -2700,25 +2958,31 @@ func (r ListSkillsResponse) ContentType() string {
 	return ""
 }
 
-type InstallSkillResponse struct {
+type AddDiscoveryPathsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *Skill
+	JSON201 *struct {
+		Added *int      `json:"added,omitempty"`
+		Paths *[]string `json:"paths,omitempty"`
+	}
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r InstallSkillResponse) GetJSON201() *Skill {
+func (r AddDiscoveryPathsResponse) GetJSON201() *struct {
+	Added *int      `json:"added,omitempty"`
+	Paths *[]string `json:"paths,omitempty"`
+} {
 	return r.JSON201
 }
 
 // GetBody returns the raw response body bytes
-func (r InstallSkillResponse) GetBody() []byte {
+func (r AddDiscoveryPathsResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r InstallSkillResponse) Status() string {
+func (r AddDiscoveryPathsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2726,7 +2990,7 @@ func (r InstallSkillResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r InstallSkillResponse) StatusCode() int {
+func (r AddDiscoveryPathsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2734,7 +2998,7 @@ func (r InstallSkillResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r InstallSkillResponse) ContentType() string {
+func (r AddDiscoveryPathsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3051,6 +3315,19 @@ func (r GetTaskResponse) ContentType() string {
 type ReportTaskCompleteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Message *string `json:"message,omitempty"`
+		Status  *string `json:"status,omitempty"`
+	}
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReportTaskCompleteResponse) GetJSON200() *struct {
+	Message *string `json:"message,omitempty"`
+	Status  *string `json:"status,omitempty"`
+} {
+	return r.JSON200
 }
 
 // GetBody returns the raw response body bytes
@@ -3355,6 +3632,45 @@ func (r ConnectWebSocketResponse) ContentType() string {
 	return ""
 }
 
+// GetConfigWithResponse Get system configuration (with optional workspace merge)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/config (the `GetConfig` operationId).
+func (c *ClientWithResponses) GetConfigWithResponse(ctx context.Context, params *GetConfigParams, reqEditors ...RequestEditorFn) (*GetConfigResponse, error) {
+	rsp, err := c.GetConfig(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConfigResponse(rsp)
+}
+
+// PutConfigWithBodyWithResponse Update system configuration (partial update)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/config (the `PutConfig` operationId).
+func (c *ClientWithResponses) PutConfigWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutConfigResponse, error) {
+	rsp, err := c.PutConfigWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutConfigResponse(rsp)
+}
+
+// PutConfigWithResponse Update system configuration (partial update)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/config (the `PutConfig` operationId).
+func (c *ClientWithResponses) PutConfigWithResponse(ctx context.Context, body PutConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*PutConfigResponse, error) {
+	rsp, err := c.PutConfig(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutConfigResponse(rsp)
+}
+
 // ListNotificationsWithResponse List notification entries
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3550,33 +3866,33 @@ func (c *ClientWithResponses) ListSkillsWithResponse(ctx context.Context, reqEdi
 	return ParseListSkillsResponse(rsp)
 }
 
-// InstallSkillWithBodyWithResponse Install a skill from discovery path
+// AddDiscoveryPathsWithBodyWithResponse Add discovery paths for skill scanning (replaces legacy /install)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-func (c *ClientWithResponses) InstallSkillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error) {
-	rsp, err := c.InstallSkillWithBody(ctx, contentType, body, reqEditors...)
+// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+func (c *ClientWithResponses) AddDiscoveryPathsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddDiscoveryPathsResponse, error) {
+	rsp, err := c.AddDiscoveryPathsWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseInstallSkillResponse(rsp)
+	return ParseAddDiscoveryPathsResponse(rsp)
 }
 
-// InstallSkillWithResponse Install a skill from discovery path
+// AddDiscoveryPathsWithResponse Add discovery paths for skill scanning (replaces legacy /install)
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
-func (c *ClientWithResponses) InstallSkillWithResponse(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error) {
-	rsp, err := c.InstallSkill(ctx, body, reqEditors...)
+// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
+func (c *ClientWithResponses) AddDiscoveryPathsWithResponse(ctx context.Context, body AddDiscoveryPathsJSONRequestBody, reqEditors ...RequestEditorFn) (*AddDiscoveryPathsResponse, error) {
+	rsp, err := c.AddDiscoveryPaths(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseInstallSkillResponse(rsp)
+	return ParseAddDiscoveryPathsResponse(rsp)
 }
 
-// RemoveSkillWithResponse Remove a skill
+// RemoveSkillWithResponse Remove a skill (handler exists; route not yet wired)
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3709,7 +4025,7 @@ func (c *ClientWithResponses) GetTaskWithResponse(ctx context.Context, id string
 	return ParseGetTaskResponse(rsp)
 }
 
-// ReportTaskCompleteWithBodyWithResponse Environment reports task completion (internal)
+// ReportTaskCompleteWithBodyWithResponse Report task completion (internal)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3722,7 +4038,7 @@ func (c *ClientWithResponses) ReportTaskCompleteWithBodyWithResponse(ctx context
 	return ParseReportTaskCompleteResponse(rsp)
 }
 
-// ReportTaskCompleteWithResponse Environment reports task completion (internal)
+// ReportTaskCompleteWithResponse Report task completion (internal)
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3837,6 +4153,48 @@ func (c *ClientWithResponses) ConnectWebSocketWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseConnectWebSocketResponse(rsp)
+}
+
+// ParseGetConfigResponse parses an HTTP response from a GetConfigWithResponse call
+func ParseGetConfigResponse(rsp *http.Response) (*GetConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SystemConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutConfigResponse parses an HTTP response from a PutConfigWithResponse call
+func ParsePutConfigResponse(rsp *http.Response) (*PutConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
 }
 
 // ParseListNotificationsResponse parses an HTTP response from a ListNotificationsWithResponse call
@@ -4108,22 +4466,25 @@ func ParseListSkillsResponse(rsp *http.Response) (*ListSkillsResponse, error) {
 	return response, nil
 }
 
-// ParseInstallSkillResponse parses an HTTP response from a InstallSkillWithResponse call
-func ParseInstallSkillResponse(rsp *http.Response) (*InstallSkillResponse, error) {
+// ParseAddDiscoveryPathsResponse parses an HTTP response from a AddDiscoveryPathsWithResponse call
+func ParseAddDiscoveryPathsResponse(rsp *http.Response) (*AddDiscoveryPathsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &InstallSkillResponse{
+	response := &AddDiscoveryPathsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Skill
+		var dest struct {
+			Added *int      `json:"added,omitempty"`
+			Paths *[]string `json:"paths,omitempty"`
+		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -4329,6 +4690,19 @@ func ParseReportTaskCompleteResponse(rsp *http.Response) (*ReportTaskCompleteRes
 	response := &ReportTaskCompleteResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Message *string `json:"message,omitempty"`
+			Status  *string `json:"status,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	}
 
 	return response, nil

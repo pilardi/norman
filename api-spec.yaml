@@ -501,8 +501,35 @@ paths:
         "204":
           description: Scheduled task removed
 
-  # NOTE: POST /api/tasks/{id}/complete (reportTaskComplete) — handler exists but route not yet wired to main.go
-  # NOTE: GET /api/tasks/{id}/log (tailTaskLog) — handler exists but route not yet wired to main.go
+  /api/tasks/{id}/complete:
+    post:
+      tags: [task]
+      summary: Report task completion (internal)
+      operationId: reportTaskComplete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCompletion"
+      responses:
+        "200":
+          description: Task completion acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
 
   /health:
     get:
@@ -1008,6 +1035,9 @@ components:
           description: Notification body text
         severity:
           type: string
+        task_id:
+          type: string
+          description: Optional task ID to associate with this notification
 
     SystemConfig:
       type: object
