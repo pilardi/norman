@@ -36,19 +36,19 @@ func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string) 
 }
 
 // WaitReady adapts env.Client.WaitReady to match the interface signature.
-func (a *SDKAdapter) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) error {
-	_, err := a.client.WaitReady(ctx, "default", name)
+func (a *SDKAdapter) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error) {
+	sb, err := a.client.WaitReady(ctx, "default", name)
 	if err != nil {
-		return fmt.Errorf("wait ready: %w", err)
+		return nil, fmt.Errorf("wait ready: %w", err)
 	}
-	return nil
+	return sb, nil
 }
 
 // RunCommand adapts env.Client.RunCommand to accept a single command string
 // and return (output, exitCode, error).
-func (a *SDKAdapter) RunCommand(ctx context.Context, sandboxID, command string) (string, int, error) {
+func (a *SDKAdapter) RunCommand(ctx context.Context, sandboxName, command string) (string, int, error) {
 	cmd := strings.Fields(command)
-	result, err := a.client.RunCommand(ctx, "default", sandboxID, cmd)
+	result, err := a.client.RunCommand(ctx, "default", sandboxName, cmd)
 	if err != nil {
 		return "", 1, fmt.Errorf("run command: %w", err)
 	}
