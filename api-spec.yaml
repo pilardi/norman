@@ -4,7 +4,7 @@ info:
   description: |
     Client ↔ Agent Server communication protocol for the Norman agent system.
     Designed to drive code generation for client protocol libraries and server handlers.
-  version: "0.1.0-mvp"
+  version: "0.2.0"
   contact:
     name: "norman project"
 
@@ -411,11 +411,11 @@ paths:
                 items:
                   $ref: "#/components/schemas/Skill"
 
-  /api/skills/install:
+  /api/skills/paths:
     post:
       tags: [skill]
-      summary: Install a skill from discovery path
-      operationId: installSkill
+      summary: Add discovery paths for skill scanning (replaces legacy /install)
+      operationId: addDiscoveryPaths
       requestBody:
         required: true
         content:
@@ -424,16 +424,23 @@ paths:
               $ref: "#/components/schemas/SkillInstallRequest"
       responses:
         "201":
-          description: Skill installed
+          description: Discovery paths added
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Skill"
+                type: object
+                properties:
+                  added:
+                    type: integer
+                  paths:
+                    type: array
+                    items:
+                      type: string
 
   /api/skills/{name}:
     delete:
       tags: [skill]
-      summary: Remove a skill
+      summary: Remove a skill (handler exists; route not yet wired)
       operationId: removeSkill
       parameters:
         - name: name
@@ -494,28 +501,8 @@ paths:
         "204":
           description: Scheduled task removed
 
-  /api/tasks/{id}/complete:
-    post:
-      tags: [task]
-      summary: Environment reports task completion (internal)
-      operationId: reportTaskComplete
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TaskCompletion"
-      responses:
-        "200":
-          description: Completion recorded, notifications dispatched
-        "404":
-          description: Task not found
+  # NOTE: POST /api/tasks/{id}/complete (reportTaskComplete) — handler exists but route not yet wired to main.go
+  # NOTE: GET /api/tasks/{id}/log (tailTaskLog) — handler exists but route not yet wired to main.go
 
   /health:
     get:
@@ -529,6 +516,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /api/config:
+    get:
+      tags: [system]
+      summary: Get system configuration (with optional workspace merge)
+      operationId: getConfig
+      parameters:
+        - name: workspace_id
+          in: query
+          schema:
+            type: string
+            description: If provided, returns merged per-workspace config
+      responses:
+        "200":
+          description: System configuration returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemConfig"
+    put:
+      tags: [system]
+      summary: Update system configuration (partial update)
+      operationId: putConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Configuration updated
 
   /ws:
     get:
@@ -988,9 +1008,102 @@ components:
           description: Notification body text
         severity:
           type: string
-          enum: [info, warn, error]
-          description: Severity level
-        task_id:
+
+    SystemConfig:
+      type: object
+      description: Full system configuration including server, skills, notifications, and OpenShell settings
+      properties:
+        default_model:
           type: string
-          nullable: true
-          description: Optional task ID associated with this notification
+          description: Default LLM model name
+        server_port:
+          type: integer
+          description: HTTP server port number
+        host:
+          type: string
+          description: Bind address (e.g., "127.0.0.1")
+        skills:
+          $ref: "#/components/schemas/SkillsConfig"
+        notify:
+          $ref: "#/components/schemas/NotifyConfig"
+        logging:
+          type: object
+          properties:
+            level:
+              type: string
+              description: Log level (debug, info, warn, error)
+        temperature:
+          type: number
+          format: float
+          description: Global default temperature (0 = use model default)
+        max_tokens:
+          type: integer
+          description: Global default max tokens (0 = use system default)
+        openshell:
+          $ref: "#/components/schemas/OpenShellConfig"
+
+    SkillsConfig:
+      type: object
+      properties:
+        discovery_paths:
+          type: array
+          items:
+            type: string
+          description: Paths to scan for SKILL.md files
+        max_active:
+          type: integer
+          description: Max concurrent active skills (0 = unlimited)
+
+    NotifyConfig:
+      type: object
+      properties:
+        bell_enabled:
+          type: boolean
+          description: Enable desktop notification bell
+        rate_limit_per_min:
+          type: integer
+          description: Maximum notifications per minute
+
+    OpenShellConfig:
+      type: object
+      properties:
+        address:
+          type: string
+          description: OpenShell gateway address
+        mtls_cert:
+          type: string
+          description: mTLS client certificate path
+        mtls_key:
+          type: string
+          description: mTLS client key path
+
+    WorkspaceConfig:
+      type: object
+      properties:
+        base_dir:
+          type: string
+          description: Base directory for workspace files
+        model:
+          type: string
+          description: Per-workspace LLM model override (empty = system default)
+        max_tokens:
+          type: integer
+          description: Per-workspace token budget (0 = system default)
+        temperature:
+          type: number
+          format: float
+          description: Per-workspace temperature (0 = system default)
+        skill_overrides:
+          type: array
+          items:
+            type: string
+          description: Per-workspace skill activation list
+        system_prompt:
+          type: string
+          description: Per-workspace system prompt override
+
+    WorkspaceMap:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/WorkspaceConfig"
+      description: Map of workspace_id -> WorkspaceConfig
