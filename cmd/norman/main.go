@@ -223,7 +223,7 @@ Commands:
   skills remove <id>   Remove an installed skill
   sessions list                        List active chat sessions
   sessions archive <session_id>        Archive a session's transcript to .norman/archived/
-  sessions open --workspace <name> [--session <id>]   Enter interactive REPL chat mode
+  sessions open <workspace_name> [<session_id>]       Open an interactive REPL chat session
 
 Use "norman help <command>" for detailed help on a specific command.`)
 }
@@ -589,7 +589,7 @@ func printSessionHelp() {
 Usage: norman sessions <subcommand> [args...]
 
 Subcommands:
-  open --workspace <name>       Open an interactive REPL chat session
+  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
   list                          List active chat sessions
   archive <session_id>          Archive a session's transcript to .norman/archived/`)
 }
@@ -704,37 +704,41 @@ func parseSlashCommand(line string) (string, []string, bool) {
 }
 
 // handleChat implements the interactive REPL chat mode.
-// Usage: norman sessions open --workspace <name> [--session <id>]
+// Usage: norman sessions open <workspace_name> [<session_id>]
 func handleChat(args []string) {
-	workspaceID := ""
+	workspaceName := ""
 	sessionID := ""
 
+	if len(args) == 0 {
+		printChatHelp()
+		os.Exit(1)
+	}
+
+	// Parse args: first is workspace name, second optional is session ID.
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--workspace" && i+1 < len(args) {
-			workspaceID = args[i+1]
-			i++
-		} else if args[i] == "--session" && i+1 < len(args) {
-			sessionID = args[i+1]
-			i++
-		} else if args[i] == "--help" || args[i] == "-h" {
+		if args[i] == "-h" || args[i] == "--help" {
 			printChatHelp()
 			return
+		} else if workspaceName == "" {
+			workspaceName = args[i]
+		} else if sessionID == "" {
+			sessionID = args[i]
 		} else {
-			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
+			fmt.Fprintf(os.Stderr, "Too many arguments. Usage: norman sessions open <workspace_name> [<session_id>]\n")
 			printChatHelp()
 			os.Exit(1)
 		}
 	}
 
-	if workspaceID == "" && sessionID == "" {
-		fmt.Fprintln(os.Stderr, "Error: '--workspace <name>' or '--session <id>' is required")
+	if workspaceName == "" {
+		fmt.Fprintln(os.Stderr, "Error: workspace name is required")
 		printChatHelp()
 		os.Exit(1)
 	}
 
-	// If only workspace provided, find or create a session.
-	if workspaceID != "" && sessionID == "" {
-		fmt.Printf("Resolving workspace '%s'...\n", workspaceID)
+	// If only workspace provided (no session ID), resolve/create one.
+	if workspaceName != "" && sessionID == "" {
+		fmt.Printf("Resolving workspace '%s'...\n", workspaceName)
 		workspacesBody, err := httpGet("/api/workspaces")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
@@ -748,14 +752,14 @@ func handleChat(args []string) {
 		foundID := ""
 		for _, w := range workspaces {
 			name, _ := w["name"].(string)
-			if name == workspaceID {
+			if name == workspaceName {
 				idStr, _ := w["id"].(string)
 				foundID = idStr
 				break
 			}
 		}
 		if foundID == "" {
-			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list'.\n", workspaceID)
+			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list'.\n", workspaceName)
 			os.Exit(1)
 		}
 
@@ -775,14 +779,14 @@ func handleChat(args []string) {
 			status, _ := s["status"].(string)
 			if status == "active" {
 				sessionID = sid
-				fmt.Printf("Reusing existing active session '%s' for workspace '%s'\n", sid, workspaceID)
+				fmt.Printf("Reusing existing active session '%s' for workspace '%s'\n", sid, workspaceName)
 				break
 			}
 		}
 
 		// No active session — create one.
 		if sessionID == "" {
-			fmt.Printf("Creating new session for workspace '%s'...\n", workspaceID)
+			fmt.Printf("Creating new session for workspace '%s'...\n", workspaceName)
 			sessBody := map[string]string{"workspace_id": foundID, "client_type": "cli"}
 			sessJSON, _ := json.Marshal(sessBody)
 			sessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(sessJSON))
@@ -804,7 +808,7 @@ func handleChat(args []string) {
 				os.Exit(1)
 			}
 			sessionID = sess["id"].(string)
-			fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceID)
+			fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
 		}
 	}
 
@@ -957,7 +961,7 @@ func handleChat(args []string) {
 func printChatHelp() {
 	fmt.Println(`sessions open — Interactive REPL chat mode
 
-Usage: norman sessions open --workspace <name> [--session <id>]
+Usage: norman sessions open <workspace_name> [<session_id>]
 
 Slash-commands (prefix with /):
   /help             Show this help
@@ -970,8 +974,8 @@ Slash-commands (prefix with /):
   /archive <id>     Archive a session's transcript by session ID
 
 Examples:
-  norman sessions open --workspace my-project
-  norman sessions open --workspace my-project --session abc12345`)
+  norman sessions open my-project
+  norman sessions open my-project abc12345`)
 }
 
 // listEmergentTasks lists tasks for the given session.
