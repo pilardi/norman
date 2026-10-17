@@ -195,7 +195,7 @@ func main() {
 		handleSkills(args)
 	case "sessions":
 		handleSessions(args)
-	case "chat":
+	case "open", "chat":
 		handleChat(args[1:])
 	case "help", "--help", "-h":
 		printUsage()
@@ -221,10 +221,9 @@ Commands:
   skills list          List installed skills
   skills install <id>  Install a skill from registry
   skills remove <id>   Remove an installed skill
-  sessions create --workspace <name>   Create a new chat session for a workspace
   sessions list                        List active chat sessions
   sessions archive <session_id>        Archive a session's transcript to .norman/archived/
-  chat --workspace <name> [--session <id>]   Enter interactive REPL chat mode
+  sessions open --workspace <name> [--session <id>]   Enter interactive REPL chat mode
 
 Use "norman help <command>" for detailed help on a specific command.`)
 }
@@ -573,8 +572,8 @@ func handleSessions(args []string) {
 		handleSessionList(subargs)
 	case "archive":
 		handleSessionArchive(subargs)
-	case "create":
-		handleSessionCreate(subargs)
+	case "open":
+		handleChat(args[1:])
 	case "--help", "-h":
 		printSessionHelp()
 	default:
@@ -590,12 +589,9 @@ func printSessionHelp() {
 Usage: norman sessions <subcommand> [args...]
 
 Subcommands:
-  create [--workspace <name>]   Create a new chat session bound to a workspace
+  open --workspace <name>       Open an interactive REPL chat session
   list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript to .norman/archived/
-
-Examples:
-  norman sessions create --workspace my-project    # creates session for workspace`)
+  archive <session_id>          Archive a session's transcript to .norman/archived/`)
 }
 
 func handleSessionList(args []string) {
@@ -688,95 +684,6 @@ func handleSessionArchive(args []string) {
 	}
 }
 
-// handleSessionCreate creates a new session bound to a workspace.
-func handleSessionCreate(args []string) {
-	workspaceID := ""
-
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--workspace" && i+1 < len(args) {
-			workspaceID = args[i+1]
-			i++
-		}
-	}
-
-	if workspaceID == "" {
-		fmt.Fprintln(os.Stderr, "Error: 'create' requires --workspace flag")
-		fmt.Fprintln(os.Stderr, "Usage: norman sessions create --workspace <name>")
-		os.Exit(1)
-	}
-
-	// Resolve workspace ID from the name by querying workspaces list.
-	workspacesBody, err := httpGet("/api/workspaces")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
-		os.Exit(1)
-	}
-
-	var workspaces []map[string]interface{}
-	if err := json.Unmarshal(workspacesBody, &workspaces); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing workspace response: %v\n", err)
-		os.Exit(1)
-	}
-
-	foundID := ""
-	for _, w := range workspaces {
-		name, _ := w["name"].(string)
-		if name == workspaceID {
-			idStr, _ := w["id"].(string)
-			foundID = idStr
-			break
-		}
-	}
-
-	if foundID == "" {
-		fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list' to see available workspaces.\n", workspaceID)
-		os.Exit(1)
-	}
-
-	// POST /api/sessions with workspace_id and client_type=cli
-	body := map[string]string{
-		"workspace_id": foundID,
-		"client_type":  "cli",
-	}
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
-		os.Exit(1)
-	}
-
-	req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(jsonBody))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		os.Exit(1)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "POST /api/sessions failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", resp.StatusCode, string(bodyBytes))
-		os.Exit(1)
-	}
-
-	// Parse response to extract session ID
-	var session map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
-		os.Exit(1)
-	}
-
-	sessionID, _ := session["id"].(string)
-	status, _ := session["status"].(string)
-	fmt.Printf("Created session '%s' for workspace '%s' (status=%s)\n", sessionID[:8], workspaceID, status)
-}
-
 // handleTaskAdd — removed (manual task creation no longer part of client API).
 // handleTaskList  — removed.
 // handleTaskRemove— removed.
@@ -797,7 +704,7 @@ func parseSlashCommand(line string) (string, []string, bool) {
 }
 
 // handleChat implements the interactive REPL chat mode.
-// Usage: norman chat --workspace <name> [--session <id>]
+// Usage: norman sessions open --workspace <name> [--session <id>]
 func handleChat(args []string) {
 	workspaceID := ""
 	sessionID := ""
@@ -1046,11 +953,11 @@ func handleChat(args []string) {
 	}
 }
 
-// printChatHelp displays help for the chat REPL.
+// printChatHelp displays help for the sessions open REPL.
 func printChatHelp() {
-	fmt.Println(`chat — Interactive REPL chat mode
+	fmt.Println(`sessions open — Interactive REPL chat mode
 
-Usage: norman chat --workspace <name> [--session <id>]
+Usage: norman sessions open --workspace <name> [--session <id>]
 
 Slash-commands (prefix with /):
   /help             Show this help
@@ -1063,8 +970,8 @@ Slash-commands (prefix with /):
   /archive <id>     Archive a session's transcript by session ID
 
 Examples:
-  norman chat --workspace my-project
-  norman chat --workspace my-project --session abc12345`)
+  norman sessions open --workspace my-project
+  norman sessions open --workspace my-project --session abc12345`)
 }
 
 // listEmergentTasks lists tasks for the given session.
