@@ -195,8 +195,6 @@ func main() {
 		handleSkills(args)
 	case "sessions":
 		handleSessions(args)
-	case "tasks":
-		handleTasks(args)
 	case "chat":
 		handleChat(args[1:])
 	case "help", "--help", "-h":
@@ -227,7 +225,6 @@ Commands:
   sessions close <session_id>          Close and save transcript for a session
   sessions list                        List active chat sessions
   sessions archive <session_id>        Archive a session's transcript to .norman/archived/
-  tasks send <text> --workspace <name> [--session <id>] Send a message into a session (triggers an emergent task)
   chat --workspace <name> [--session <id>]   Enter interactive REPL chat mode
 
 Use "norman help <command>" for detailed help on a specific command.`)
@@ -800,170 +797,6 @@ func handleSessionClose(args []string) {
 	}
 
 	fmt.Printf("Session '%s' closed\n", sessionID[:8])
-}
-
-// handleTasks manages scheduled tasks via CLI.
-func handleTasks(args []string) {
-	if len(args) == 0 {
-		printTaskHelp()
-		return
-	}
-
-	subcommand := args[0]
-	subargs := args[1:]
-
-	switch subcommand {
-	case "send":
-		handleTaskSend(subargs)
-	case "--help", "-h":
-		printTaskHelp()
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n\n", subcommand)
-		printTaskHelp()
-		os.Exit(1)
-	}
-}
-
-func printTaskHelp() {
-	fmt.Println(`tasks — Send a prompt to trigger a session/task
-
-Usage: norman tasks send <prompt> --workspace <name> [--session <id>]
-
-Subcommands:
-  send <text> --workspace <name> [--session <id>]   Send a message into a session (POST /api/sessions/{id}/messages)
-
-Examples:
-  norman tasks send "What files are in the attached directory?" --workspace myproject --session abc12345
-  norman tasks send "Explain this code" --workspace myproject
-
-Note: Tasks are emergent — created automatically from chat interactions.
-Use 'norma sessions list' to see active sessions.`)
-}
-
-// handleTaskSend sends a prompt into an active session via POST /api/sessions/{id}/messages.
-func handleTaskSend(args []string) {
-	prompt := ""
-	sessionID := ""
-	workspaceID := ""
-
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--session" && i+1 < len(args) {
-			sessionID = args[i+1]
-			i++
-		} else if args[i] == "--workspace" && i+1 < len(args) {
-			workspaceID = args[i+1]
-			i++
-		} else if prompt == "" {
-			prompt = args[i]
-		}
-	}
-
-	if prompt == "" {
-		fmt.Fprintln(os.Stderr, "Error: 'send' requires a prompt argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman tasks send <prompt> --workspace <name> [--session <id>]")
-		os.Exit(1)
-	}
-
-	if workspaceID == "" {
-		fmt.Fprintln(os.Stderr, "Error: '--workspace <name>' is required")
-		os.Exit(1)
-	}
-
-	// If no session ID provided, auto-create one via POST /api/sessions.
-	if sessionID == "" {
-		fmt.Fprintf(os.Stderr, "No --session provided — auto-creating session for workspace '%s'...\n", workspaceID)
-
-		// Resolve workspace name → ID.
-		workspacesBody, err := httpGet("/api/workspaces")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
-			os.Exit(1)
-		}
-		var workspaces []map[string]interface{}
-		if err := json.Unmarshal(workspacesBody, &workspaces); err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing workspaces: %v\n", err)
-			os.Exit(1)
-		}
-		foundID := ""
-		for _, w := range workspaces {
-			name, _ := w["name"].(string)
-			if name == workspaceID {
-				idStr, _ := w["id"].(string)
-				foundID = idStr
-				break
-			}
-		}
-		if foundID == "" {
-			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list'.\n", workspaceID)
-			os.Exit(1)
-		}
-
-		// POST /api/sessions to create a real session.
-		sessBody := map[string]string{"workspace_id": foundID, "client_type": "cli"}
-		sessJSON, _ := json.Marshal(sessBody)
-		sessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(sessJSON))
-		sessReq.Header.Set("Content-Type", "application/json")
-		sessResp, err := (&http.Client{Timeout: 10 * time.Second}).Do(sessReq)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to auto-create session: %v\n", err)
-			os.Exit(1)
-		}
-		defer sessResp.Body.Close()
-		if sessResp.StatusCode >= 400 {
-			bodyBytes, _ := io.ReadAll(sessResp.Body)
-			fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", sessResp.StatusCode, string(bodyBytes))
-			os.Exit(1)
-		}
-		var sess map[string]interface{}
-		if err := json.NewDecoder(sessResp.Body).Decode(&sess); err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
-			os.Exit(1)
-		}
-		sessionID = sess["id"].(string)
-		fmt.Printf("Auto-created session '%s' for workspace '%s'\n", sessionID, workspaceID)
-	}
-
-	// Build request body.
-	body := map[string]string{
-		"prompt": prompt,
-	}
-
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
-		os.Exit(1)
-	}
-
-	req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions/"+sessionID+"/messages", bytes.NewReader(jsonBody))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		os.Exit(1)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "POST /api/tasks failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "Task send failed (HTTP %d): %s\n", resp.StatusCode, string(bodyBytes))
-		os.Exit(1)
-	}
-
-	// Parse response to get task ID
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing task response: %v\n", err)
-		os.Exit(1)
-	}
-
-	taskID, _ := result["id"].(string)
-	fmt.Printf("Task '%s' submitted (session=%s)\n", taskID, sessionID)
 }
 
 // handleTaskAdd — removed (manual task creation no longer part of client API).
