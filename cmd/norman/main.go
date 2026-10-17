@@ -638,7 +638,11 @@ func handleSessionArchive(args []string) {
 		os.Exit(1)
 	}
 
-	actualID := resolveSessionID(args[0])
+	actualID, found := resolveSessionID(args[0])
+	if !found {
+		fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", args[0])
+		os.Exit(1)
+	}
 
 	url := serverURL() + "/api/sessions/" + url.PathEscape(actualID)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
@@ -708,7 +712,12 @@ func handleChat(args []string) {
 		} else if workspaceName == "" {
 			workspaceName = args[i]
 		} else if sessionID == "" {
-			sessionID = resolveSessionID(args[i])
+			var found bool
+			sessionID, found = resolveSessionID(args[i])
+			if !found {
+				fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", args[i])
+				os.Exit(1)
+			}
 		} else {
 			fmt.Fprintf(os.Stderr, "Too many arguments. Usage: norman sessions open <workspace_name> [<session_id>]\n")
 			printChatHelp()
@@ -820,6 +829,8 @@ func handleChat(args []string) {
 				listEmergentTasks(sessionID)
 			case "close":
 				fmt.Println("Closing session... saving transcript.")
+				// Archive the session on the server.
+				archiveSession(sessionID)
 				// Save full transcript to disk.
 				if err := saveTranscriptLocally(transcriptPath, turns); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to save transcript: %v\n", err)
@@ -986,7 +997,11 @@ func showHistory(sessionID string, args []string) {
 	}
 
 	// Resolve session name to actual UUID if needed.
-	actualID := resolveSessionID(sessionID)
+	actualID, found := resolveSessionID(sessionID)
+	if !found {
+		fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", sessionID)
+		return
+	}
 
 	body, err := httpGet("/api/sessions/" + url.PathEscape(actualID) + "/history?limit=" + fmt.Sprintf("%d", n))
 	if err != nil {
@@ -997,23 +1012,23 @@ func showHistory(sessionID string, args []string) {
 }
 
 // resolveSessionID resolves a session name/short ID to the actual UUID.
-func resolveSessionID(input string) string {
+func resolveSessionID(input string) (string, bool) {
 	body, err := httpGet("/api/sessions")
 	if err != nil {
-		return input // fall back to original
+		return input, false // fall back to original
 	}
 	var sessions []map[string]interface{}
 	if err := json.Unmarshal(body, &sessions); err != nil {
-		return input
+		return input, false
 	}
 	for _, s := range sessions {
 		name, _ := s["name"].(string)
 		id, _ := s["id"].(string)
 		if name == input || strings.HasPrefix(id[:8], input[:8]) {
-			return id
+			return id, true
 		}
 	}
-	return input
+	return input, false
 }
 
 // listSessions lists all active sessions via GET /api/sessions.
@@ -1028,7 +1043,11 @@ func listSessions() {
 
 // archiveSession archives a session's transcript via POST /api/sessions/{id}.
 func archiveSession(sessionID string) {
-	actualID := resolveSessionID(sessionID)
+	actualID, found := resolveSessionID(sessionID)
+	if !found {
+		fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", sessionID)
+		return
+	}
 
 	url := serverURL() + "/api/sessions/" + url.PathEscape(actualID)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
