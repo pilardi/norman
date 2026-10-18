@@ -23,6 +23,29 @@ type SystemConfig struct {
 	Temperature    float64           `yaml:"temperature"` // global default temperature (0 = use default)
 	MaxTokens    int               `yaml:"max_tokens"`  // global default max tokens (0 = use system default)
 	OpenShell    OpenShellConfig   `yaml:"openshell"`   // OpenShell gateway connection config
+
+	// LLM provider configuration.
+	LlmProviders []ProviderConfig `yaml:"llm_providers"`
+	DefaultProvider string       `yaml:"default_provider"` // which provider is active by default
+}
+
+// ProviderConfig describes a named LLM/embedder provider endpoint.
+type ProviderConfig struct {
+	Name     string         `yaml:"name"`      // identifier, e.g. "default", "local"
+	Type     string         `yaml:"type"`      // "openai", "llamacpp", etc.
+	Endpoint string         `yaml:"endpoint"`  // base API URL
+	Model    string         `yaml:"model"`     // model name/identifier
+	Extra    map[string]any `yaml:",inline"`   // type-specific fields (api_key_ref, cache_size, etc.)
+}
+
+// ResolveProvider returns the provider config matching the given name.
+func (sc *SystemConfig) ResolveProvider(name string) (*ProviderConfig, error) {
+	for i := range sc.LlmProviders {
+		if sc.LlmProviders[i].Name == name {
+			return &sc.LlmProviders[i], nil
+		}
+	}
+	return nil, fmt.Errorf("provider %q not found in configured providers", name)
 }
 
 // WorkspaceConfig holds per-workspace overrides.

@@ -30,6 +30,7 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
 	"github.com/norman/norman/pkg/llm"
+	"github.com/norman/norman/pkg/llm/llamacpp"
 	"github.com/norman/norman/pkg/skills"
 )
 
@@ -57,8 +58,9 @@ func main() {
 			fmt.Fprintf(os.Stderr, `Usage: norman-server [OPTIONS]
 
 Options:
-  -v, --verbose    Enable server-side debug logging (Echo middleware)
-  -h, --help       Show this help text and exit
+  -p, --provider NAME   Select a configured provider (overrides default_provider)
+  -v, --verbose         Enable server-side debug logging (Echo middleware)
+  -h, --help            Show this help text and exit
 
 Environment variables:
   NORMAN_STORE_DIR       Path to the memory store directory (default: $HOME/.norman/store)
@@ -91,6 +93,10 @@ Workspace-level overrides (per-workspace in config.yaml):
   system_prompt  (empty = use system default)
 
 `+
+				"  -p, --provider NAME   Select a configured provider (overrides default_provider)\n\n" +
+				"Providers are defined in config.yaml under `llm_providers:`.\n" +
+				"Example: norman-server -p local --verbose\n" +
+				"\n" +
 				"Norman agent server — Session-centric chat engine with task scheduling.\n")
 			os.Exit(0)
 		}
@@ -105,12 +111,72 @@ Workspace-level overrides (per-workspace in config.yaml):
 	}
 
 	// --verbose CLI flag overrides config.yaml Logging.Verbose (server-side debug output).
+	// -p/--provider CLI flag selects which configured provider to use (overrides default_provider).
+	var selectedProvider string
 	for _, arg := range os.Args[1:] {
-		if arg == "--verbose" || arg == "-v" {
+		switch arg {
+		case "--verbose", "-v":
 			cfg.System.Logging.Verbose = true
-			break
+		case "--provider", "-p":
+			selectedProvider = "unknown" // placeholder; resolved after config load
 		}
 	}
+
+	// Resolve selected provider: CLI flag > config default > first configured provider.
+	var providerName string
+	if selectedProvider != "" && selectedProvider != "unknown" {
+		providerName = selectedProvider
+	} else if cfg.System.DefaultProvider != "" {
+		providerName = cfg.System.DefaultProvider
+	} else if len(cfg.System.LlmProviders) > 0 {
+		providerName = cfg.System.LlmProviders[0].Name
+	}
+
+	var llmClient llm.LLM
+	if providerName != "" {
+		provCfg, err := cfg.System.ResolveProvider(providerName)
+		if err != nil {
+			log.Fatalf("failed to resolve provider %q: %v", providerName, err)
+		}
+
+		switch provCfg.Type {
+		case "openai":
+			llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
+		case "llamacpp":
+			// Build type-specific config from Extra map.
+			llmCfg := llamacpp.DefaultConfig()
+			if v, ok := provCfg.Extra["cache_size"].(float64); ok {
+				llmCfg.CacheSize = int(v)
+			}
+			if v, ok := provCfg.Extra["cache_type"].(string); ok {
+				llmCfg.CacheType = v
+			}
+			if v, ok := provCfg.Extra["cache_enabled"].(bool); ok {
+				llmCfg.CacheEnabled = v
+			}
+
+			// Use workspace-level overrides for model/temp/tokens if not set on provider.
+			wsCfg := config.DefaultWorkspaceConfig()
+			if cfg.System.DefaultModel != "" {
+				wsCfg.Model = cfg.System.DefaultModel
+			}
+			if cfg.System.Temperature > 0 {
+				wsCfg.Temperature = cfg.System.Temperature
+			}
+			if cfg.System.MaxTokens > 0 {
+				wsCfg.MaxTokens = cfg.System.MaxTokens
+			}
+
+			llmClient = llamacpp.NewProvider(wsCfg, llmCfg)
+		default:
+			log.Fatalf("unsupported provider type %q", provCfg.Type)
+		}
+	} else {
+		// Fallback: no providers configured, use OpenAI-compatible client.
+		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
+	}
+
+	_ = providerName // used for logging/debugging; actual client is in llmClient
 
 	// Initialize memory store — path derived from environment, not hardcoded.
 	// The server communicates with the environment via OpenShell; the store
@@ -179,9 +245,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 	// Create agent loop
 	loop := agent.New(cfg, store, rawSources, activator, wsHub, loopClient)
 
-	// Wire LLM client if an endpoint is configured (enables multi-turn conversation mode)
-	if cfg.System.OpenShell.Address != "" {
-		loop = loop.WithLLMClient(llm.NewClientAdapter(llm.NewClient(cfg.System)))
+	// Wire LLM client into the agent loop.
+	if llmClient != nil {
+		loop = loop.WithLLMClient(llmClient)
 	}
 
 	// Initialize notification notifier from config
