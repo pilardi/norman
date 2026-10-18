@@ -181,7 +181,7 @@ Workspace-level overrides (per-workspace in config.yaml):
 
 	// Wire LLM client if an endpoint is configured (enables multi-turn conversation mode)
 	if cfg.System.OpenShell.Address != "" {
-		loop = loop.WithLLMClient(llm.NewClient(cfg.System))
+		loop = loop.WithLLMClient(llm.NewClientAdapter(llm.NewClient(cfg.System)))
 	}
 
 	// Initialize notification notifier from config
