@@ -504,6 +504,20 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		} else {
 			task.Output = []byte(output)
 			task.Status = protocol.TaskStatusCompleted
+
+			// Persist the assistant turn for shell-only path too (item #5 companion)
+			turnMap := map[string]interface{}{
+				"role":    "assistant",
+				"content": string(task.Output),
+			}
+			if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
+				log.Printf("agent: failed to persist shell-only turn for task %s: %v", task.ID, err)
+			}
+
+			// Also persist the tool call result (the RunCommand itself is a "tool" call)
+			if err := l.store.PersistToolCallResult(task.ID, "shell_command", prompt, string(output), exitCode); err != nil {
+				log.Printf("agent: failed to persist shell command result for task %s: %v", task.ID, err)
+			}
 		}
 	}
 
