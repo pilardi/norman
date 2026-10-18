@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/gorilla/websocket"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -28,6 +29,7 @@ import (
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/skills"
 )
 
@@ -40,10 +42,12 @@ type server struct {
 	loop       *agent.Loop
 	wsHub      *WSHub
 	notifier   *notify.Notifier
+	scheduler  *scheduler.Scheduler
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
-	mu        sync.Mutex
+	mu         sync.Mutex
 	workspaces map[string]*protocol.Workspace
+	startTime  time.Time
 }
 
 func main() {
@@ -87,7 +91,7 @@ Workspace-level overrides (per-workspace in config.yaml):
   system_prompt  (empty = use system default)
 
 `+
-				"Norman agent server — HTTP API + WebSocket hub for workspace management.\n")
+				"Norman agent server — Session-centric chat engine with task scheduling.\n")
 			os.Exit(0)
 		}
 	}
@@ -175,12 +179,35 @@ Workspace-level overrides (per-workspace in config.yaml):
 	// Create agent loop
 	loop := agent.New(cfg, store, rawSources, activator, wsHub, loopClient)
 
+	// Wire LLM client if an endpoint is configured (enables multi-turn conversation mode)
+	if cfg.System.OpenShell.Address != "" {
+		loop = loop.WithLLMClient(llm.NewClient(cfg.System))
+	}
+
 	// Initialize notification notifier from config
 	notifier := notify.New(wsHub, cfg.System.Notify.BellEnabled, cfg.System.Notify.SlackWebhook, cfg.System.Notify.RateLimitPerMin)
 
 	// Initialize scheduler and wire results into loop's notification path
 	resultsCh := make(chan scheduler.TaskResult, 100) // buffered to avoid blocking
 	sched := scheduler.NewScheduler(resultsCh)
+
+	// Wire OpenShell Exec() into the scheduler's runCommand adapter
+	sched.WithRunCommand(func(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error) {
+		return openShellClient.RunCommand(ctx, provider, sandbox, cmd)
+	})
+
+	// Wire OutputHandler to push WS events for real-time progress updates.
+	sched.WithOutputHandler(func(result string, err error) {
+		msg := result
+		if err != nil {
+			msg = fmt.Sprintf("Task completed with error: %v", err)
+		}
+		wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			Message: strPtr(msg),
+		})
+	})
+
 	loop = loop.WithNotifier(notifier).WithResultsChannel(resultsCh)
 
 	// Build server with all dependencies
@@ -192,7 +219,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 		loop:       loop,
 		wsHub:      wsHub,
 		notifier:   notifier,
+		scheduler:  sched,
 		workspaces: make(map[string]*protocol.Workspace),
+		startTime:  time.Now(),
 	}
 
 	// Load persisted workspaces from disk on startup
@@ -220,6 +249,39 @@ Workspace-level overrides (per-workspace in config.yaml):
 		log.Printf("server: loaded %d persisted workspaces from disk", len(srv.workspaces))
 	}
 
+	// Load persisted scheduled tasks into the scheduler on startup.
+	if scheduled, err := store.LoadScheduledTasks(); err != nil {
+		log.Printf("scheduler: failed to load scheduled tasks from disk: %v", err)
+	} else if scheduled != nil {
+		for _, entryMap := range scheduled {
+			entry, ok := entryMap.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			name, _ := entry["name"].(string)
+			schedule, _ := entry["schedule"].(string)
+			command, _ := entry["command"].(string)
+			active, _ := entry["active"].(bool)
+			entryID, _ := entry["id"].(string)
+
+			if entryID == "" || name == "" {
+				continue
+			}
+
+			schedEntry := scheduler.TaskEntry{
+				ID:       entryID,
+				Name:     name,
+				Schedule: schedule,
+				Command:  command,
+				Active:   active,
+			}
+			if err := sched.Add(schedEntry); err != nil {
+				log.Printf("scheduler: failed to add task %s: %v", entryID[:8], err)
+			}
+		}
+		log.Printf("scheduler: loaded %d persisted scheduled tasks from disk", len(scheduled))
+	}
+
 	e := echo.New()
 	e.Use(middleware.Recover())
 
@@ -228,18 +290,67 @@ Workspace-level overrides (per-workspace in config.yaml):
 		e.Use(middleware.Logger())
 	}
 
-	// Health check endpoint
+	// Health check endpoint — includes scheduler status (Phase 4).
 	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+		taskCount, lastTick := srv.scheduler.Status()
+		resp := map[string]interface{}{
+			"status":       "ok",
+			"scheduler_tasks": taskCount,
+			"last_tick":   lastTick.Format(time.RFC3339),
+		}
+		return c.JSON(http.StatusOK, resp)
 	})
 
 	// Config endpoint — returns full system config (with unresolved secret placeholders).
 	// Per-workspace overrides are included if workspace_id query param is provided.
-	e.GET("/api/config", srv.GetConfig)
+	e.GET("/api/config", func(c echo.Context) error {
+		return srv.GetConfig(c, protocol.GetConfigParams{})
+	})
 	e.PUT("/api/config", srv.PutConfig)
 
-	// Session archive endpoint (Step 7d)
+	// Debug route to verify routing
+	e.POST("/api/sessions/:id/debug", func(c echo.Context) error {
+		return c.String(200, "DEBUG route matched, id="+c.Param("id"))
+	})
+
+	// Chat-first interface: send a message to an active session (Phase 1)
+	e.POST("/api/sessions/:id/messages", func(c echo.Context) error {
+		return srv.SendMessage(c, c.Param("id"))
+	})
+
+	// Session archive endpoint (Step 7d) — registered AFTER /messages so it takes precedence for bare paths
+	e.POST("/api/sessions/:id", func(c echo.Context) error {
+		id := c.Param("id")
+		log.Printf("[DEBUG] ArchiveSessionByID route matched, id=%s", id)
+
+		sessionData, err := srv.store.LoadSession(id)
+		if err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})
+		}
+
+		sessions := []interface{}{sessionData}
+		if err := srv.store.ArchiveSession(id, sessions); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+
+		srv.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.SessionCompressed,
+			TaskId:  &id,
+			Message: strPtr("Session archived for task " + id),
+		})
+
+		return c.NoContent(http.StatusNoContent)
+	})
 	e.POST("/api/sessions/archive", srv.ArchiveSession)
+
+	// Session history (Phase 3)
+	e.GET("/api/sessions/:id/history", func(c echo.Context) error {
+		var params protocol.SessionHistoryParams
+		if q := c.QueryParam("limit"); q != "" {
+			fmt.Sscanf(q, "%d", &params.Limit)
+		}
+		return srv.SessionHistory(c, c.Param("id"), params)
+	})
 
 	// Notification endpoints (Step 8d)
 	e.GET("/api/notifications", srv.ListNotifications)
@@ -371,12 +482,76 @@ func (s *server) ArchiveSession(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// ArchiveSessionByID archives a session by its path-based ID (used by CLI).
+func (s *server) ArchiveSessionByID(c echo.Context) error {
+	id := c.Param("id")
+
+	// Read session data for archival
+	sessionData, err := s.store.LoadSession(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})
+	}
+
+	// Convert to []interface{} for ArchiveSession
+	sessions := []interface{}{sessionData}
+
+	if err := s.store.ArchiveSession(id, sessions); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Broadcast WebSocket event
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.SessionCompressed,
+		TaskId:  &id,
+		Message: strPtr("Session archived for task " + id),
+	})
+
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (s *server) GetSession(c echo.Context, id string) error {
 	data, err := s.store.LoadSession(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, data)
+}
+
+// SendMessage handles POST /api/sessions/{id}/messages — the chat-first interface.
+func (s *server) SendMessage(c echo.Context, id string) error {
+	var req struct {
+		Message    string `json:"message"`
+		AttachTools bool   `json:"attach_tools"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.Message == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message is required"})
+	}
+
+	ctx := c.Request().Context()
+	resp, err := s.loop.SendMessage(ctx, id, req.Message)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+// HealthCheck returns service health with scheduler status.
+func (s *server) HealthCheck(c echo.Context) error {
+	count, lastTick := s.scheduler.Status()
+	resp := map[string]interface{}{
+		"status":       "healthy",
+		"uptime_seconds": int(time.Since(s.startTime).Seconds()),
+		"scheduler": map[string]interface{}{
+			"registered_tasks": count,
+			"last_tick":        lastTick.Format(time.RFC3339),
+		},
+	}
+	return c.JSON(http.StatusOK, resp)
 }
 
 func (s *server) DeleteSession(c echo.Context, id string) error {
@@ -409,6 +584,33 @@ func (s *server) DeleteSession(c echo.Context, id string) error {
 	})
 
 	return c.NoContent(http.StatusOK)
+}
+
+// SessionHistory returns the last N conversation turns for a session.
+func (s *server) SessionHistory(c echo.Context, id string, params protocol.SessionHistoryParams) error {
+	limit := 10 // default
+	if q := c.QueryParam("limit"); q != "" {
+		fmt.Sscanf(q, "%d", &limit)
+	}
+
+	sessMap, err := s.store.LoadSession(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	timestamps := sessMap["turns"]
+	turns, ok := timestamps.([]interface{})
+	if !ok {
+		turns = []interface{}{}
+	}
+
+	start := 0
+	if len(turns) > limit {
+		start = len(turns) - limit
+	}
+
+	result := turns[start:]
+	return c.JSON(http.StatusOK, result)
 }
 
 func (s *server) ListSkills(c echo.Context) error {
@@ -511,17 +713,26 @@ func (s *server) CreateTask(c echo.Context) error {
 	}
 
 	// session_id is required — no auto-creation or guessing
-	if req.SessionId == "" {
+	if req.SessionId == nil || *req.SessionId == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "session_id is required"})
 	}
-	sessionID := req.SessionId
+	sessionID := *req.SessionId
 
 	// Validate session exists.
 	if _, err := s.store.GetSession(sessionID); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": fmt.Sprintf("session %s not found", sessionID)})
 	}
 
-	task, err := s.loop.Submit(context.Background(), req.Prompt, req.WorkspaceId, sessionID)
+	prompt := ""
+	if req.Prompt != nil {
+		prompt = *req.Prompt
+	}
+	workspaceID := ""
+	if req.WorkspaceId != nil {
+		workspaceID = *req.WorkspaceId
+	}
+
+	task, err := s.loop.Submit(context.Background(), prompt, workspaceID, sessionID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -542,11 +753,11 @@ func (s *server) createSessionInternal(workspaceID string, clientType string) (*
 	status := protocol.SessionStatus("active")
 	sessionName := id.String()[:8] + "-session"
 	session := &protocol.Session{
-		Id:          &id,
-		Name:        strPtr(sessionName),
-		WorkspaceId: strPtr(workspaceID),
-		Status:      &status,
-		CreatedAt:   &now,
+		Id:            &id,
+		Name:          strPtr(sessionName),
+		WorkspaceId:   strPtr(workspaceID),
+		SessionStatus: &status,
+		CreatedAt:     &now,
 	}
 
 	s.store.SaveSession(id.String(), map[string]interface{}{
@@ -603,46 +814,28 @@ func (s *server) idleCleanupLoop(timeout time.Duration) {
 	}
 }
 
-func (s *server) ScheduleTask(c echo.Context) error {
-	var req protocol.ScheduledTaskRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-	}
-
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		Message: strPtr("Scheduled task: " + req.Name),
-	})
-
-	return c.NoContent(http.StatusCreated)
-}
-
 func (s *server) ListScheduledTasks(c echo.Context) error {
-	return c.JSON(http.StatusOK, []map[string]interface{}{}) // stub for now
-}
-
-func (s *server) UnscheduleTask(c echo.Context, id string) error {
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		Message: strPtr("Unscheduling task: " + id[:8]),
-	})
-
-	return c.NoContent(http.StatusOK)
-}
-
-func (s *server) CancelTask(c echo.Context, id string) error {
-	err := s.loop.CancelTask(id)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	entries := s.scheduler.List()
+	result := make([]protocol.ScheduledTask, 0, len(entries))
+	for _, entry := range entries {
+		status := protocol.ScheduledTaskStatusActive
+		if !entry.Active {
+			status = protocol.ScheduledTaskStatusPaused
+		}
+		id, err := uuid.Parse(entry.ID)
+		if err != nil {
+			log.Printf("list scheduled tasks: bad UUID %q: %v", entry.ID, err)
+			continue
+		}
+		result = append(result, protocol.ScheduledTask{
+			Id:          &id,
+			Name:        &entry.Name,
+			Schedule:    &entry.Schedule,
+			Status:      &status,
+			WorkspaceId: nil, // scheduler tasks don't carry workspace context in MVP
+		})
 	}
-
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &id,
-		Message: strPtr("Task cancelled"),
-	})
-
-	return c.NoContent(http.StatusOK)
+	return c.JSON(http.StatusOK, result)
 }
 
 func (s *server) GetTask(c echo.Context, id string) error {
@@ -651,14 +844,26 @@ func (s *server) GetTask(c echo.Context, id string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":         task.ID,
-		"status":     string(task.Status),
-		"prompt":     task.Prompt,
-		"output":     string(task.Output),
-		"error":      task.Error,
-		"created_at": task.CreatedAt.Format(time.RFC3339),
-	})
+	uuidVal, parseErr := uuid.Parse(id)
+	if parseErr != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid task ID: %v", parseErr)})
+	}
+
+	status := protocol.TaskStatus(task.Status)
+	resp := protocol.Task{
+		Id:         &uuidVal,
+		Status:     &status,
+		Prompt:     strPtr(task.Prompt),
+		WorkspaceId: strPtr(task.Workspace),
+		CreatedAt:  &task.CreatedAt,
+		Error:      strPtr(task.Error),
+	}
+
+	if len(task.Output) > 0 {
+		resp.OutputPath = strPtr(fmt.Sprintf("/tmp/task-%s.output", task.ID[:8]))
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 func (s *server) ReportTaskComplete(c echo.Context, id string) error {
@@ -682,15 +887,34 @@ func (s *server) TailTaskLog(c echo.Context, id string, params protocol.TailTask
 		lines = *params.Lines
 	}
 
+	task, err := s.loop.GetTask(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	logs, err := s.loop.GetLogs(c.Request().Context(), task.SessionId)
+	if err != nil {
+		log.Printf("tail task log: failed to get logs for session %s: %v", task.SessionId, err)
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"lines": lines,
+			"data":  []string{"no logs available"},
+		})
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &id,
 		Message: strPtr("Tail " + id[:8] + " log (last " + string(rune(lines)) + " lines)"),
 	})
 
+	// Return the last `lines` entries from logs
+	start := 0
+	if len(logs) > lines {
+		start = len(logs) - lines
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"lines": lines,
-		"data":  []string{"sandbox initialized", "ready"}, // stub
+		"data":  logs[start:],
 	})
 }
 
@@ -855,8 +1079,11 @@ func (s *server) DeleteNotification(c echo.Context, id string) error {
 // GetConfig returns the system config (with unresolved secret placeholders).
 // If workspace_id query param is provided, returns merged per-workspace config.
 // The response also includes the resolved OpenShell gateway address.
-func (s *server) GetConfig(c echo.Context) error {
-	workspaceID := c.QueryParam("workspace_id")
+func (s *server) GetConfig(c echo.Context, params protocol.GetConfigParams) error {
+	var workspaceID string
+	if params.WorkspaceId != nil {
+		workspaceID = *params.WorkspaceId
+	}
 
 	if workspaceID != "" {
 		// Return merged config for a specific workspace

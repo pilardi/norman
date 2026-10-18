@@ -10,9 +10,11 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/google/uuid"
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
@@ -20,7 +22,7 @@ import (
 	"github.com/norman/norman/pkg/skills"
 )
 
-// Task represents an in-flight task with its execution state.
+// Task represents an in-flight task (emergent or manual) with its execution state.
 type Task struct {
 	ID        string
 	Prompt    string
@@ -33,7 +35,7 @@ type Task struct {
 	CreatedAt time.Time
 }
 
-// Loop is the main agent loop managing task execution.
+// Loop is the main agent loop managing session messages and emergent/manual task execution.
 type Loop struct {
 	mu          sync.Mutex
 	tasks       map[string]*Task // taskID -> Task state
@@ -42,6 +44,7 @@ type Loop struct {
 	activator   *skills.Activator
 	config      *config.Config
 	openShell   OpenShellClient
+	llmClient   llm.Caller         // LLM API client (optional, nil = shell-only mode)
 	wsHub       WSHubPublisher
 	notifier    *notify.Notifier
 	resultsCh   chan scheduler.TaskResult // results from scheduler (nil if not wired)
@@ -51,6 +54,9 @@ type Loop struct {
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
 func (l *Loop) WorkspaceConfig(workspaceID string) *config.WorkspaceConfig {
+	if l.config == nil {
+		return &config.WorkspaceConfig{BaseDir: "", Model: "", MaxTokens: 0, Temperature: 0}
+	}
 	return l.config.MergeWorkspaceConfig(workspaceID, nil)
 }
 
@@ -75,11 +81,13 @@ func (l *Loop) MaxTokens(workspaceID string) int {
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
 	CreateSandbox(ctx context.Context, workspace, name string) (string, error)
-	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) error
-	RunCommand(ctx context.Context, sandboxID, command string) (string, int, error)
+	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
+	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
+	RunCommand(ctx context.Context, sandboxName string, command string) (string, int, error)
 	GetLogs(ctx context.Context, sandboxID string) ([]string, error)
 	DeleteSandbox(ctx context.Context, workspace, name string) error
 	ListSandboxes(ctx context.Context, workspace string) ([]string, error)
+	KeepAlive(ctx context.Context, sandboxName string) error
 }
 
 // WSHubPublisher sends WebSocket push events.
@@ -118,6 +126,12 @@ func (l *Loop) WithResultsChannel(ch chan scheduler.TaskResult) *Loop {
 // WithBudget configures the loop with a budget tracker. Returns the modified Loop.
 func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 	l.budget = budget.NewSessionState(cfg)
+	return l
+}
+
+// WithLLMClient injects an LLM API client into the loop for multi-turn conversation processing.
+func (l *Loop) WithLLMClient(client llm.Caller) *Loop {
+	l.llmClient = client
 	return l
 }
 
@@ -167,6 +181,81 @@ func (l *Loop) GetTask(taskID string) (*Task, error) {
 	return task, nil
 }
 
+// GetLogs returns the log lines for a sandbox/session by ID.
+func (l *Loop) GetLogs(ctx context.Context, sandboxID string) ([]string, error) {
+	return l.openShell.GetLogs(ctx, sandboxID)
+}
+
+// AgentResponse represents the structured response from processing a chat message.
+type AgentResponse struct {
+	SessionID   string   `json:"session_id"`
+	Response    string   `json:"response,omitempty"`
+	ToolsUsed   []string `json:"tools_used,omitempty"`
+	TaskCreated bool     `json:"task_created"`
+	TaskID      string   `json:"task_id,omitempty"`
+}
+
+// SendMessage processes a chat message synchronously and returns a structured response.
+// This is the primary interface for the chat-first agent model.
+func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string) (*AgentResponse, error) {
+	taskID := uuid.New().String()
+
+	task := &Task{
+		ID:        taskID,
+		Prompt:    message,
+		Status:    protocol.TaskStatusPending,
+		SessionId: sessionID,
+		CreatedAt: time.Now(),
+	}
+
+	l.mu.Lock()
+	l.tasks[taskID] = task
+	l.mu.Unlock()
+
+	// Process the message synchronously via execute (blocks until completion).
+	l.execute(ctx, task)
+
+	// Build response.
+	resp := &AgentResponse{
+		SessionID: sessionID,
+		Response:  string(task.Output),
+	}
+
+	if task.Error != "" {
+		resp.Response = fmt.Sprintf("Error: %s", task.Error)
+	}
+
+	return resp, nil
+}
+
+// SendMessageWithTask processes a chat message and optionally creates an emergent task.
+// If createTask is true, the agent will also invoke CreateTask internally to spawn
+// a background task after processing the message. The response includes task_created
+// and task_id when applicable.
+func (l *Loop) SendMessageWithTask(ctx context.Context, sessionID string, message string, createTask bool) (*AgentResponse, error) {
+	// First, process the message normally.
+	resp, err := l.SendMessage(ctx, sessionID, message)
+	if err != nil {
+		return nil, err
+	}
+
+	// If task creation is requested, create an emergent task.
+	if createTask && resp.Response != "" {
+		task, err := l.CreateTask(ctx, message, map[string]string{
+			"priority": "normal",
+		})
+		if err != nil {
+			log.Printf("agent: failed to create emergent task: %v", err)
+			return resp, nil // non-fatal; return response without task info
+		}
+
+		resp.TaskCreated = true
+		resp.TaskID = task.ID
+	}
+
+	return resp, nil
+}
+
 // CancelTask marks a task for cancellation.
 func (l *Loop) CancelTask(taskID string) error {
 	l.mu.Lock()
@@ -182,6 +271,80 @@ func (l *Loop) CancelTask(taskID string) error {
 		return l.store.SaveTask(taskID, taskToMap(task))
 	}
 	return fmt.Errorf("task %s is not cancellable (status: %s)", taskID, task.Status)
+}
+
+// DeleteTask permanently removes a task from memory and persists the deletion.
+// Unlike CancelTask (which marks status=cancelled), this fully removes the task entry.
+func (l *Loop) DeleteTask(taskID string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	_, ok := l.tasks[taskID]
+	if !ok {
+		return fmt.Errorf("task %s not found", taskID)
+	}
+
+	delete(l.tasks, taskID)
+	return l.store.DeleteTask(taskID)
+}
+
+// CreateTask creates an emergent task programmatically from the agent's planning loop.
+// Unlike Submit (which is called by the server API layer), this is the agent-side
+// method for creating tasks during conversation processing. It accepts optional config
+// overrides (e.g., "priority", "timeout", "workspace_id") and returns the completed task.
+func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]string) (*Task, error) {
+	taskID := uuid.New().String()
+
+	// Resolve workspace from config or default to empty string.
+	workspaceID := ""
+	if ws, ok := config["workspace_id"]; ok && ws != "" {
+		workspaceID = ws
+	}
+
+	// Parse priority from config (default: "normal").
+	var priority protocol.TaskCreateRequestPriority
+	switch strings.ToLower(config["priority"]) {
+	case "low":
+		priority = protocol.TaskCreateRequestPriorityLow
+	case "high":
+		priority = protocol.TaskCreateRequestPriorityHigh
+	default:
+		priority = protocol.TaskCreateRequestPriorityNormal
+	}
+
+	task := &Task{
+		ID:        taskID,
+		Prompt:    prompt,
+		Status:    protocol.TaskStatusPending,
+		Workspace: workspaceID,
+		SessionId: "", // emergent tasks are not bound to a specific session
+		CreatedAt: time.Now(),
+	}
+
+	// Store priority as metadata for the task.
+	if err := l.store.SaveTask(taskID, map[string]interface{}{
+		"id":          taskID,
+		"prompt":      prompt,
+		"status":      string(task.Status),
+		"workspace":   workspaceID,
+		"priority":    string(priority),
+		"created_at":  task.CreatedAt.Format(time.RFC3339),
+	}); err != nil {
+		log.Printf("agent: failed to persist task %s: %v", taskID, err)
+	}
+
+	// Broadcast progress event (no session-specific filtering for emergent tasks).
+	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		TaskId:  &taskID,
+		Message: strPtr(fmt.Sprintf("Emergent task %s created", taskID[:8])),
+		Step:    intPtr(0),
+	})
+
+	// Execute synchronously (blocks until completion).
+	l.execute(ctx, task)
+
+	return task, nil
 }
 
 // execute runs the agent loop for a single task.
@@ -248,7 +411,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	})
 
 	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:7])
-	sandboxID, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName)
+	_, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("sandbox creation failed: %v", err)
@@ -270,14 +433,29 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		Step:    intPtr(4),
 	})
 
-	if err := l.openShell.WaitReady(ctx, task.Workspace, sandboxName, 60*time.Second); err != nil {
+	// Wait for sandbox to be ready.
+	var waitErr error
+	_, waitErr = l.openShell.WaitReady(ctx, task.Workspace, sandboxName, 60*time.Second)
+	if waitErr != nil {
 		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("sandbox not ready: %v", err)
+		task.Error = fmt.Sprintf("sandbox not ready: %v", waitErr)
 		l.pushCompletion(task)
 		return
 	}
 
-	// Phase 4: Execute — inject raw sources context into prompt
+	// Final sanity check: re-fetch sandbox state right before execution.
+	// This catches the case where the gateway auto-deletes sandboxes (idle timeout)
+	// between WaitReady and RunCommand.
+	var getErr error
+	_, getErr = l.openShell.GetSandbox(ctx, "default", sandboxName)
+	if getErr != nil {
+		task.Status = protocol.TaskStatusFailed
+		task.Error = fmt.Sprintf("sandbox not found before execution: %v", getErr)
+		l.pushCompletion(task)
+		return
+	}
+
+	// Phase 4: Execute — multi-turn agent loop with LLM if available.
 	l.mu.Lock()
 	task.Status = protocol.TaskStatusRunning
 	l.mu.Unlock()
@@ -289,39 +467,58 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		Step:    intPtr(5),
 	})
 
-	// Inject raw source context into the prompt if available.
-	prompt := task.Prompt
-	if l.rawSources != nil {
-		sources, err := l.rawSources.ListAll()
-		if err != nil {
-			log.Printf("agent: failed to read raw sources for task %s: %v", task.ID, err)
-		} else if len(sources) > 0 {
-			var ctxParts []string
-			ctxParts = append(ctxParts, "## Raw Environment Context")
-			ctxParts = append(ctxParts, "")
-			for _, s := range sources {
-				ctxParts = append(ctxParts, fmt.Sprintf("### %s (%s)", s.Name, s.ID))
-				ctxParts = append(ctxParts, fmt.Sprintf("_Created: %s | Category: %s_", s.CreatedAt.Format(time.RFC3339), s.Category))
-				ctxParts = append(ctxParts, "")
-				ctxParts = append(ctxParts, "```")
-				ctxParts = append(ctxParts, s.Content)
-				ctxParts = append(ctxParts, "```")
-				ctxParts = append(ctxParts, "")
-			}
-			prompt = strings.Join(ctxParts, "\n") + "\n\n---\n\n" + task.Prompt
-		}
-	}
-
-	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxID, prompt)
-	if err != nil {
-		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("execution failed (exit %d): %v", exitCode, err)
-	} else if exitCode != 0 {
-		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("non-zero exit code: %d", exitCode)
+	// Try LLM-based multi-turn loop first; fall back to shell-only if no client.
+	if l.llmClient != nil {
+		task.Output = l.executeWithLLM(ctx, task, sandboxName)
 	} else {
-		task.Output = []byte(output)
-		task.Status = protocol.TaskStatusCompleted
+		// Legacy shell-only path: inject raw sources into prompt and run as a single command.
+		prompt := task.Prompt
+		if l.rawSources != nil {
+			sources, err := l.rawSources.ListAll()
+			if err != nil {
+				log.Printf("agent: failed to read raw sources for task %s: %v", task.ID, err)
+			} else if len(sources) > 0 {
+				var ctxParts []string
+				ctxParts = append(ctxParts, "## Raw Environment Context")
+				ctxParts = append(ctxParts, "")
+				for _, s := range sources {
+					ctxParts = append(ctxParts, fmt.Sprintf("### %s (%s)", s.Name, s.ID))
+					ctxParts = append(ctxParts, fmt.Sprintf("_Created: %s | Category: %s_", s.CreatedAt.Format(time.RFC3339), s.Category))
+					ctxParts = append(ctxParts, "")
+					ctxParts = append(ctxParts, "```")
+					ctxParts = append(ctxParts, s.Content)
+					ctxParts = append(ctxParts, "```")
+					ctxParts = append(ctxParts, "")
+				}
+				prompt = strings.Join(ctxParts, "\n") + "\n\n---\n\n" + task.Prompt
+			}
+		}
+
+		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, prompt)
+		if err != nil {
+			task.Status = protocol.TaskStatusFailed
+			task.Error = fmt.Sprintf("execution failed (exit %d): %v", exitCode, err)
+		} else if exitCode != 0 {
+			task.Status = protocol.TaskStatusFailed
+			task.Error = fmt.Sprintf("non-zero exit code: %d", exitCode)
+		} else {
+			task.Output = []byte(output)
+			task.Status = protocol.TaskStatusCompleted
+
+			// Persist the assistant turn for shell-only path too (item #5 companion)
+			turnMap := map[string]interface{}{
+				"role":    "assistant",
+				"content": string(task.Output),
+			}
+			if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
+				log.Printf("agent: failed to persist shell-only turn for task %s: %v", task.ID, err)
+			}
+
+			// Also persist the tool call result (the RunCommand itself is a "tool" call)
+			if err := l.store.PersistToolCallResult(task.ID, "shell_command", prompt, string(output), exitCode); err != nil {
+				log.Printf("agent: failed to persist shell command result for task %s: %v", task.ID, err)
+			}
+		}
 	}
 
 	l.pushCompletion(task)
@@ -337,6 +534,275 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 			log.Printf("agent: failed to delete sandbox %s: %v", sandboxName, delErr)
 		}
 	}()
+}
+
+// executeWithLLM runs a multi-turn agent loop using the LLM client.
+// It builds context from session history + raw sources + skills, calls the LLM,
+// parses tool calls if present, executes them in the sandbox, and loops back.
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string) []byte {
+	// Build system prompt
+	systemPrompt := l.buildSystemPrompt(task.Workspace)
+
+	// Build conversation messages from session history + raw sources + skills
+	messages, _, _ := l.buildMessages(task)
+
+	// Multi-turn loop: max 8 iterations to prevent infinite loops
+	maxTurns := 8
+	for turn := 0; turn < maxTurns; turn++ {
+		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			TaskId:  &task.ID,
+			Message: strPtr(fmt.Sprintf("LLM turn %d/%d", turn+1, maxTurns)),
+			Step:    intPtr(6 + turn),
+		})
+
+		// Build tools from active skills and pass to LLM
+		tools := l.buildTools()
+		resp, err := l.llmClient.Complete(ctx, systemPrompt, messages, tools)
+		if err != nil {
+			log.Printf("agent: LLM call failed at turn %d: %v", turn, err)
+			task.Status = protocol.TaskStatusFailed
+			task.Error = fmt.Sprintf("LLM API error: %v", err)
+			return []byte(task.Error)
+		}
+
+		// Track token usage for budget
+		if l.budget != nil {
+			usage := llm.ParseUsage(resp)
+			l.budget.TokenCount += usage.TotalTokens
+			log.Printf("agent: turn %d used %d tokens (total session: %d)", turn+1, usage.TotalTokens, l.budget.TokenCount)
+		}
+
+		// Parse response text and tool calls
+		responseText := llm.ParseResponseText(resp)
+		toolCalls := llm.ParseToolCalls(resp.Choices[0].Message)
+
+		if len(toolCalls) > 0 {
+			// Execute tool calls in the sandbox (item #6: enhanced WS events)
+			for _, tc := range toolCalls {
+				// Pre-execution broadcast with tool detail
+				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					TaskId:  &task.ID,
+					Message: strPtr(fmt.Sprintf("Executing tool: %s (args: %.60s...)", tc.Name, string(tc.Arguments))),
+					Step:    intPtr(7 + turn),
+				})
+
+				output, exitCode, execErr := l.openShell.RunCommand(ctx, sandboxName, string(tc.Arguments))
+				if execErr != nil {
+					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
+				} else if exitCode != 0 {
+					log.Printf("agent: tool %s returned non-zero exit code: %d", tc.Name, exitCode)
+				}
+
+				// Post-execution broadcast with result status (item #6)
+				status := "success"
+				if execErr != nil || exitCode != 0 {
+					status = "failed"
+				}
+				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					TaskId:  &task.ID,
+					Message: strPtr(fmt.Sprintf("Tool '%s' completed: %s (exit %d)", tc.Name, status, exitCode)),
+					Step:    intPtr(7 + turn),
+				})
+
+				// Persist tool call result for replay/debugging (item #5 companion)
+				if err := l.store.PersistToolCallResult(task.ID, tc.Name, string(tc.Arguments), output, exitCode); err != nil {
+					log.Printf("agent: failed to persist tool call result for %s: %v", tc.Name, err)
+				}
+
+				// Add tool result as a message in the conversation
+				messages = append(messages, llm.Message{
+					Role:    "tool",
+					Name:    tc.Name,
+					ID:      tc.ID,
+					Content: output,
+				})
+			}
+
+			// Add assistant response to messages for next turn
+			messages = append(messages, llm.Message{
+				Role:    "assistant",
+				Content: responseText,
+			})
+
+			// Persist the assistant turn (item #5)
+			turnMap := map[string]interface{}{
+				"role":    "assistant",
+				"content": responseText,
+			}
+			if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
+				log.Printf("agent: failed to persist turn %d: %v", turn+1, err)
+			}
+
+			// Keepalive heartbeat between turns (item #7) — prevents idle-timeout deletion
+			if err := l.openShell.KeepAlive(ctx, sandboxName); err != nil {
+				log.Printf("agent: keepalive failed for sandbox %s: %v", sandboxName, err)
+			}
+
+			continue // Loop back for another turn
+		}
+
+		// No tool calls — this is the final text response
+		task.Output = []byte(responseText)
+		task.Status = protocol.TaskStatusCompleted
+
+		// Persist the final assistant turn (item #5)
+		turnMap := map[string]interface{}{
+			"role":    "assistant",
+			"content": string(task.Output),
+		}
+		if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
+			log.Printf("agent: failed to persist final turn for task %s: %v", task.ID, err)
+		}
+
+		return task.Output
+	}
+
+	// Max turns reached without a clean completion
+	if len(task.Output) == 0 {
+		task.Status = protocol.TaskStatusFailed
+		task.Error = fmt.Sprintf("reached max turns (%d) without completing", maxTurns)
+	}
+	return task.Output
+}
+
+// buildSystemPrompt assembles the system prompt for the LLM.
+func (l *Loop) buildSystemPrompt(workspaceID string) string {
+	var parts []string
+
+	// Base system instructions
+	parts = append(parts, `You are Norman, a helpful AI assistant operating inside an OpenShell sandbox environment. You help users work on their projects by reading files, running commands, and reporting results.
+
+Rules:
+- Always respond in the user's language.
+- Be concise but thorough. If you need more information, ask a clarifying question.
+- When using tools (shell commands), execute them one at a time and wait for results before proceeding.
+- If a tool fails, explain what went wrong and try an alternative approach.
+- Never assume file contents without reading them first.
+- When done with a task, provide a clear summary of what you accomplished.`)
+
+	// Add workspace-specific system prompt if configured
+	ws := l.WorkspaceConfig(workspaceID)
+	if ws.SystemPrompt != "" {
+		parts = append(parts, "\n\nWorkspace-specific instructions:\n"+ws.SystemPrompt)
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+// buildTools converts active skills into llm.Tool definitions for the LLM API.
+func (l *Loop) buildTools() []llm.Tool {
+	var tools []llm.Tool
+
+	if l.activator == nil {
+		return tools
+	}
+
+	for _, entry := range l.activator.Registry() {
+		// Only include activated skills as available tools
+		if !contains(l.activator.Active(), entry.Name) {
+			continue
+		}
+
+		tools = append(tools, llm.Tool{
+			Name:        entry.Name,
+			Description: entry.Description,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"args": map[string]interface{}{
+						"type":        "object",
+						"description": "Tool-specific arguments",
+					},
+				},
+				"required": []string{"args"},
+			},
+		})
+	}
+
+	return tools
+}
+
+// buildMessages assembles conversation messages from session history, raw sources, and skills.
+func (l *Loop) buildMessages(task *Task) ([]llm.Message, int, int) {
+	var messages []llm.Message
+
+	// 1. Raw environment context (injected once)
+	if l.rawSources != nil {
+		sources, err := l.rawSources.ListAll()
+		if err == nil && len(sources) > 0 {
+			var ctxParts []string
+			ctxParts = append(ctxParts, "## Environment Context")
+			ctxParts = append(ctxParts, "")
+			for _, s := range sources {
+				ctxParts = append(ctxParts, fmt.Sprintf("### %s (%s)", s.Name, s.ID))
+				ctxParts = append(ctxParts, fmt.Sprintf("_Created: %s | Category: %s_", s.CreatedAt.Format(time.RFC3339), s.Category))
+				ctxParts = append(ctxParts, "")
+				ctxParts = append(ctxParts, "```")
+				ctxParts = append(ctxParts, s.Content)
+				ctxParts = append(ctxParts, "```")
+				ctxParts = append(ctxParts, "")
+			}
+			messages = append(messages, llm.Message{
+				Role:    "user",
+				Content: strings.Join(ctxParts, "\n"),
+			})
+		}
+	}
+
+	// 2. Active skills context
+	if l.activator != nil {
+		activeSkills := l.activator.Active()
+		if len(activeSkills) > 0 {
+			var skillContexts []string
+			for _, entry := range l.activator.Registry() {
+				if contains(activeSkills, entry.Name) {
+					skillContexts = append(skillContexts, fmt.Sprintf("### Skill: %s\n%s", entry.Name, entry.Description))
+				}
+			}
+			if len(skillContexts) > 0 {
+				messages = append(messages, llm.Message{
+					Role:    "user",
+					Content: strings.Join(skillContexts, "\n\n"),
+				})
+			}
+		}
+	}
+
+	// 3. Session history (conversation turns)
+	if task.SessionId != "" {
+		sessMap, err := l.store.LoadSession(task.SessionId)
+		if err == nil {
+			timestamps := sessMap["turns"]
+			turns, ok := timestamps.([]interface{})
+			if ok {
+				for _, t := range turns {
+					turnMap, ok := t.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					role, _ := turnMap["role"].(string)
+					content, _ := turnMap["content"].(string)
+					if role != "" && content != "" {
+						messages = append(messages, llm.Message{
+							Role:    role,
+							Content: content,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// 4. Current user message (the task prompt)
+	messages = append(messages, llm.Message{
+		Role:    "user",
+		Content: task.Prompt,
+	})
+
+	return messages, budget.CountTokensFromTurns(nil), 0 // tokens estimated by caller if needed
 }
 
 // resolveSkills determines which skills should be activated for a given prompt.
@@ -655,6 +1121,16 @@ func (l *Loop) AddDiscoveryPaths(paths []string) error {
 func strPtr(s string) *string { return &s }
 func intPtr(i int) *int        { return &i }
 
+// contains checks if a string slice contains a value.
+func contains(slice []string, val string) bool {
+	for _, s := range slice {
+		if s == val {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Fake OpenShellClient for testing ---
 
 // FakeOpenShellClient is a mock implementation of OpenShellClient.
@@ -685,28 +1161,38 @@ func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))
-	f.sandboxes[workspace+"."+name] = sid
+	f.sandboxes[name] = sid
 	return sid, nil
 }
 
-func (f *FakeOpenShellClient) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) error {
+func (f *FakeOpenShellClient) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error) {
 	// Simulate readiness after a short delay
 	select {
 	case <-time.After(100 * time.Millisecond):
-		return nil
+		return &v1.Sandbox{ID: fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))}, nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
-func (f *FakeOpenShellClient) RunCommand(ctx context.Context, sandboxID, command string) (string, int, error) {
+func (f *FakeOpenShellClient) GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sid, ok := f.sandboxes[name]
+	if !ok {
+		return nil, fmt.Errorf("sandbox %s not found", name)
+	}
+	return &v1.Sandbox{ID: sid}, nil
+}
+
+func (f *FakeOpenShellClient) RunCommand(ctx context.Context, sandboxName, command string) (string, int, error) {
 	f.mu.Lock()
 	f.commands = append(f.commands, command)
 	f.capturedPrompt = command
 	f.mu.Unlock()
 
 	// Simulate output
-	output := fmt.Sprintf("Executed: %s\nOutput from sandbox %s", command, sandboxID)
+	output := fmt.Sprintf("Executed: %s\nOutput from sandbox %s", command, sandboxName)
 	return output, 0, nil
 }
 
@@ -731,4 +1217,14 @@ func (f *FakeOpenShellClient) ListSandboxes(ctx context.Context, workspace strin
 		}
 	}
 	return result, nil
+}
+
+func (f *FakeOpenShellClient) KeepAlive(ctx context.Context, sandboxName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Simulate keepalive by refreshing the sandbox entry timestamp (no-op in fake)
+	if _, ok := f.sandboxes[sandboxName]; !ok {
+		return fmt.Errorf("sandbox %s not found", sandboxName)
+	}
+	return nil
 }

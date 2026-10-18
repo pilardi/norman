@@ -2,6 +2,8 @@
 package memory
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -291,6 +293,69 @@ func (s *Store) ListSessions() []map[string]interface{} {
 	return sessions
 }
 
+// SaveTranscript writes a conversation transcript as markdown to the sessions directory.
+// Each entry is formatted as "## Turn N: [role]\n\ncontent\n" with timestamps.
+func (s *Store) SaveTranscript(sessionID string, entries []map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "sessions")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create sessions dir: %w", err)
+	}
+
+	var lines []string
+	lines = append(lines, "# Session Transcript\n")
+	lines = append(lines, fmt.Sprintf("**Session ID:** `%s`\n\n", sessionID))
+	lines = append(lines, fmt.Sprintf("**Created:** %s\n\n---\n\n", time.Now().Format(time.RFC3339)))
+
+	for i, entry := range entries {
+		role, _ := entry["role"].(string)
+		content, _ := entry["content"].(string)
+		timestamp, _ := entry["timestamp"].(string)
+
+		lines = append(lines, fmt.Sprintf("## Turn %d: %s", i+1, role))
+		if timestamp != "" {
+			lines = append(lines, fmt.Sprintf("\n\n*%s*\n", timestamp))
+		} else {
+			lines = append(lines, "\n")
+		}
+		lines = append(lines, content+"\n")
+		lines = append(lines, "\n---\n\n")
+	}
+
+	path := filepath.Join(dir, sessionID+".md")
+	tmp := path + ".tmp"
+	content := strings.Join(lines, "")
+	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write transcript: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename transcript: %w", err)
+	}
+
+	return nil
+}
+
+// LoadTranscript reads a session's markdown transcript from disk.
+func (s *Store) LoadTranscript(sessionID string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "sessions", sessionID+".md")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("transcript for session %s not found", sessionID)
+		}
+		return "", fmt.Errorf("read transcript: %w", err)
+	}
+
+	return string(data), nil
+}
+
 // Prune removes completed tasks older than the given age.
 func (s *Store) Prune(maxAge time.Duration) int {
 	s.mu.Lock()
@@ -572,6 +637,175 @@ func (s *Store) ListWorkspaces() ([]map[string]interface{}, error) {
 	return workspaces, nil
 }
 
+// PersistTurn appends a single conversation turn to the task's turns file.
+// This enables incremental persistence so a crashed process can resume from the last turn.
+func (s *Store) PersistTurn(taskID string, turn map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "turns")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create turns dir: %w", err)
+	}
+
+	path := filepath.Join(dir, taskID+".jsonl")
+
+	// Append JSON line (newline-delimited JSON for incremental writes)
+	entry := map[string]interface{}{
+		"role":      turn["role"],
+		"content":   turn["content"],
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+	if id, ok := turn["id"].(string); ok {
+		entry["id"] = id
+	}
+	if name, ok := turn["name"].(string); ok {
+		entry["name"] = name
+	}
+
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal turn entry: %w", err)
+	}
+
+	// Append directly to the path file (O_APPEND ensures correct positioning)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open turns file: %w", err)
+	}
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		f.Close()
+		return fmt.Errorf("write turn entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close turns file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadTurns reads all persisted turns for a task from its JSONL file.
+func (s *Store) LoadTurns(taskID string) ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "turns", taskID+".jsonl")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // no turns persisted yet
+		}
+		return nil, fmt.Errorf("read turns file: %w", err)
+	}
+
+	var entries []map[string]interface{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var entry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("parse turn entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+// DeleteTurns removes a task's persisted turns file.
+func (s *Store) DeleteTurns(taskID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.base, "turns", taskID+".jsonl")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil // already gone
+		}
+		return fmt.Errorf("delete turns file: %w", err)
+	}
+
+	return nil
+}
+
+// PersistToolCallResult appends a tool call result (name, arguments, output) to the task's results file.
+// This preserves raw tool call data for replay and debugging alongside text responses.
+func (s *Store) PersistToolCallResult(taskID string, name string, args string, output string, exitCode int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "tool_results")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create tool_results dir: %w", err)
+	}
+
+	path := filepath.Join(dir, taskID+".jsonl")
+
+	entry := map[string]interface{}{
+		"type":       "tool_call_result",
+		"name":       name,
+		"arguments":  args,
+		"output":     output,
+		"exit_code":  exitCode,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	}
+
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal tool result entry: %w", err)
+	}
+
+	// Append directly to the path file (O_APPEND ensures correct positioning)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open tool results file: %w", err)
+	}
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		f.Close()
+		return fmt.Errorf("write tool result entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close tool results file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadToolCallResults reads all persisted tool call results for a task.
+func (s *Store) LoadToolCallResults(taskID string) ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "tool_results", taskID+".jsonl")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // no results persisted yet
+		}
+		return nil, fmt.Errorf("read tool results file: %w", err)
+	}
+
+	var entries []map[string]interface{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("parse tool result entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
 // Stats returns store statistics.
 func (s *Store) Stats() (taskCount, sessionCount int, planCount int, workspaceCount int, err error) {
 	s.mu.RLock()
@@ -635,6 +869,57 @@ func (s *Store) GetSession(sessionID string) (map[string]interface{}, error) {
 	var result map[string]interface{}
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("invalid session data for %s: %w", sessionID, err)
+	}
+
+	return result, nil
+}
+
+// SaveScheduledTasks persists a list of scheduled task entries as JSON.
+func (s *Store) SaveScheduledTasks(entries []interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "tasks")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create tasks dir: %w", err)
+	}
+
+	path := filepath.Join(dir, "scheduled_tasks.json")
+	content, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal scheduled tasks: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		return fmt.Errorf("write scheduled tasks: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename scheduled tasks: %w", err)
+	}
+
+	return nil
+}
+
+// LoadScheduledTasks loads scheduled task entries from disk.
+func (s *Store) LoadScheduledTasks() ([]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "tasks", "scheduled_tasks.json")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // no scheduled tasks yet
+		}
+		return nil, fmt.Errorf("read scheduled tasks: %w", err)
+	}
+
+	var result []interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("parse scheduled tasks: %w", err)
 	}
 
 	return result, nil

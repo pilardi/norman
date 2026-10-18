@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/robfig/cron/v3"
 )
 
@@ -31,13 +32,17 @@ type TaskResult struct {
 	Timestamp time.Time
 }
 
+// RunCommandFunc is a function type for executing commands.
+type RunCommandFunc func(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error)
+
 // Scheduler manages registered tasks and dispatches them on schedule.
 type Scheduler struct {
-	mu      sync.RWMutex
-	cron    *cron.Cron
-	tasks   map[string]*TaskEntry // ID → entry
-	done    chan struct{}
-	results chan TaskResult
+	mu         sync.RWMutex
+	cron       *cron.Cron
+	tasks      map[string]*TaskEntry // ID → entry
+	done       chan struct{}
+	results    chan TaskResult
+	runCommand RunCommandFunc        // OpenShell Exec() adapter (nil = fallback to local exec)
 }
 
 // NewScheduler creates a new scheduler with the given output channel.
@@ -48,6 +53,55 @@ func NewScheduler(results chan TaskResult) *Scheduler {
 		done:    make(chan struct{}),
 		results: results,
 	}
+}
+
+// WithRunCommand wires an OpenShell Exec() adapter into the scheduler.
+func (s *Scheduler) WithRunCommand(fn RunCommandFunc) *Scheduler {
+	s.runCommand = fn
+	return s
+}
+
+// WithOutputHandler sets a global callback invoked after each task execution.
+func (s *Scheduler) WithOutputHandler(fn func(result string, err error)) *Scheduler {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, entry := range s.tasks {
+		entry.OutputHandler = fn
+	}
+	return s
+}
+
+// Status returns scheduler health metrics: registered task count and last tick time.
+func (s *Scheduler) Status() (int, time.Time) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	count := len(s.tasks)
+	var lastTick time.Time
+	for _, entry := range s.tasks {
+		if entry.LastRun.After(lastTick) {
+			lastTick = entry.LastRun
+		}
+	}
+	return count, lastTick
+}
+
+// ToInterfaceSlice converts all registered tasks to []interface{} for persistence.
+func (s *Scheduler) ToInterfaceSlice() []interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]interface{}, 0, len(s.tasks))
+	for _, entry := range s.tasks {
+		result = append(result, map[string]interface{}{
+			"id":       entry.ID,
+			"name":     entry.Name,
+			"schedule": entry.Schedule,
+			"command":  entry.Command,
+			"active":   entry.Active,
+		})
+	}
+	return result
 }
 
 // Add registers a new task and starts its schedule.
@@ -128,7 +182,7 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.mu.RLock()
-			for id, entry := range s.tasks {
+			for _, entry := range s.tasks {
 				if !entry.Active {
 					continue
 				}
@@ -142,7 +196,7 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 
 				s.mu.RUnlock()
 
-				result := s.executeTask(id, entry.Command)
+				result := s.executeTask(entry)
 				s.results <- result
 
 				s.mu.Lock()
@@ -152,43 +206,64 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 	}
 }
 
-// executeTask runs a command and returns the result.
-func (s *Scheduler) executeTask(id string, command string) TaskResult {
+// executeTask runs a task's command and returns the result.
+func (s *Scheduler) executeTask(entry *TaskEntry) TaskResult {
 	start := time.Now()
 	output := ""
 	var err error
 
-	// In MVP, execute via exec.Command (will be extended to OpenShell Exec())
-	cmd := []string{"bash", "-c", command}
-	resultChan := make(chan string, 1)
-	errChan := make(chan error, 1)
+	cmd := []string{"bash", "-c", entry.Command}
 
-	go func() {
-		output, err = runCommand(cmd)
-		resultChan <- output
-		errChan <- err
-	}()
+	if s.runCommand != nil {
+		// Use OpenShell Exec() for sandbox execution
+		result, execErr := s.runCommand(context.Background(), "default", "", cmd)
+		if execErr != nil {
+			err = fmt.Errorf("exec: %w", execErr)
+		} else {
+			output = string(result.Stdout)
+			if result.ExitCode != 0 {
+				err = fmt.Errorf("exit code %d", result.ExitCode)
+			}
+		}
+	} else {
+		// Fallback: local shell exec
+		resultChan := make(chan string, 1)
+		errChan := make(chan error, 1)
 
-	select {
-	case out := <-resultChan:
-		output = out
-	case e := <-errChan:
-		if e != nil {
-			err = e
+		go func() {
+			output, err = runCommand(cmd)
+			resultChan <- output
+			errChan <- err
+		}()
+
+		select {
+		case out := <-resultChan:
+			output = out
+		case e := <-errChan:
+			if e != nil {
+				err = e
+			}
 		}
 	}
 
-	return TaskResult{
-		TaskID:    id,
-		Name:      "", // caller fills this
+	result := TaskResult{
+		TaskID:    entry.ID,
+		Name:      entry.Name,
 		Output:    output,
 		Err:       err,
 		Timestamp: start,
 	}
+
+	// Invoke OutputHandler callback if set.
+	if entry.OutputHandler != nil {
+		entry.OutputHandler(output, err)
+	}
+
+	return result
 }
 
-// runCommand executes a shell command and returns combined output.
+// runCommand executes a shell command locally and returns combined output.
 func runCommand(cmd []string) (string, error) {
-	// Simplified exec for MVP; will be replaced with OpenShell Exec()
+	// Fallback local exec for MVP; will be replaced with OpenShell Exec()
 	return "", fmt.Errorf("exec not yet connected to OpenShell")
 }

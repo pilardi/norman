@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 // SDKAdapter wraps *Client and adapts its methods to match the
@@ -34,25 +36,34 @@ func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string) 
 }
 
 // WaitReady adapts env.Client.WaitReady to match the interface signature.
-func (a *SDKAdapter) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) error {
-	_, err := a.client.WaitReady(ctx, "default", name)
+func (a *SDKAdapter) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error) {
+	sb, err := a.client.WaitReady(ctx, "default", name)
 	if err != nil {
-		return fmt.Errorf("wait ready: %w", err)
+		return nil, fmt.Errorf("wait ready: %w", err)
 	}
-	return nil
+	return sb, nil
 }
 
 // RunCommand adapts env.Client.RunCommand to accept a single command string
 // and return (output, exitCode, error).
-func (a *SDKAdapter) RunCommand(ctx context.Context, sandboxID, command string) (string, int, error) {
+func (a *SDKAdapter) RunCommand(ctx context.Context, sandboxName, command string) (string, int, error) {
 	cmd := strings.Fields(command)
-	result, err := a.client.RunCommand(ctx, "default", sandboxID, cmd)
+	result, err := a.client.RunCommand(ctx, "default", sandboxName, cmd)
 	if err != nil {
 		return "", 1, fmt.Errorf("run command: %w", err)
 	}
 	exitCode := result.ExitCode
 	output := string(result.Stdout)
 	return output, exitCode, nil
+}
+
+// GetSandbox adapts env.Client.GetSandbox to return the sandbox object.
+func (a *SDKAdapter) GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error) {
+	sb, err := a.client.GetSandbox(ctx, provider, name)
+	if err != nil {
+		return nil, fmt.Errorf("get sandbox: %w", err)
+	}
+	return sb, nil
 }
 
 // GetLogs adapts env.Client.GetSandbox to return log lines as []string.
@@ -87,4 +98,14 @@ func (a *SDKAdapter) DeleteSandbox(ctx context.Context, workspace, name string) 
 func (a *SDKAdapter) ListSandboxes(ctx context.Context, workspace string) ([]string, error) {
 	// For MVP, return empty since SDK doesn't expose listing by workspace.
 	return []string{}, nil
+}
+
+// KeepAlive verifies the sandbox is still alive and accessible.
+// This serves as a heartbeat to prevent idle-timeout deletion during long multi-turn loops.
+func (a *SDKAdapter) KeepAlive(ctx context.Context, sandboxName string) error {
+	_, err := a.client.GetSandbox(ctx, "default", sandboxName)
+	if err != nil {
+		return fmt.Errorf("keepalive: %w", err)
+	}
+	return nil
 }
