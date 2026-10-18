@@ -87,6 +87,7 @@ type OpenShellClient interface {
 	GetLogs(ctx context.Context, sandboxID string) ([]string, error)
 	DeleteSandbox(ctx context.Context, workspace, name string) error
 	ListSandboxes(ctx context.Context, workspace string) ([]string, error)
+	KeepAlive(ctx context.Context, sandboxName string) error
 }
 
 // WSHubPublisher sends WebSocket push events.
@@ -563,12 +564,13 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		toolCalls := llm.ParseToolCalls(resp.Choices[0].Message)
 
 		if len(toolCalls) > 0 {
-			// Execute tool calls in the sandbox
+			// Execute tool calls in the sandbox (item #6: enhanced WS events)
 			for _, tc := range toolCalls {
+				// Pre-execution broadcast with tool detail
 				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 					Event:   protocol.TaskProgress,
 					TaskId:  &task.ID,
-					Message: strPtr(fmt.Sprintf("Executing tool: %s", tc.Name)),
+					Message: strPtr(fmt.Sprintf("Executing tool: %s (args: %.60s...)", tc.Name, string(tc.Arguments))),
 					Step:    intPtr(7 + turn),
 				})
 
@@ -577,6 +579,23 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
 				} else if exitCode != 0 {
 					log.Printf("agent: tool %s returned non-zero exit code: %d", tc.Name, exitCode)
+				}
+
+				// Post-execution broadcast with result status (item #6)
+				status := "success"
+				if execErr != nil || exitCode != 0 {
+					status = "failed"
+				}
+				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					TaskId:  &task.ID,
+					Message: strPtr(fmt.Sprintf("Tool '%s' completed: %s (exit %d)", tc.Name, status, exitCode)),
+					Step:    intPtr(7 + turn),
+				})
+
+				// Persist tool call result for replay/debugging (item #5 companion)
+				if err := l.store.PersistToolCallResult(task.ID, tc.Name, string(tc.Arguments), output, exitCode); err != nil {
+					log.Printf("agent: failed to persist tool call result for %s: %v", tc.Name, err)
 				}
 
 				// Add tool result as a message in the conversation
@@ -594,12 +613,36 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				Content: responseText,
 			})
 
+			// Persist the assistant turn (item #5)
+			turnMap := map[string]interface{}{
+				"role":    "assistant",
+				"content": responseText,
+			}
+			if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
+				log.Printf("agent: failed to persist turn %d: %v", turn+1, err)
+			}
+
+			// Keepalive heartbeat between turns (item #7) — prevents idle-timeout deletion
+			if err := l.openShell.KeepAlive(ctx, sandboxName); err != nil {
+				log.Printf("agent: keepalive failed for sandbox %s: %v", sandboxName, err)
+			}
+
 			continue // Loop back for another turn
 		}
 
 		// No tool calls — this is the final text response
 		task.Output = []byte(responseText)
 		task.Status = protocol.TaskStatusCompleted
+
+		// Persist the final assistant turn (item #5)
+		turnMap := map[string]interface{}{
+			"role":    "assistant",
+			"content": string(task.Output),
+		}
+		if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
+			log.Printf("agent: failed to persist final turn for task %s: %v", task.ID, err)
+		}
+
 		return task.Output
 	}
 
@@ -1160,4 +1203,14 @@ func (f *FakeOpenShellClient) ListSandboxes(ctx context.Context, workspace strin
 		}
 	}
 	return result, nil
+}
+
+func (f *FakeOpenShellClient) KeepAlive(ctx context.Context, sandboxName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Simulate keepalive by refreshing the sandbox entry timestamp (no-op in fake)
+	if _, ok := f.sandboxes[sandboxName]; !ok {
+		return fmt.Errorf("sandbox %s not found", sandboxName)
+	}
+	return nil
 }

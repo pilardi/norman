@@ -99,3 +99,13 @@ func (a *SDKAdapter) ListSandboxes(ctx context.Context, workspace string) ([]str
 	// For MVP, return empty since SDK doesn't expose listing by workspace.
 	return []string{}, nil
 }
+
+// KeepAlive verifies the sandbox is still alive and accessible.
+// This serves as a heartbeat to prevent idle-timeout deletion during long multi-turn loops.
+func (a *SDKAdapter) KeepAlive(ctx context.Context, sandboxName string) error {
+	_, err := a.client.GetSandbox(ctx, "default", sandboxName)
+	if err != nil {
+		return fmt.Errorf("keepalive: %w", err)
+	}
+	return nil
+}

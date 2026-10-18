@@ -171,17 +171,15 @@ The current flow is:
 
 ## 7. Action Items Checklist
 
-| # | Item | Priority | Owner |
-|---|------|----------|-------|
 | # | Item | Priority | Status | Notes |
 |---|------|----------|--------|-------|
 | 1 | Wire `llm.NewClient(cfg.System)` into `main.go` | **High** | ✅ Done | Committed 2026-10-17 |
 | 2 | Add `TestSendMessageMultiTurn` integration test | **High** | ✅ Done | 3 tests: tool-call, max-turns, shell-only fallback |
 | 3 | Extend `ParseToolCalls` to support OpenAI `tool_calls` array format | Medium | ✅ Done | Dual-strategy: structured + legacy JSON-in-content |
 | 4 | Pass active skills as `[]llm.Tool` to `Complete()` (remove `nil`) | Medium | ✅ Done | `buildTools()` converts activated skills to tool definitions |
-| 5 | Add `persistTurn()` to memory store for LLM conversation turns | Low | ⏳ Pending | Requires extending `memory.Store` API |
-| 6 | Emit WebSocket events for tool call results in multi-turn loop | Low | ⏳ Pending | Currently only broadcasts turn-level progress |
-| 7 | Add sandbox keepalive heartbeat between tool executions | Low | ⏳ Pending | Prevents idle-timeout deletion during long multi-turn loops |
+| 5 | Add `persistTurn()` to memory store for LLM conversation turns | Low | ✅ Done | `PersistTurn` + `PersistToolCallResult` in `memory.Store`; called at each turn end in `executeWithLLM` |
+| 6 | Emit WebSocket events for tool call results in multi-turn loop | Low | ✅ Done | Enhanced `BroadcastSession` calls include tool name, args, and result status |
+| 7 | Add sandbox keepalive heartbeat between tool executions | Low | ✅ Done | Added `KeepAlive()` call between tool executions to prevent idle-timeout deletion |
 
 ---
 
@@ -194,4 +192,4 @@ The current flow is:
 
 ---
 
-*Last updated: 2026-10-17. Items 1–4 completed in commits `a886c1f` and `70413dd`. Items 5–7 remain for future work.*
+*Last updated: 2026-10-17. Items 1–7 all completed. See git history for commit hashes.*

@@ -2,6 +2,8 @@
 package memory
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -633,6 +635,175 @@ func (s *Store) ListWorkspaces() ([]map[string]interface{}, error) {
 	}
 
 	return workspaces, nil
+}
+
+// PersistTurn appends a single conversation turn to the task's turns file.
+// This enables incremental persistence so a crashed process can resume from the last turn.
+func (s *Store) PersistTurn(taskID string, turn map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "turns")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create turns dir: %w", err)
+	}
+
+	path := filepath.Join(dir, taskID+".jsonl")
+
+	// Append JSON line (newline-delimited JSON for incremental writes)
+	entry := map[string]interface{}{
+		"role":      turn["role"],
+		"content":   turn["content"],
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+	if id, ok := turn["id"].(string); ok {
+		entry["id"] = id
+	}
+	if name, ok := turn["name"].(string); ok {
+		entry["name"] = name
+	}
+
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal turn entry: %w", err)
+	}
+
+	// Append directly to the path file (O_APPEND ensures correct positioning)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open turns file: %w", err)
+	}
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		f.Close()
+		return fmt.Errorf("write turn entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close turns file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadTurns reads all persisted turns for a task from its JSONL file.
+func (s *Store) LoadTurns(taskID string) ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "turns", taskID+".jsonl")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // no turns persisted yet
+		}
+		return nil, fmt.Errorf("read turns file: %w", err)
+	}
+
+	var entries []map[string]interface{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var entry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("parse turn entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+// DeleteTurns removes a task's persisted turns file.
+func (s *Store) DeleteTurns(taskID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.base, "turns", taskID+".jsonl")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil // already gone
+		}
+		return fmt.Errorf("delete turns file: %w", err)
+	}
+
+	return nil
+}
+
+// PersistToolCallResult appends a tool call result (name, arguments, output) to the task's results file.
+// This preserves raw tool call data for replay and debugging alongside text responses.
+func (s *Store) PersistToolCallResult(taskID string, name string, args string, output string, exitCode int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "tool_results")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create tool_results dir: %w", err)
+	}
+
+	path := filepath.Join(dir, taskID+".jsonl")
+
+	entry := map[string]interface{}{
+		"type":       "tool_call_result",
+		"name":       name,
+		"arguments":  args,
+		"output":     output,
+		"exit_code":  exitCode,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	}
+
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal tool result entry: %w", err)
+	}
+
+	// Append directly to the path file (O_APPEND ensures correct positioning)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open tool results file: %w", err)
+	}
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		f.Close()
+		return fmt.Errorf("write tool result entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close tool results file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadToolCallResults reads all persisted tool call results for a task.
+func (s *Store) LoadToolCallResults(taskID string) ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	path := filepath.Join(s.base, "tool_results", taskID+".jsonl")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // no results persisted yet
+		}
+		return nil, fmt.Errorf("read tool results file: %w", err)
+	}
+
+	var entries []map[string]interface{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("parse tool result entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
 }
 
 // Stats returns store statistics.
