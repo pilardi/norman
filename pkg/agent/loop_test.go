@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -529,19 +530,67 @@ func TestRawSourcesNilInLoop(t *testing.T) {
 
 // --- LLM Multi-Turn Integration Tests ---
 
-// mockLLMClient is a test double for llm.Client that returns controlled responses.
+// mockLLMClient is a test double for llm.LLM that returns controlled responses.
 type mockLLMClient struct {
 	responses []llm.CompletionResponse
 	index     int
+	streamFn  func(ctx context.Context, req llm.CompletionRequest) (llm.StreamReader, error)
 }
 
-func (m *mockLLMClient) Complete(ctx context.Context, systemPrompt string, messages []llm.Message, tools []llm.Tool) (*llm.CompletionResponse, error) {
+func (m *mockLLMClient) Complete(ctx context.Context, req llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	if m.index >= len(m.responses) {
 		return nil, fmt.Errorf("mock LLM: no more responses configured")
 	}
 	resp := m.responses[m.index]
 	m.index++
 	return &resp, nil
+}
+
+func (m *mockLLMClient) Stream(ctx context.Context, req llm.CompletionRequest) (llm.StreamReader, error) {
+	if m.streamFn != nil {
+		return m.streamFn(ctx, req)
+	}
+	// Default: return the next response as a chunked stream.
+	if m.index >= len(m.responses) {
+		return newMockStream(llm.CompletionResponse{}), nil
+	}
+	resp := m.responses[m.index]
+	m.index++
+	return newMockStream(resp), nil
+}
+
+func (m *mockLLMClient) ProviderInfo() llm.ProviderMetadata {
+	return llm.ProviderMetadata{Name: "mock", SupportsTools: true, SupportsStream: true}
+}
+
+// mockStreamReader implements llm.StreamReader for testing.
+type mockStreamReader struct {
+	resp   llm.CompletionResponse
+	done   bool
+	chunks []llm.Chunk
+	idx    int
+}
+
+func (s *mockStreamReader) Next() (llm.Chunk, error) {
+	if s.idx >= len(s.chunks) {
+		return llm.Chunk{}, io.EOF
+	}
+	chunk := s.chunks[s.idx]
+	s.idx++
+	return chunk, nil
+}
+
+func (s *mockStreamReader) Close() error {
+	return nil
+}
+
+// newMockStream creates a stream reader from a response for testing.
+func newMockStream(resp llm.CompletionResponse) llm.StreamReader {
+	chunks := []llm.Chunk{
+		{Delta: resp.Choices[0].Message.Content},
+		{FinishReason: "[done]"},
+	}
+	return &mockStreamReader{chunks: chunks}
 }
 
 func TestSendMessageMultiTurnWithToolCall(t *testing.T) {

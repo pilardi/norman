@@ -44,7 +44,7 @@ type Loop struct {
 	activator   *skills.Activator
 	config      *config.Config
 	openShell   OpenShellClient
-	llmClient   llm.Caller         // LLM API client (optional, nil = shell-only mode)
+	llmClient   llm.LLM           // LLM API client (optional, nil = shell-only mode)
 	wsHub       WSHubPublisher
 	notifier    *notify.Notifier
 	resultsCh   chan scheduler.TaskResult // results from scheduler (nil if not wired)
@@ -130,7 +130,7 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 }
 
 // WithLLMClient injects an LLM API client into the loop for multi-turn conversation processing.
-func (l *Loop) WithLLMClient(client llm.Caller) *Loop {
+func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 	l.llmClient = client
 	return l
 }
@@ -540,9 +540,6 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 // It builds context from session history + raw sources + skills, calls the LLM,
 // parses tool calls if present, executes them in the sandbox, and loops back.
 func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string) []byte {
-	// Build system prompt
-	systemPrompt := l.buildSystemPrompt(task.Workspace)
-
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
 
@@ -558,24 +555,71 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 
 		// Build tools from active skills and pass to LLM
 		tools := l.buildTools()
-		resp, err := l.llmClient.Complete(ctx, systemPrompt, messages, tools)
+
+		// Use streaming: yield chunks in real-time via WebSocket, accumulate full text.
+		stream, err := l.llmClient.Stream(ctx, llm.CompletionRequest{
+			Messages:    messages,
+			Tools:       tools,
+			Model:       l.Model(task.Workspace),
+			Temperature:   l.Temperature(task.Workspace),
+			MaxTokens:   l.MaxTokens(task.Workspace),
+		})
 		if err != nil {
-			log.Printf("agent: LLM call failed at turn %d: %v", turn, err)
+			log.Printf("agent: LLM stream failed at turn %d: %v", turn, err)
 			task.Status = protocol.TaskStatusFailed
 			task.Error = fmt.Sprintf("LLM API error: %v", err)
 			return []byte(task.Error)
 		}
 
+		var fullText strings.Builder
+		var usage llm.Usage
+		done := false
+
+		for !done {
+			chunk, err := stream.Next()
+			if err != nil {
+				log.Printf("agent: stream read error at turn %d: %v", turn, err)
+				task.Status = protocol.TaskStatusFailed
+				task.Error = fmt.Sprintf("streaming failed at turn %d: %v", turn, err)
+				stream.Close()
+				return []byte(task.Error)
+			}
+			if chunk.FinishReason == "[done]" {
+				done = true
+				continue
+			}
+
+			fullText.WriteString(chunk.Delta)
+
+			// Track token usage if available
+			if chunk.Usage != nil {
+				usage.PromptTokens += chunk.Usage.PromptTokens
+				usage.CompletionTokens += chunk.Usage.CompletionTokens
+				usage.TotalTokens += chunk.Usage.TotalTokens
+			}
+
+			// Broadcast chunk to client in real-time (lower perceived latency)
+			chunkMsg := chunk.Delta
+			l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+				Event:   protocol.TaskProgress,
+				TaskId:  &task.ID,
+				Message: &chunkMsg,
+				Step:    intPtr(6 + turn),
+			})
+		}
+
+		stream.Close()
+
+		responseText := fullText.String()
+
 		// Track token usage for budget
 		if l.budget != nil {
-			usage := llm.ParseUsage(resp)
 			l.budget.TokenCount += usage.TotalTokens
 			log.Printf("agent: turn %d used %d tokens (total session: %d)", turn+1, usage.TotalTokens, l.budget.TokenCount)
 		}
 
-		// Parse response text and tool calls
-		responseText := llm.ParseResponseText(resp)
-		toolCalls := llm.ParseToolCalls(resp.Choices[0].Message)
+		// Parse tool calls from the accumulated response text
+		toolCalls := llm.ParseToolCalls(llm.Message{Role: "assistant", Content: responseText})
 
 		if len(toolCalls) > 0 {
 			// Execute tool calls in the sandbox (item #6: enhanced WS events)

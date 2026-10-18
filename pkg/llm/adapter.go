@@ -12,10 +12,25 @@ type ClientAdapter struct {
 	llm LLM
 }
 
-// Complete satisfies the legacy Caller interface by wrapping an LLM implementation.
-// It converts (systemPrompt, messages, tools) into a CompletionRequest and returns
-// a legacy-style CompletionResponse with Choices for backward compatibility.
-func (a *ClientAdapter) Complete(ctx context.Context, systemPrompt string, messages []Message, tools []Tool) (*CompletionResponse, error) {
+// Complete satisfies the LLM interface by wrapping an LLM implementation.
+func (a *ClientAdapter) Complete(ctx context.Context, req CompletionRequest) (*CompletionResponse, error) {
+	resp, err := a.llm.Complete(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Preserve Choices for backward compatibility with existing code.
+	return &CompletionResponse{
+		ID:           resp.ID,
+		Model:        resp.Model,
+		Choices:      []ResponseChoice{{Message: resp.Message, FinishReason: resp.FinishReason}},
+		Usage:        resp.Usage,
+	}, nil
+}
+
+// LegacyComplete satisfies the legacy Caller interface.
+// Deprecated: prefer Complete(ctx, CompletionRequest) or Stream().
+func (a *ClientAdapter) LegacyComplete(ctx context.Context, systemPrompt string, messages []Message, tools []Tool) (*CompletionResponse, error) {
 	req := CompletionRequest{
 		Messages: append([]Message{{Role: "system", Content: systemPrompt}}, messages...),
 		Tools:    tools,
@@ -35,6 +50,18 @@ func (a *ClientAdapter) Complete(ctx context.Context, systemPrompt string, messa
 		Choices:      []ResponseChoice{{Message: resp.Message, FinishReason: resp.FinishReason}},
 		Usage:        resp.Usage,
 	}, nil
+}
+
+// Stream delegates to the wrapped LLM implementation for streaming responses.
+
+// Stream delegates to the wrapped LLM implementation for streaming responses.
+func (a *ClientAdapter) Stream(ctx context.Context, req CompletionRequest) (StreamReader, error) {
+	return a.llm.Stream(ctx, req)
+}
+
+// ProviderInfo delegates to the wrapped LLM implementation.
+func (a *ClientAdapter) ProviderInfo() ProviderMetadata {
+	return a.llm.ProviderInfo()
 }
 
 // NewClientAdapter creates a ClientAdapter wrapping the given LLM.
