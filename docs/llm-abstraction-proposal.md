@@ -203,6 +203,62 @@ The `is_embedder` flag lets the config declare which provider handles embeddings
 
 ---
 
+## 5.1 Runtime Configuration (Implemented)
+
+The provider selection is controlled at two levels:
+
+### CLI Flags
+
+| Flag | Purpose |
+|------|---------|
+| `-p NAME`, `--provider NAME` | Select a configured provider by name (overrides `default_provider`) |
+| `-v`, `--verbose` | Enable server-side debug logging |
+| `-h`, `--help` | Show usage |
+
+### Config File (`~/.norman/config.yaml`)
+
+```yaml
+llm:
+  providers:
+    - name: "default"
+      type: "openai"
+      endpoint: "https://api.openai.com/v1"
+      model: "gpt-4o"
+      api_key_ref: "${secret:openai-key}"
+
+    - name: "local"
+      type: "llamacpp"
+      endpoint: "http://localhost:8080"
+      model: "llama3.1:8b"
+      cache_size: 4096       # KV cache size in tokens
+      cache_type: "fq"       # fq | q4_0 | q8_0
+      cache_enabled: true
+
+  default_provider: "default"
+```
+
+### Resolution Priority
+
+```
+CLI flag (-p) > config.yaml `default_provider` > first configured provider
+```
+
+### Wiring (main.go)
+
+The server resolves the selected provider and instantiates the correct client:
+
+```go
+provCfg, err := cfg.System.ResolveProvider(selectedName)
+switch provCfg.Type {
+case "openai":
+    llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
+case "llamacpp":
+    llmClient = llamacpp.NewProvider(wsCfg, llmCfg)
+}
+```
+
+---
+
 ## 6. Impact on Existing Components
 
 | Component | Change | Effort |
@@ -218,14 +274,10 @@ The `is_embedder` flag lets the config declare which provider handles embeddings
 ## 7. Open Questions for Discussion
 
 1. **Should `BatchComplete` be a separate interface or part of `LLM`?**
-   - Pro: Keeps everything in one interface; simple to implement per-provider.
-   - Con: Not all providers support batching — adds boilerplate "if batch supported" checks.
-   - *Tentative:* Part of `LLM`; providers that don't support it return `ErrBatchNotSupported`.
+   - *Resolved:* Batch operations are deferred from `LLM`; kept only on `Embedder`. The `LLM` interface has `Complete()` and `Stream()`.
 
 2. **Streaming: yield `Chunk` or `string`?**
-   - `Chunk` gives structured deltas (finish reason, usage) — more Go-idiomatic but heavier.
-   - `string` is simpler for the agent loop to consume incrementally.
-   - *Tentative:* `StreamReader` yielding `Chunk`; the agent loop can discard metadata if unused.
+   - *Resolved:* `StreamReader` yields `Chunk` (with `Delta`, `FinishReason`, `Usage`). The agent loop can discard metadata if unused.
 
 3. **Should we add a `PromptTemplate` type?**
    - The article's Genkit example emphasizes prompt templates with variables, versioning, and testing.
@@ -235,7 +287,18 @@ The `is_embedder` flag lets the config declare which provider handles embeddings
 4. **Error handling strategy:**
    - Provider-specific errors (rate limit, context window exceeded) vs. generic network errors.
    - Should we define a typed error enum (`ErrRateLimit`, `ErrContextWindow`, `ErrProviderDown`)?
-   - *Tentative:* Wrap provider errors in a common `LLMError` struct with a `Code` field for programmatic handling.
+   - *Resolved:* Typed errors implemented in `pkg/llm/errors.go` with `Is*()` helpers. Provider-specific errors (e.g., KV cache full, prompt too long) are defined per-provider.
+
+5. **Provider selection: how to expose config?**
+   - *Resolved:* YAML `providers:` list + CLI `-p/--provider` flag + `default_provider` selector. See §5.1 for details.
+
+6. **KV cache optimization for llama.cpp — what's the right API surface?**
+   - Should caching be server-side (`--cache-prompt`) only, or also client-managed (save/restore KV state)?
+   - *Tentative:* Server-side via `--cache-prompt` flag; client exposes `CacheSize`, `CacheType`, `CacheEnabled` config options.
+
+7. **Embedding provider separation?**
+   - Should embeddings use a dedicated provider (e.g., `text-embedding-3-small`) or the same LLM endpoint?
+   - *Tentative:* Configurable via `is_embedder: true` flag on a provider entry.
 
 ---
 
@@ -248,6 +311,27 @@ This proposal introduces a **provider-agnostic `LLM` + `Embedder` interface** th
 - Enables zero-code swaps between providers by changing only config + one factory call
 
 The migration is additive — no breaking changes to the agent loop or session workflow.
+
+### What's Built (as of this revision)
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| `LLM` + `Embedder` interfaces | ✓ | `pkg/llm/interfaces.go` |
+| Typed errors (`ErrRateLimit`, etc.) | ✓ | `pkg/llm/errors.go` |
+| OpenAI-compatible client with streaming | ✓ | `pkg/llm/client.go` |
+| ClientAdapter wrapper | ✓ | `pkg/llm/adapter.go` |
+| Agent loop streaming integration | ✓ | `pkg/agent/loop.go` |
+| Provider config in `SystemConfig` | ✓ | `pkg/config/config.go` |
+| `-p/--provider` CLI flag | ✓ | `cmd/norman-server/main.go`, `cmd/norman/main.go` |
+| llamacpp provider with KV cache optimization | ✓ | `pkg/llm/llamacpp/` |
+
+### Remaining (Post-MVP)
+
+- Anthropic Claude provider implementation
+- Google Gemini provider implementation
+- PromptTemplate type (§7.3, deferred)
+- Embedding-specific provider configuration
+- Deployment patterns (health checks, graceful shutdown, connection pooling)
 
 ---
 
