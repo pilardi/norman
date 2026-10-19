@@ -85,6 +85,32 @@ paths:
         "404":
           description: Workspace not found
 
+    patch:
+      tags: [workspace]
+      summary: Update workspace definition (partial update)
+      operationId: updateWorkspace
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceUpdateRequest"
+      responses:
+        "200":
+          description: Workspace updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: Workspace not found
+
     delete:
       tags: [workspace]
       summary: Delete a workspace
@@ -554,6 +580,42 @@ components:
           type: string
           description: Absolute path to the workspace directory
           example: "/home/user/projects/my-project"
+        purpose:
+          type: string
+          description: The problem or domain this workspace addresses
+          example: "API migration for X service"
+        scope:
+          type: array
+          items:
+            type: string
+          description: Subsystems, repos, or services under this workspace
+          example: ["api-gateway", "user-service"]
+        tags:
+          type: array
+          items:
+            type: string
+          description: Domain keywords for skill activation matching
+          example: ["grpc", "migration", "backend"]
+
+    WorkspaceUpdateRequest:
+      type: object
+      properties:
+        purpose:
+          type: string
+          description: The problem or domain this workspace addresses
+          example: "API migration for X service"
+        scope:
+          type: array
+          items:
+            type: string
+          description: Subsystems, repos, or services under this workspace
+          example: ["api-gateway", "user-service"]
+        tags:
+          type: array
+          items:
+            type: string
+          description: Domain keywords for skill activation matching
+          example: ["grpc", "migration", "backend"]
 
     Workspace:
       type: object
@@ -566,7 +628,23 @@ components:
           type: string
         path:
           type: string
+        purpose:
+          type: string
+          description: The problem or domain this workspace addresses
+        scope:
+          type: array
+          items:
+            type: string
+          description: Subsystems, repos, or services under this workspace
+        tags:
+          type: array
+          items:
+            type: string
+          description: Domain keywords for skill activation matching
         created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
         status:

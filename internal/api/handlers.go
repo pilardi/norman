@@ -89,6 +89,9 @@ type ServerInterface interface {
 	// GetWorkspace Get workspace details
 	// (GET /api/workspaces/{name})
 	GetWorkspace(ctx echo.Context, name string) error
+	// UpdateWorkspace Update workspace definition (partial update)
+	// (PATCH /api/workspaces/{name})
+	UpdateWorkspace(ctx echo.Context, name string) error
 	// HealthCheck Health check with scheduler status
 	// (GET /health)
 	HealthCheck(ctx echo.Context) error
@@ -440,6 +443,22 @@ func (w *ServerInterfaceWrapper) GetWorkspace(ctx echo.Context) error {
 	return err
 }
 
+// UpdateWorkspace converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateWorkspace(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", ctx.Param("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter name: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateWorkspace(ctx, name)
+	return err
+}
+
 // HealthCheck converts echo context to params.
 func (w *ServerInterfaceWrapper) HealthCheck(ctx echo.Context) error {
 	var err error
@@ -509,6 +528,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/api/workspaces", wrapper.CreateWorkspace, options.OperationMiddlewares["createWorkspace"]...)
 	router.DELETE(options.BaseURL+"/api/workspaces/:name", wrapper.DeleteWorkspace, options.OperationMiddlewares["deleteWorkspace"]...)
 	router.GET(options.BaseURL+"/api/workspaces/:name", wrapper.GetWorkspace, options.OperationMiddlewares["getWorkspace"]...)
+	router.PATCH(options.BaseURL+"/api/workspaces/:name", wrapper.UpdateWorkspace, options.OperationMiddlewares["updateWorkspace"]...)
 	router.GET(options.BaseURL+"/api/sessions", wrapper.ListSessions, options.OperationMiddlewares["listSessions"]...)
 	router.POST(options.BaseURL+"/api/sessions", wrapper.CreateSession, options.OperationMiddlewares["createSession"]...)
 	router.DELETE(options.BaseURL+"/api/sessions/:id", wrapper.DeleteSession, options.OperationMiddlewares["deleteSession"]...)
