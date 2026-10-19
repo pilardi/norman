@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -14,17 +15,78 @@ const (
 	maxBackoff      = 8 * time.Second
 )
 
+// WorkspaceDefinition describes the identity and purpose of a workspace.
+// It is injected into the LLM's system prompt so the agent understands
+// what domain it is operating in, rather than just seeing a file tree.
+type WorkspaceDefinition struct {
+	Name    string   `json:"name"`
+	Purpose string   `json:"purpose"` // High-level description of what this workspace addresses
+	Scope   []string `json:"scope,omitempty"` // Subsystems/repos/services covered
+	Tags    []string `json:"tags,omitempty"`  // Keywords for skill activation matching
+}
+
+// ToMap converts a WorkspaceDefinition to a map[string]interface{} for JSON persistence.
+func (w *WorkspaceDefinition) ToMap() map[string]interface{} {
+	m := map[string]interface{}{
+		"name":    w.Name,
+		"purpose": w.Purpose,
+	}
+	if len(w.Scope) > 0 {
+		scope := make([]interface{}, len(w.Scope))
+		for i, s := range w.Scope {
+			scope[i] = s
+		}
+		m["scope"] = scope
+	}
+	if len(w.Tags) > 0 {
+		tags := make([]interface{}, len(w.Tags))
+		for i, t := range w.Tags {
+			tags[i] = t
+		}
+		m["tags"] = tags
+	}
+	return m
+}
+
+// FromMap reconstructs a WorkspaceDefinition from a persisted map.
+func WorkspaceDefinitionFromMap(m map[string]interface{}) *WorkspaceDefinition {
+	w := &WorkspaceDefinition{}
+	if name, ok := m["name"].(string); ok {
+		w.Name = name
+	}
+	if purpose, ok := m["purpose"].(string); ok {
+		w.Purpose = purpose
+	}
+	if scope, ok := m["scope"].([]interface{}); ok {
+		for _, v := range scope {
+			if s, ok := v.(string); ok {
+				w.Scope = append(w.Scope, s)
+			}
+		}
+	}
+	if tags, ok := m["tags"].([]interface{}); ok {
+		for _, v := range tags {
+			if t, ok := v.(string); ok {
+				w.Tags = append(w.Tags, t)
+			}
+		}
+	}
+	return w
+}
+
 // WorkspaceManager handles mapping workspace names to persistent OpenShell sessions.
 type WorkspaceManager struct {
 	client   *Client
 	sessions map[string]*Session // workspace name -> session
+	definitions map[string]*WorkspaceDefinition // workspace name -> definition (lazy-loaded)
 }
 
 // NewWorkspaceManager creates a new workspace manager bound to an OpenShell client.
 func NewWorkspaceManager(client *Client) *WorkspaceManager {
 	return &WorkspaceManager{
-		client:   client,
-		sessions: make(map[string]*Session),
+		client:      client,
+		sessions:    make(map[string]*Session),
+		definitions: make(map[string]*WorkspaceDefinition),
 	}
 }
 
@@ -115,4 +177,54 @@ func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 		}
 	}
 	m.sessions = make(map[string]*Session)
+	m.definitions = make(map[string]*WorkspaceDefinition)
+}
+
+// SetDefinition assigns a workspace definition to the manager's cache.
+func (m *WorkspaceManager) SetDefinition(workspace string, def *WorkspaceDefinition) {
+	if def != nil {
+		m.definitions[workspace] = def
+	} else {
+		delete(m.definitions, workspace)
+	}
+}
+
+// GetDefinition returns the cached workspace definition, or nil if not set.
+func (m *WorkspaceManager) GetDefinition(workspace string) *WorkspaceDefinition {
+	return m.definitions[workspace]
+}
+
+// DefinitionAsSystemPrompt converts a WorkspaceDefinition into a markdown block
+// suitable for injection into the LLM's system prompt. Returns empty string if no definition exists.
+func (w *WorkspaceDefinition) AsSystemPrompt() string {
+	if w == nil || w.Name == "" {
+		return ""
+	}
+
+	var parts []string
+	parts = append(parts, "## Workspace Identity")
+	parts = append(parts, "")
+	parts = append(parts, fmt.Sprintf("**Name:** %s", w.Name))
+
+	if w.Purpose != "" {
+		parts = append(parts, fmt.Sprintf("**Purpose:** %s", w.Purpose))
+	}
+
+	if len(w.Scope) > 0 {
+		scopes := strings.Join(w.Scope, ", ")
+		parts = append(parts, fmt.Sprintf("**Scope:** %s", scopes))
+	}
+
+	if len(w.Tags) > 0 {
+		tags := strings.Join(w.Tags, ", ")
+		parts = append(parts, fmt.Sprintf("**Tags:** %s", tags))
+	}
+
+	parts = append(parts, "")
+	parts = append(parts, "When creating wiki entries or making decisions:")
+	parts = append(parts, "- Tag entries with `workspace: <name>` for scoping")
+	parts = append(parts, "- Match skills against workspace tags for domain-relevant activation")
+	parts = append(parts, "- Preserve workspace-specific decisions during compression; discard generic filler")
+
+	return strings.Join(parts, "\n")
 }
