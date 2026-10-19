@@ -224,9 +224,9 @@ Flags:
   -v, --verbose        Enable verbose/debug output (request details)
 
 Commands:
+  config                     Show or edit current configuration
   workspaces create <name>   Create a new workspace directory
   workspaces list            List available workspaces and their sessions
-  config                     Show or edit current configuration
   skills list                List installed skills
   skills install <id>        Install a skill from registry
   skills remove <id>         Remove an installed skill
