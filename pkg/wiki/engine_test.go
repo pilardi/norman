@@ -351,6 +351,18 @@ func TestEngineGitCommit(t *testing.T) {
 		t.Skipf("git init failed: %v", err)
 	}
 
+	// Configure git user so commits work (required in CI envs)
+	cmd = exec.Command("git", "config", "user.name", "Test Bot")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Skipf("git config user.name failed: %v", err)
+	}
+	cmd = exec.Command("git", "config", "user.email", "test@norman.dev")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Skipf("git config user.email failed: %v", err)
+	}
+
 	err = engine.WriteSchema("commit-test", "# Commit Test\n\ncontent")
 	if err != nil {
 		t.Fatalf("WriteSchema: %v", err)

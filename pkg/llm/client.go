@@ -1,5 +1,5 @@
 // Package llm provides an OpenAI-compatible API client for the Norman agent.
-// It wraps HTTP calls to a configurable LLM endpoint (e.g., GPT-4o, Claude, local models).
+// It implements the LLM interface and handles typed error mapping from provider responses.
 package llm
 
 import (
@@ -8,56 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/norman/norman/pkg/config"
 )
 
-// Message represents a single chat message in the conversation.
-type Message struct {
-	Role    string `json:"role"`     // "system", "user", "assistant", "tool"
-	Content string `json:"content"`  // The message content
-	Name    string `json:"name,omitempty"` // For tool messages: the tool name
-	ID      string `json:"id,omitempty"`   // Tool call ID (for response)
-}
-
-// ToolCall represents a tool invocation requested by the LLM.
-type ToolCall struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Arguments json.RawMessage `json:"arguments"`
-}
-
-// ResponseChoice represents a single choice from the API response.
-type ResponseChoice struct {
-	Message    Message   `json:"message"`
-	FinishReason string  `json:"finish_reason"`
-	Index      int       `json:"index"`
-}
-
-// Usage tracks token consumption for a completion call.
-type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
-// CompletionResponse is the full API response from the LLM endpoint.
-type CompletionResponse struct {
-	ID      string        `json:"id"`
-	Model   string        `json:"model"`
-	Choices []ResponseChoice `json:"choices"`
-	Usage   Usage         `json:"usage"`
-}
-
-// Caller is the interface that LLM clients must implement for the agent loop.
-type Caller interface {
-	Complete(ctx context.Context, systemPrompt string, messages []Message, tools []Tool) (*CompletionResponse, error)
-}
-
-// Client wraps an OpenAI-compatible chat completions API call.
+// Client implements the LLM interface for OpenAI-compatible endpoints.
 type Client struct {
 	BaseURL    string
 	APIKey     string
@@ -95,25 +53,13 @@ func NewClientWithConfig(cfg *config.WorkspaceConfig) *Client {
 	}
 }
 
-// Complete sends a chat completion request and returns the response.
-// It supports multi-turn conversations via a messages array.
-func (c *Client) Complete(ctx context.Context, systemPrompt string, messages []Message, tools []Tool) (*CompletionResponse, error) {
+// Complete sends a chat completion request and returns the full response.
+func (c *Client) Complete(ctx context.Context, req CompletionRequest) (*CompletionResponse, error) {
 	if c.HTTPClient == nil {
 		c.HTTPClient = &http.Client{Timeout: c.Timeout}
 	}
 
-	// Build the request body
-	requestBody := map[string]interface{}{
-		"model":     c.Model,
-		"temperature": c.Temperature,
-		"max_tokens":  c.MaxTokens,
-		"messages":    append([]map[string]string{{"role": "system", "content": systemPrompt}}, messagesToMap(messages)...),
-	}
-
-	if len(tools) > 0 {
-		requestBody["tools"] = toolsToJSON(tools)
-	}
-
+	requestBody := buildRequestBody(req)
 	payload, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request body: %w", err)
@@ -121,45 +67,182 @@ func (c *Client) Complete(ctx context.Context, systemPrompt string, messages []M
 
 	url := c.BaseURL + "/v1/chat/completions"
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("create request: %w", err))
 	}
 
-	req.Header.Set("Content-Type", "application/json")
+	reqHTTP.Header.Set("Content-Type", "application/json")
 	if c.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+		reqHTTP.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.HTTPClient.Do(reqHTTP)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %w", err)
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("read response body: %w", err))
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("llm: HTTP %d, body: %s", resp.StatusCode, string(body))
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, mapHTTPError(resp.StatusCode, string(body))
 	}
 
 	var completion CompletionResponse
 	if err := json.Unmarshal(body, &completion); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("parse response: %w", err))
 	}
 
-	if len(completion.Choices) == 0 {
-		return nil, fmt.Errorf("no choices in response")
+	if len(completion.Message.Content) == 0 && len(completion.Choices) == 0 {
+		// Fallback: try parsing the flat Message field
+		completion.Choices = []ResponseChoice{{Message: completion.Message, FinishReason: completion.FinishReason}}
 	}
 
 	return &completion, nil
 }
 
-// messagesToMap converts a slice of Message to a slice of map[string]string.
+// Stream sends a chat completion request and yields responses incrementally via SSE.
+func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReader, error) {
+	if c.HTTPClient == nil {
+		c.HTTPClient = &http.Client{Timeout: c.Timeout}
+	}
+
+	requestBody := buildRequestBody(req)
+	requestBody["stream"] = true
+	payload, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request body: %w", err)
+	}
+
+	url := c.BaseURL + "/v1/chat/completions"
+
+	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+	if err != nil {
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("create request: %w", err))
+	}
+
+	reqHTTP.Header.Set("Content-Type", "application/json")
+	reqHTTP.Header.Set("Accept", "text/event-stream")
+	if c.APIKey != "" {
+		reqHTTP.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+
+	resp, err := c.HTTPClient.Do(reqHTTP)
+	if err != nil {
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
+	}
+
+	return &sseStreamReader{
+		resp: resp,
+		done: make(chan struct{}),
+	}, nil
+}
+
+// ProviderInfo returns metadata about the underlying provider.
+func (c *Client) ProviderInfo() ProviderMetadata {
+	return ProviderMetadata{
+		Name:           ProviderOpenAI,
+		SupportsTools:  true,
+		SupportsStream: true,
+		MaxTokensPerCall: c.MaxTokens,
+		BatchSupport:   false, // OpenAI batch API is separate; not exposed here at MVP
+	}
+}
+
+// --- SSE Streaming Reader ---
+
+type sseStreamReader struct {
+	resp *http.Response
+	done chan struct{}
+	buf  []byte
+}
+
+func (s *sseStreamReader) Next() (Chunk, error) {
+	for {
+		line, err := readSSELine(s.resp.Body)
+		if err != nil {
+			return Chunk{}, fmt.Errorf("read SSE: %w", err)
+		}
+		if line == "" {
+			continue // empty line between events
+		}
+
+		if line == "data: [DONE]" {
+			return Chunk{FinishReason: "[done]"}, nil
+		}
+
+		if !bytes.HasPrefix([]byte(line), []byte("data: ")) {
+			continue
+		}
+
+		data := bytes.TrimPrefix([]byte(line), []byte("data: "))
+		var delta map[string]interface{}
+		if err := json.Unmarshal(data, &delta); err != nil {
+			return Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
+		}
+
+		chunk := Chunk{}
+		if msg, ok := delta["message"].(map[string]interface{}); ok {
+			if content, ok := msg["content"].(string); ok {
+				chunk.Delta = content
+			}
+		}
+		if fr, ok := delta["finish_reason"].(string); ok {
+			chunk.FinishReason = fr
+		}
+
+		return chunk, nil
+	}
+}
+
+func (s *sseStreamReader) Close() error {
+	s.resp.Body.Close()
+	close(s.done)
+	return nil
+}
+
+// readSSELine reads a single SSE event line from the response body.
+func readSSELine(r io.Reader) (string, error) {
+	buf := make([]byte, 4096)
+	n, err := r.Read(buf)
+	if err != nil {
+		return "", err
+	}
+	// Trim trailing newline(s) that separate SSE events
+	return string(bytes.TrimSpace(buf[:n])), nil
+}
+
+// --- Helpers ---
+
+func buildRequestBody(req CompletionRequest) map[string]interface{} {
+	body := map[string]interface{}{
+		"model":     req.Model,
+		"temperature": req.Temperature,
+		"max_tokens":  req.MaxTokens,
+		"messages":    messagesToMap(req.Messages),
+	}
+
+	if len(req.StopSequences) > 0 {
+		body["stop"] = req.StopSequences
+	}
+	if req.PresencePenalty != 0 {
+		body["presence_penalty"] = req.PresencePenalty
+	}
+	if req.FrequencyPenalty != 0 {
+		body["frequency_penalty"] = req.FrequencyPenalty
+	}
+
+	if len(req.Tools) > 0 {
+		body["tools"] = toolsToJSON(req.Tools)
+	}
+
+	return body
+}
+
 func messagesToMap(msgs []Message) []map[string]string {
 	result := make([]map[string]string, len(msgs))
 	for i, m := range msgs {
@@ -177,7 +260,6 @@ func messagesToMap(msgs []Message) []map[string]string {
 	return result
 }
 
-// toolsToJSON converts a slice of Tool to JSON array.
 func toolsToJSON(tools []Tool) []map[string]interface{} {
 	result := make([]map[string]interface{}, len(tools))
 	for i, t := range tools {
@@ -193,11 +275,46 @@ func toolsToJSON(tools []Tool) []map[string]interface{} {
 	return result
 }
 
-// Tool defines a callable tool that the LLM can invoke.
-type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
+// --- Error Mapping ---
+
+// mapHTTPError maps HTTP status codes and response bodies to typed LLM errors.
+func mapHTTPError(statusCode int, body string) error {
+	switch statusCode {
+	case http.StatusTooManyRequests:
+		return ErrRateLimit
+	case http.StatusUnprocessableEntity:
+		// Common for context-window exceeded (OpenAI returns 422 with a message)
+		if containsSubstring(body, "context window") || containsSubstring(body, "max_tokens") {
+			return ErrContextWindow
+		}
+		return wrapError(ErrProviderDown, fmt.Errorf("HTTP %d: %s", statusCode, body))
+
+	case http.StatusInternalServerError:
+		fallthrough
+	case http.StatusBadGateway:
+		fallthrough
+	case http.StatusServiceUnavailable:
+		return ErrProviderDown
+
+	default:
+		return fmt.Errorf("HTTP %d: %s", statusCode, body)
+	}
+}
+
+// wrapError wraps an error with typed LLMError metadata.
+func wrapError(typedErr *LLMError, original error) *LLMError {
+	wrapped := &LLMError{
+		Code:     typedErr.Code,
+		Message:  typedErr.Message,
+		Original: original,
+	}
+	return wrapped
+}
+
+// containsSubstring is a case-insensitive substring check.
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && (len(s) == 0 || len(substr) == 0 ||
+		bytes.Contains([]byte(strings.ToLower(s)), []byte(strings.ToLower(substr))))
 }
 
 // ParseToolCalls extracts tool calls from a completion response's message.
@@ -210,7 +327,6 @@ func ParseToolCalls(msg Message) []ToolCall {
 	}
 
 	// Strategy 1: Check for structured tool_calls field in message (OpenAI API response).
-	// This is the canonical format: message.tool_calls = [{id, function: {name, arguments}}]
 	var rawMsg map[string]interface{}
 	if err := json.Unmarshal([]byte(msg.Content), &rawMsg); err == nil {
 		if toolCalls, ok := rawMsg["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
@@ -235,7 +351,6 @@ func ParseToolCalls(msg Message) []ToolCall {
 	}
 
 	// Strategy 2: Legacy JSON-in-content (MVP heuristic).
-	// Try to parse the content as a single tool call JSON object.
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(msg.Content), &raw); err == nil {
 		if name, ok := raw["name"].(string); ok {

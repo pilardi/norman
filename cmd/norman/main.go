@@ -172,6 +172,16 @@ func isVerbose() bool {
 	return false
 }
 
+// isProvider returns the selected provider name, or empty string if not set.
+func isProvider() string {
+	for i := 1; i < len(os.Args); i++ {
+		if (os.Args[i] == "-p" || os.Args[i] == "--provider") && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+	}
+	return ""
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -209,10 +219,11 @@ func main() {
 func printUsage() {
 	fmt.Println(`Norman CLI — Session-centric chat agent
 
-Usage: norman [-v|--verbose] <command> [args...]
+Usage: norman [-v|--verbose] [-p|--provider NAME] <command> [args...]
 
 Flags:
-  -v, --verbose      Enable verbose/debug output (request details)
+  -p, --provider NAME  Select a configured LLM provider (overrides default)
+  -v, --verbose        Enable verbose/debug output (request details)
 
 Commands:
   create <name>        Create a new workspace directory
