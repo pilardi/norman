@@ -1,6 +1,6 @@
 # Workspace Definition Assessment & Plan
 
-> **Status:** Draft — awaiting review before implementation.
+> **Status:** ✅ **IMPLEMENTED** — All 7 steps completed and committed on branch `workspace-definition-assessment`.
 > **Date:** 2026-10-19
 > **Author:** Pablo (via goose)
 
@@ -98,6 +98,36 @@ If no explicit purpose is provided, infer one from the file tree and existing wi
 ## Key Insight
 
 The workspace definition isn't just metadata — it's the **anchor** that makes all other memory layers coherent. Without it, the wiki is a flat dump with no namespace; with it, every memory operation gets a `workspace:` tag for scoping, and the bootstrap mechanism can prioritize entries relevant to *this* workspace's identity over generic ones.
+
+---
+
+## Implementation Status (Updated 2026-10-19)
+
+| Step | Action | Status | Commit |
+|------|--------|--------|--------|
+| **1** | Add `WorkspaceDefinition` struct with `name`, `purpose`, `scope`, `tags` fields to `pkg/env/workspace.go` | ✅ Complete | `064a0f2` |
+| **2** | Update `buildSystemPrompt()` to inject workspace identity into system prompt | ✅ Complete | `5014a8f` |
+| **3** | Add workspace-level metadata (`workspace:` frontmatter field) to wiki entries | ✅ Complete | `8a1c283` |
+| **4** | Update session bootstrap to include workspace identity in `[SESSION BOOTSTRAP]` section | ✅ Complete | `685fbfd` |
+| **5** | Add workspace-aware skill activation — match skills against workspace tags/purpose | ✅ Complete | `70e46ed` |
+| **6** | Update `AGENTS.md` maintenance rules to reference workspace identity in deduplication and decay logic | ✅ Complete | `70e46ed` |
+| **7** | Add `/api/workspaces` endpoint for explicit workspace definition management (create, read, update) | ✅ Complete | `8d18d06` |
+
+### What Was Built
+
+- **Infrastructure layer:** `WorkspaceDefinition` struct with serialization (`ToMap`/`FromMap`) and system prompt generation (`AsSystemPrompt()`)
+- **Memory layer:** Wiki entries now carry `workspace:` frontmatter; `Filter.Workspace` enables scoped LTM queries; `CreateWithWorkspace()` convenience method
+- **Session layer:** System prompt prepends workspace identity block; bootstrap messages include workspace purpose/scope/tags
+- **Skill activation:** `MatchSkillWithWorkspace()` matches skills against workspace tags, scope items, and purpose keywords
+- **API layer:** Full CRUD + partial-update (`PATCH`) for workspaces via `/api/workspaces` endpoints with proper OpenAPI spec
+
+### Remaining Future Work (Post-MVP)
+
+- [ ] Per-workspace axes.json opt-in (memory-proposal.md Phase 2)
+- [ ] Vector search fallback for LTM beyond flat markdown
+- [ ] CLI commands: `norman workspace create/update/delete list`
+- [ ] Cross-workspace contamination detection in compression logic
+- [ ] Workspace lifecycle events (archive, merge, fork)
 
 ---
 
