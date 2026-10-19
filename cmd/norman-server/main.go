@@ -309,6 +309,27 @@ Workspace-level overrides (per-workspace in config.yaml):
 						ws.Id = &id
 					}
 				}
+				if purpose, ok := wsMap["purpose"].(string); ok {
+					ws.Purpose = strPtr(purpose)
+				}
+				if scope, ok := wsMap["scope"].([]interface{}); ok {
+					strSlice := make([]string, len(scope))
+					for i, v := range scope {
+						if s, ok := v.(string); ok {
+							strSlice[i] = s
+						}
+					}
+					ws.Scope = &strSlice
+				}
+				if tags, ok := wsMap["tags"].([]interface{}); ok {
+					strSlice := make([]string, len(tags))
+					for i, v := range tags {
+						if s, ok := v.(string); ok {
+							strSlice[i] = s
+						}
+					}
+					ws.Tags = &strSlice
+				}
 				srv.workspaces[name] = ws
 			}
 		}
@@ -430,6 +451,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 	e.POST("/api/workspaces", srv.CreateWorkspace)
 	e.GET("/api/workspaces/:name", func(c echo.Context) error {
 		return srv.GetWorkspace(c, c.Param("name"))
+	})
+	e.PATCH("/api/workspaces/:name", func(c echo.Context) error {
+		return srv.UpdateWorkspace(c, c.Param("name"))
 	})
 	e.DELETE("/api/workspaces/:name", func(c echo.Context) error {
 		return srv.DeleteWorkspace(c, c.Param("name"))
@@ -1018,6 +1042,18 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 		Status:    &status,
 		CreatedAt: &now,
 	}
+
+	// Set optional workspace definition fields
+	if req.Purpose != nil {
+		ws.Purpose = req.Purpose
+	}
+	if req.Scope != nil {
+		ws.Scope = req.Scope
+	}
+	if req.Tags != nil {
+		ws.Tags = req.Tags
+	}
+
 	s.workspaces[req.Name] = ws
 
 	// Persist workspace to disk
@@ -1027,6 +1063,15 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 		"path":       wsPath,
 		"status":     string(status),
 		"created_at": now.Format(time.RFC3339),
+	}
+	if req.Purpose != nil {
+		wsMap["purpose"] = *req.Purpose
+	}
+	if req.Scope != nil {
+		wsMap["scope"] = *req.Scope
+	}
+	if req.Tags != nil {
+		wsMap["tags"] = *req.Tags
 	}
 	if err := s.store.SaveWorkspace(req.Name, wsMap); err != nil {
 		log.Printf("server: failed to persist workspace %s: %v", req.Name, err)
@@ -1038,6 +1083,64 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	})
 
 	return c.JSON(http.StatusCreated, ws)
+}
+
+func (s *server) UpdateWorkspace(c echo.Context, name string) error {
+	var req protocol.WorkspaceUpdateRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ws, ok := s.workspaces[name]
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	now := time.Now()
+
+	// Apply partial update (only non-nil fields)
+	if req.Purpose != nil {
+		ws.Purpose = req.Purpose
+	}
+	if req.Scope != nil {
+		ws.Scope = req.Scope
+	}
+	if req.Tags != nil {
+		ws.Tags = req.Tags
+	}
+
+	// Update persisted store
+	wsMap := map[string]interface{}{
+		"id":         ws.Id.String(),
+		"name":       *ws.Name,
+		"path":       *ws.Path,
+		"status":     string(*ws.Status),
+		"created_at": ws.CreatedAt.Format(time.RFC3339),
+		"updated_at": now.Format(time.RFC3339),
+	}
+	if ws.Purpose != nil {
+		wsMap["purpose"] = *ws.Purpose
+	}
+	if ws.Scope != nil {
+		wsMap["scope"] = *ws.Scope
+	}
+	if ws.Tags != nil {
+		wsMap["tags"] = *ws.Tags
+	}
+
+	if err := s.store.SaveWorkspace(name, wsMap); err != nil {
+		log.Printf("server: failed to persist workspace %s update: %v", name, err)
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Workspace updated: " + name),
+	})
+
+	return c.JSON(http.StatusOK, ws)
 }
 
 func (s *server) DeleteWorkspace(c echo.Context, name string) error {

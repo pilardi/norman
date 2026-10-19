@@ -646,10 +646,20 @@ type Workspace struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 
 	// Id Unique workspace identifier
-	Id     *openapi_types.UUID `json:"id,omitempty"`
-	Name   *string             `json:"name,omitempty"`
-	Path   *string             `json:"path,omitempty"`
-	Status *WorkspaceStatus    `json:"status,omitempty"`
+	Id   *openapi_types.UUID `json:"id,omitempty"`
+	Name *string             `json:"name,omitempty"`
+	Path *string             `json:"path,omitempty"`
+
+	// Purpose The problem or domain this workspace addresses
+	Purpose *string `json:"purpose,omitempty"`
+
+	// Scope Subsystems, repos, or services under this workspace
+	Scope  *[]string        `json:"scope,omitempty"`
+	Status *WorkspaceStatus `json:"status,omitempty"`
+
+	// Tags Domain keywords for skill activation matching
+	Tags      *[]string  `json:"tags,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
 // WorkspaceStatus defines model for Workspace.Status.
@@ -662,6 +672,27 @@ type WorkspaceCreateRequest struct {
 
 	// Path Absolute path to the workspace directory
 	Path string `json:"path"`
+
+	// Purpose The problem or domain this workspace addresses
+	Purpose *string `json:"purpose,omitempty"`
+
+	// Scope Subsystems, repos, or services under this workspace
+	Scope *[]string `json:"scope,omitempty"`
+
+	// Tags Domain keywords for skill activation matching
+	Tags *[]string `json:"tags,omitempty"`
+}
+
+// WorkspaceUpdateRequest defines model for WorkspaceUpdateRequest.
+type WorkspaceUpdateRequest struct {
+	// Purpose The problem or domain this workspace addresses
+	Purpose *string `json:"purpose,omitempty"`
+
+	// Scope Subsystems, repos, or services under this workspace
+	Scope *[]string `json:"scope,omitempty"`
+
+	// Tags Domain keywords for skill activation matching
+	Tags *[]string `json:"tags,omitempty"`
 }
 
 // GetConfigParams defines parameters for GetConfig.
@@ -716,3 +747,6 @@ type ReportTaskCompleteJSONRequestBody = TaskCompletion
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = WorkspaceCreateRequest
+
+// UpdateWorkspaceJSONRequestBody defines body for UpdateWorkspace for application/json ContentType.
+type UpdateWorkspaceJSONRequestBody = WorkspaceUpdateRequest

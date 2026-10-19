@@ -296,6 +296,20 @@ type ClientInterface interface {
 	// Corresponds with GET /api/workspaces/{name} (the `GetWorkspace` operationId).
 	GetWorkspace(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UpdateWorkspaceWithBody Update workspace definition (partial update)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+	UpdateWorkspaceWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateWorkspace Update workspace definition (partial update)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+	UpdateWorkspace(ctx context.Context, name string, body UpdateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// HealthCheck Health check with scheduler status
 	//
 	// Corresponds with GET /health (the `HealthCheck` operationId).
@@ -843,6 +857,40 @@ func (c *Client) DeleteWorkspace(ctx context.Context, name string, reqEditors ..
 // Corresponds with GET /api/workspaces/{name} (the `GetWorkspace` operationId).
 func (c *Client) GetWorkspace(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetWorkspaceRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateWorkspaceWithBody Update workspace definition (partial update)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+func (c *Client) UpdateWorkspaceWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateWorkspaceRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateWorkspace Update workspace definition (partial update)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+func (c *Client) UpdateWorkspace(ctx context.Context, name string, body UpdateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateWorkspaceRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1860,6 +1908,53 @@ func NewGetWorkspaceRequest(server string, name string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewUpdateWorkspaceRequest calls the generic UpdateWorkspace builder with application/json body
+func NewUpdateWorkspaceRequest(server string, name string, body UpdateWorkspaceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateWorkspaceRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewUpdateWorkspaceRequestWithBody constructs an http.Request for the UpdateWorkspace method, with any body, and a specified content type
+func NewUpdateWorkspaceRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/workspaces/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewHealthCheckRequest constructs an http.Request for the HealthCheck method
 func NewHealthCheckRequest(server string) (*http.Request, error) {
 	var err error
@@ -2195,6 +2290,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/workspaces/{name} (the `GetWorkspace` operationId).
 	GetWorkspaceWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetWorkspaceResponse, error)
+
+	// UpdateWorkspaceWithBodyWithResponse Update workspace definition (partial update)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+	UpdateWorkspaceWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateWorkspaceResponse, error)
+
+	// UpdateWorkspaceWithResponse Update workspace definition (partial update)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+	UpdateWorkspaceWithResponse(ctx context.Context, name string, body UpdateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWorkspaceResponse, error)
 
 	// HealthCheckWithResponse Health check with scheduler status
 	//
@@ -3207,6 +3316,47 @@ func (r GetWorkspaceResponse) ContentType() string {
 	return ""
 }
 
+type UpdateWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Workspace
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateWorkspaceResponse) GetJSON200() *Workspace {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateWorkspaceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateWorkspaceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type HealthCheckResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3729,6 +3879,32 @@ func (c *ClientWithResponses) GetWorkspaceWithResponse(ctx context.Context, name
 		return nil, err
 	}
 	return ParseGetWorkspaceResponse(rsp)
+}
+
+// UpdateWorkspaceWithBodyWithResponse Update workspace definition (partial update)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+func (c *ClientWithResponses) UpdateWorkspaceWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateWorkspaceResponse, error) {
+	rsp, err := c.UpdateWorkspaceWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateWorkspaceResponse(rsp)
+}
+
+// UpdateWorkspaceWithResponse Update workspace definition (partial update)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/workspaces/{name} (the `UpdateWorkspace` operationId).
+func (c *ClientWithResponses) UpdateWorkspaceWithResponse(ctx context.Context, name string, body UpdateWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWorkspaceResponse, error) {
+	rsp, err := c.UpdateWorkspace(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateWorkspaceResponse(rsp)
 }
 
 // HealthCheckWithResponse Health check with scheduler status
@@ -4348,6 +4524,35 @@ func ParseGetWorkspaceResponse(rsp *http.Response) (*GetWorkspaceResponse, error
 	}
 
 	response := &GetWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Workspace
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 404:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateWorkspaceResponse parses an HTTP response from a UpdateWorkspaceWithResponse call
+func ParseUpdateWorkspaceResponse(rsp *http.Response) (*UpdateWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateWorkspaceResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

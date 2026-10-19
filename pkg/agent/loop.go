@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
@@ -50,6 +51,7 @@ type Loop struct {
 	resultsCh   chan scheduler.TaskResult // results from scheduler (nil if not wired)
 	maxRetries  int
 	budget      *budget.SessionState // token budget tracker (nil if disabled)
+	workspaceDef *env.WorkspaceDefinition // workspace identity for system prompt injection
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -76,6 +78,16 @@ func (l *Loop) Temperature(workspaceID string) float64 {
 func (l *Loop) MaxTokens(workspaceID string) int {
 	ws := l.WorkspaceConfig(workspaceID)
 	return ws.MaxTokens
+}
+
+// SetWorkspaceDefinition assigns the workspace identity to the loop's system prompt context.
+func (l *Loop) SetWorkspaceDefinition(def *env.WorkspaceDefinition) {
+	l.workspaceDef = def
+}
+
+// GetWorkspaceDefinition returns the assigned workspace definition, or nil if not set.
+func (l *Loop) GetWorkspaceDefinition() *env.WorkspaceDefinition {
+	return l.workspaceDef
 }
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
@@ -716,7 +728,12 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 func (l *Loop) buildSystemPrompt(workspaceID string) string {
 	var parts []string
 
-	// Base system instructions
+	// 1. Workspace identity (if defined) — injected first so agent grounds its reasoning
+	if l.workspaceDef != nil {
+		parts = append(parts, l.workspaceDef.AsSystemPrompt())
+	}
+
+	// 2. Base system instructions
 	parts = append(parts, `You are Norman, a helpful AI assistant operating inside an OpenShell sandbox environment. You help users work on their projects by reading files, running commands, and reporting results.
 
 Rules:
@@ -727,7 +744,7 @@ Rules:
 - Never assume file contents without reading them first.
 - When done with a task, provide a clear summary of what you accomplished.`)
 
-	// Add workspace-specific system prompt if configured
+	// 3. Add workspace-specific system prompt if configured (e.g., custom instructions)
 	ws := l.WorkspaceConfig(workspaceID)
 	if ws.SystemPrompt != "" {
 		parts = append(parts, "\n\nWorkspace-specific instructions:\n"+ws.SystemPrompt)
@@ -815,6 +832,32 @@ func (l *Loop) buildMessages(task *Task) ([]llm.Message, int, int) {
 		}
 	}
 
+	// 2.5. Workspace identity bootstrap (grounding context)
+	if l.workspaceDef != nil {
+		var wsParts []string
+		wsParts = append(wsParts, "[SESSION BOOTSTRAP]")
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "## Workspace Identity")
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, fmt.Sprintf("You are operating inside a **workspace** — a bounded project environment with a specific purpose."))
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "A workspace is defined by:")
+		wsParts = append(wsParts, "- **Purpose**: "+l.workspaceDef.Purpose)
+		if len(l.workspaceDef.Scope) > 0 {
+			wsParts = append(wsParts, fmt.Sprintf("- **Scope**: %s", strings.Join(l.workspaceDef.Scope, ", ")))
+		}
+		if len(l.workspaceDef.Tags) > 0 {
+			wsParts = append(wsParts, fmt.Sprintf("- **Tags**: %s", strings.Join(l.workspaceDef.Tags, ", ")))
+		}
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "Reference this identity when creating wiki entries or evaluating decisions.")
+
+		messages = append(messages, llm.Message{
+			Role:    "user",
+			Content: strings.Join(wsParts, "\n"),
+		})
+	}
+
 	// 3. Session history (conversation turns)
 	if task.SessionId != "" {
 		sessMap, err := l.store.LoadSession(task.SessionId)
@@ -864,6 +907,22 @@ func (l *Loop) resolveSkills(prompt string) []string {
 	for _, entry := range l.activator.Registry() {
 		if skills.MatchSkill(entry, keywords) {
 			result = append(result, entry.Name)
+		}
+	}
+
+	// Workspace-aware activation: also match skills against workspace tags/purpose
+	// This enables proactive skill activation grounded in the workspace's domain identity.
+	if l.workspaceDef != nil && (len(l.workspaceDef.Tags) > 0 || len(l.workspaceDef.Scope) > 0) {
+		wsCtx := &skills.WorkspaceContext{
+			Name:    l.workspaceDef.Name,
+			Purpose: l.workspaceDef.Purpose,
+			Scope:   l.workspaceDef.Scope,
+			Tags:    l.workspaceDef.Tags,
+		}
+		for _, entry := range l.activator.Registry() {
+			if !contains(result, entry.Name) && skills.MatchSkillWithWorkspace(entry, keywords, wsCtx) {
+				result = append(result, entry.Name)
+			}
 		}
 	}
 

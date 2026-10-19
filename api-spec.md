@@ -27,13 +27,17 @@
 | `POST` | `/api/workspaces` | Create a new workspace |
 | `GET` | `/api/workspaces` | List all workspaces |
 | `GET` | `/api/workspaces/{name}` | Get workspace details |
+| `PATCH` | `/api/workspaces/{name}` | Partial update of workspace definition |
 | `DELETE` | `/api/workspaces/{name}` | Delete a workspace |
 
 **Request (Create):**
 ```json
 {
   "name": "my-project",
-  "path": "/home/user/projects/my-project"
+  "path": "/home/user/projects/my-project",
+  "purpose": "API migration for X service",
+  "scope": ["api-gateway", "user-service"],
+  "tags": ["grpc", "migration", "backend"]
 }
 ```
 
@@ -43,10 +47,24 @@
   "id": "ws_abc123",
   "name": "my-project",
   "path": "/home/user/projects/my-project",
+  "purpose": "API migration for X service",
+  "scope": ["api-gateway", "user-service"],
+  "tags": ["grpc", "migration", "backend"],
   "created_at": "2026-10-13T08:00:00Z",
+  "updated_at": "2026-10-13T08:00:00Z",
   "status": "active"
 }
 ```
+
+**Request (Update — PATCH):**
+```json
+{
+  "purpose": "Updated: API migration + auth integration",
+  "tags": ["grpc", "migration", "backend", "auth"]
+}
+```
+
+> Note: Only non-null fields are applied (partial update). Omitted fields retain their current values.
 
 ### 2.2 Session Management
 
@@ -348,13 +366,28 @@ type NotificationEvent struct {
 ### 5.5 Workspace
 ```go
 type Workspace struct {
-    ID        string `json:"id"`
-    Name      string `json:"name"`
-    Path      string `json:"path"`
-    CreatedAt string `json:"created_at"`
-    Status    string `json:"status"` // "active" | "archived"
+    ID        string     `json:"id"`
+    Name      string     `json:"name"`
+    Path      string     `json:"path"`
+    Purpose   *string    `json:"purpose,omitempty"`
+    Scope     []string   `json:"scope,omitempty"`
+    Tags      []string   `json:"tags,omitempty"`
+    CreatedAt string     `json:"created_at"`
+    UpdatedAt string     `json:"updated_at"`
+    Status    string     `json:"status"` // "active" | "archived"
 }
 ```
+
+**WorkspaceUpdateRequest:**
+```go
+type WorkspaceUpdateRequest struct {
+    Purpose *string  `json:"purpose,omitempty"`
+    Scope   []string `json:"scope,omitempty"`
+    Tags    []string `json:"tags,omitempty"`
+}
+```
+
+> Only non-nil fields are applied on PATCH (partial update). Omitted fields retain current values.
 
 ### 5.6 SessionStatus (SessionDetail)
 ```go

@@ -141,6 +141,18 @@ func TestEntryHasTag(t *testing.T) {
 	}
 }
 
+func TestEntryHasWorkspace(t *testing.T) {
+	entry := &WikiEntry{Workspace: "api-migration"}
+	if !entry.HasWorkspace() {
+		t.Error("expected HasWorkspace() to return true for non-empty workspace")
+	}
+
+	entry.Workspace = ""
+	if entry.HasWorkspace() {
+		t.Error("expected HasWorkspace() to return false for empty workspace")
+	}
+}
+
 func TestToMarkdown(t *testing.T) {
 	entry := &WikiEntry{
 		Title:     "Test Entry",
@@ -161,6 +173,79 @@ func TestToMarkdown(t *testing.T) {
 	}
 	if !contains(markdown, "Some body text.") {
 		t.Error("expected body content in output")
+	}
+}
+
+func TestToMarkdownWithWorkspace(t *testing.T) {
+	entry := &WikiEntry{
+		Title:     "Test Entry",
+		Type:      EntryTypeEntity,
+		Tags:      []string{"test"},
+		Pinned:    false,
+		Workspace:   "api-migration",
+		Updated:   time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC),
+		CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		Content:   "Some body text.",
+	}
+
+	markdown := entry.ToMarkdown()
+	if !contains(markdown, "workspace:") {
+		t.Error("expected workspace field in markdown output")
+	}
+	if !contains(markdown, "api-migration") {
+		t.Error("expected workspace value in markdown output")
+	}
+}
+
+func TestParseFrontmatterWithWorkspace(t *testing.T) {
+	markdown := `---
+title: "Project Alpha"
+type: entity
+workspace: api-migration
+tags: [api, backend]
+pinned: true
+updated: 2026-10-13
+created_at: 2026-09-01
+---
+
+This is the body of the entry.`
+
+	entry, err := ParseFrontmatter(markdown)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if entry.Workspace != "api-migration" {
+		t.Errorf("expected workspace 'api-migration', got '%s'", entry.Workspace)
+	}
+}
+
+func TestParseFrontmatterRoundTripWithWorkspace(t *testing.T) {
+	original := &WikiEntry{
+		Title:     "Round Trip Test",
+		Type:      EntryTypeTask,
+		Tags:      []string{"roundtrip", "test"},
+		Workspace:   "test-workspace",
+		Pinned:    true,
+		Updated:   time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC),
+		CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		Content:   "Round trip body content.",
+	}
+
+	markdown := original.ToMarkdown()
+	parsed, err := ParseFrontmatter(markdown)
+	if err != nil {
+		t.Fatalf("round-trip parse failed: %v", err)
+	}
+
+	if parsed.Workspace != original.Workspace {
+		t.Errorf("workspace mismatch: expected '%s', got '%s'", original.Workspace, parsed.Workspace)
+	}
+	if parsed.Title != original.Title {
+		t.Errorf("title mismatch: expected '%s', got '%s'", original.Title, parsed.Title)
+	}
+	if len(parsed.Tags) != len(original.Tags) {
+		t.Errorf("tags length mismatch: expected %d, got %d", len(original.Tags), len(parsed.Tags))
 	}
 }
 

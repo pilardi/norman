@@ -45,6 +45,14 @@ func (e *Engine) Create(entry *WikiEntry) error {
 	return nil
 }
 
+// CreateWithWorkspace creates a new wiki entry and sets the workspace field.
+// This is a convenience wrapper around Create that ensures the entry is tagged
+// with the current workspace for LTM scoping.
+func (e *Engine) CreateWithWorkspace(workspace string, entry *WikiEntry) error {
+	entry.Workspace = workspace
+	return e.Create(entry)
+}
+
 // Update overwrites an existing entry. Returns ErrNotFound if the slug doesn't exist.
 func (e *Engine) Update(slug string, updates map[string]interface{}) error {
 	e.mu.Lock()
@@ -331,9 +339,10 @@ func (e *Engine) readAllEntries() ([]*WikiEntry, error) {
 
 // Filter applies to List() calls for filtering results.
 type Filter struct {
-	Types []EntryType // if empty, all types match
-	Tags  []string    // if non-empty, entry must have ALL tags
-	Stale bool        // if true, only return stale entries; if false, only non-stale
+	Types     []EntryType // if empty, all types match
+	Tags      []string    // if non-empty, entry must have ALL tags
+	Workspace string      // if non-empty, entry must match this workspace
+	Stale     bool        // if true, only return stale entries; if false, only non-stale
 }
 
 // Matches returns true if the entry satisfies this filter.
@@ -356,6 +365,12 @@ func (f *Filter) Matches(entry *WikiEntry) bool {
 			if !entry.HasTag(tag) {
 				return false
 			}
+		}
+	}
+
+	if f.Workspace != "" {
+		if entry.Workspace != f.Workspace {
+			return false
 		}
 	}
 

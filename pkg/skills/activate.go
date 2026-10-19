@@ -107,6 +107,69 @@ func MatchSkill(entry SkillEntry, taskKeywords []string) bool {
 	return false
 }
 
+// WorkspaceContext represents the workspace identity used for skill activation matching.
+type WorkspaceContext struct {
+	Name    string
+	Purpose string
+	Scope   []string
+	Tags    []string
+}
+
+// MatchSkillWithWorkspace checks if a skill should be activated based on both
+// task keywords AND workspace context (tags/purpose). This enables proactive
+// skill activation grounded in the workspace's domain identity.
+func MatchSkillWithWorkspace(entry SkillEntry, taskKeywords []string, ws *WorkspaceContext) bool {
+	if entry.Activation == "auto" {
+		return true // always active for auto skills
+	}
+
+	// For on-demand/manual: check if any keyword matches the skill name or tools
+	lowerName := strings.ToLower(entry.Name)
+	lowerDesc := strings.ToLower(entry.Description)
+
+	matched := false
+	for _, kw := range taskKeywords {
+		if strings.Contains(lowerName, strings.ToLower(kw)) ||
+			strings.Contains(lowerDesc, strings.ToLower(kw)) {
+			matched = true
+			break
+		}
+	}
+
+	// If workspace context is provided, boost match score by checking workspace tags/purpose/scope
+	if ws != nil && !matched {
+		lowerPurpose := strings.ToLower(ws.Purpose)
+		lowerName := strings.ToLower(entry.Name)
+		lowerDesc := strings.ToLower(entry.Description)
+
+		// Check if any tag matches the skill name, description, or purpose
+		for _, tag := range ws.Tags {
+			if strings.Contains(lowerName, strings.ToLower(tag)) ||
+				strings.Contains(lowerDesc, strings.ToLower(tag)) ||
+				strings.Contains(lowerPurpose, strings.ToLower(tag)) {
+				return true
+			}
+		}
+
+		// Check if any scope item matches the skill name or description
+		for _, scope := range ws.Scope {
+			if strings.Contains(lowerName, strings.ToLower(scope)) ||
+				strings.Contains(lowerDesc, strings.ToLower(scope)) {
+				return true
+			}
+		}
+
+		// Direct purpose keyword match (e.g., "grpc" in purpose matches "grpc-client")
+		for _, kw := range strings.Fields(lowerPurpose) {
+			if len(kw) >= 3 && (strings.Contains(lowerName, kw) || strings.Contains(lowerDesc, kw)) {
+				return true
+			}
+		}
+	}
+
+	return matched
+}
+
 // Registry returns the full skill registry map.
 func (a *Activator) Registry() map[string]SkillEntry {
 	return a.registry

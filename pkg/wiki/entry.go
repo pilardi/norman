@@ -36,6 +36,7 @@ type WikiEntry struct {
 	Type      EntryType `yaml:"type"`
 	Tags      []string  `yaml:"tags,omitempty"`
 	Pinned    bool      `yaml:"pinned,omitempty"`
+	Workspace string    `yaml:"workspace,omitempty"`
 	Updated   time.Time `yaml:"updated"`
 	CreatedAt time.Time `yaml:"created_at"`
 	Content   string    // markdown body (after frontmatter)
@@ -54,6 +55,11 @@ func (e *WikiEntry) HasTag(tag string) bool {
 		}
 	}
 	return false
+}
+
+// HasWorkspace returns true if the entry is associated with a non-empty workspace.
+func (e *WikiEntry) HasWorkspace() bool {
+	return e.Workspace != ""
 }
 
 // TitleToSlug converts a title into a filesystem-safe slug, appending the entry type
@@ -124,14 +130,19 @@ func ParseFrontmatter(markdown string) (*WikiEntry, error) {
 
 // ToMarkdown serializes a WikiEntry back to markdown with frontmatter.
 func (e *WikiEntry) ToMarkdown() string {
-	yamlBytes, _ := yaml.Marshal(map[string]interface{}{
+	data := map[string]interface{}{
 		"title":     e.Title,
 		"type":      string(e.Type),
 		"tags":      e.Tags,
 		"pinned":    e.Pinned,
 		"updated":   e.Updated.Format(time.RFC3339),
 		"created_at": e.CreatedAt.Format(time.RFC3339),
-	})
+	}
+	if e.Workspace != "" {
+		data["workspace"] = e.Workspace
+	}
+
+	yamlBytes, _ := yaml.Marshal(data)
 
 	var sb strings.Builder
 	sb.WriteString("---\n")
