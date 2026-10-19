@@ -910,6 +910,22 @@ func (l *Loop) resolveSkills(prompt string) []string {
 		}
 	}
 
+	// Workspace-aware activation: also match skills against workspace tags/purpose
+	// This enables proactive skill activation grounded in the workspace's domain identity.
+	if l.workspaceDef != nil && (len(l.workspaceDef.Tags) > 0 || len(l.workspaceDef.Scope) > 0) {
+		wsCtx := &skills.WorkspaceContext{
+			Name:    l.workspaceDef.Name,
+			Purpose: l.workspaceDef.Purpose,
+			Scope:   l.workspaceDef.Scope,
+			Tags:    l.workspaceDef.Tags,
+		}
+		for _, entry := range l.activator.Registry() {
+			if !contains(result, entry.Name) && skills.MatchSkillWithWorkspace(entry, keywords, wsCtx) {
+				result = append(result, entry.Name)
+			}
+		}
+	}
+
 	return result
 }
 

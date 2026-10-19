@@ -26,6 +26,7 @@ All wiki entries are flat markdown files in `.norman/memory/` with frontmatter `
 - When a new entry would duplicate an existing one (same title or overlapping content), **update the existing entry** rather than creating a new page.
 - Compare by `title` field first; if no match, compare content similarity (>70% overlap = merge).
 - Keep only the most recent version; archive older versions in git history.
+- **Workspace scoping**: Entries with different `workspace:` frontmatter values are considered separate entries even if titles match (e.g., "Docker" in workspace `api-migration` vs `data-pipeline` are distinct). Cross-workspace duplicates should NOT be merged.
 
 ---
 
@@ -34,6 +35,7 @@ All wiki entries are flat markdown files in `.norman/memory/` with frontmatter `
 - Entries with `type: trend` that haven't been updated in >30 days are flagged as `stale`.
 - Entries with `type: entity` or `source` are never auto-decayed (they're reference data).
 - `task` entries older than 60 days are pruned unless they have `tags` indicating recurring relevance.
+- **Workspace-aware decay**: A trend's staleness is evaluated per-workspace. A trend relevant to workspace `api-migration` should not be flagged stale just because it hasn't been updated in the context of workspace `data-pipeline`.
 
 ---
 
@@ -42,6 +44,7 @@ All wiki entries are flat markdown files in `.norman/memory/` with frontmatter `
 - **One-off observations** (e.g., "File X had a bug on Oct 12") → no wiki entry needed; keep in session transcript.
 - **Reusable knowledge** (e.g., "Pattern: always check MCP connection health before long operations") → create/update wiki entry.
 - Heuristic: if the insight would help a *different* task or a *future* session, it's reusable.
+- **Workspace reusability**: Knowledge tagged with `workspace: <name>` is scoped to that workspace. A cross-workspace observation should be duplicated (not merged) when created in a new workspace context.
 
 ---
 
