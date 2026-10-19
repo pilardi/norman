@@ -1,7 +1,172 @@
-# LLM Integration Plan — Remaining Work & Known Issues
+# LLM Integration Plan — Provider-Agnostic Abstraction & Remaining Work
 
-> **Date:** 2026-10-17
+> **Date:** 2026-10-19 (merged)
 > **Status:** Draft — actionable items tracked for MVP completion
+> **Related:** `requirements.md` §4.1, `go.dev/blog/llmpowered`
+
+---
+
+## 0. Design Rationale & Interfaces (from LLM Abstraction Proposal)
+
+### 0.1 Motivation
+
+The current `pkg/llm/client.go` couples the agent loop to a single HTTP-based chat completion API (OpenAI-compatible). The Go blog article "Building LLM-powered applications in Go" highlights several patterns that suggest our abstraction is too narrow for production readiness:
+
+| Pattern | Why it matters for Norman |
+|---------|--------------------------|
+| **Provider-agnostic interfaces** | Swap GPT → Claude → local Ollama without rewriting the agent loop |
+| **Batch operations** | Efficiently embed many documents or send batched completion requests |
+| **Streaming responses** | Reduce perceived latency for long answers |
+| **Separate embedding service** | Distinguish `Embedder` from `LLM` — they have different performance/latency profiles |
+| **Prompt management** | Template-based prompts with versioning, not just raw strings |
+
+### 0.2 Proposed Interfaces (Implemented)
+
+```go
+// LLM provides text completion with optional tool-calling support.
+type LLM interface {
+    Complete(ctx context.Context, req CompletionRequest) (*CompletionResponse, error)
+    Stream(ctx context.Context, req CompletionRequest) (StreamReader, error)
+    ProviderInfo() ProviderMetadata
+}
+
+// Embedder provides vector embedding for text content.
+type Embedder interface {
+    EmbedText(ctx context.Context, text string) ([]float32, error)
+    BatchEmbedText(ctx context.Context, texts []string) ([][]float32, error)
+}
+
+// CompletionRequest is the universal request shape for all providers.
+type CompletionRequest struct {
+    Messages  []Message
+    Tools     []Tool
+    Model     string        // Provider-specific model identifier
+    Temperature float64
+    MaxTokens   int
+    StopSequences []string
+    PresencePenalty  float32
+    FrequencyPenalty float32
+}
+
+// CompletionResponse is the universal response shape.
+type CompletionResponse struct {
+    ID           string
+    Model        string
+    Message      Message
+    FinishReason string
+    Usage        Usage
+    RawJSON []byte
+}
+
+// StreamReader yields incremental chunks from a streaming response.
+type StreamReader interface {
+    Next() (Chunk, error)
+    Close() error
+}
+
+type Chunk struct {
+    Delta      string
+    FinishReason string
+    Usage      *Usage
+}
+
+// ProviderMetadata describes the provider's capabilities and constraints.
+type ProviderMetadata struct {
+    Name           string  // "openai", "anthropic", "ollama", "gemini"
+    SupportsTools  bool
+    SupportsStream bool
+    MaxTokensPerCall int
+    BatchSupport   bool
+}
+```
+
+### 0.3 Migration Path from Current `Caller` Interface
+
+The existing `Caller` interface is preserved as a **compatibility adapter**:
+
+```go
+// Caller is the legacy MVP interface — implemented by ClientAdapter below.
+type Caller interface {
+    Complete(ctx context.Context, systemPrompt string, messages []Message, tools []Tool) (*CompletionResponse, error)
+}
+
+// ClientAdapter wraps an LLM implementation to satisfy the legacy Caller interface.
+type ClientAdapter struct {
+    llm LLM
+}
+
+func (a *ClientAdapter) Complete(ctx context.Context, systemPrompt string, messages []Message, tools []Tool) (*CompletionResponse, error) {
+    req := CompletionRequest{
+        Messages:  append([]Message{{Role: "system", Content: systemPrompt}}, messages...),
+        Tools:     tools,
+    }
+    resp, err := a.llm.Complete(ctx, req)
+    if err != nil {
+        return nil, err
+    }
+    return &CompletionResponse{
+        ID:           resp.ID,
+        Model:        resp.Model,
+        Choices:      []ResponseChoice{{Message: resp.Message, FinishReason: resp.FinishReason}},
+        Usage:        resp.Usage,
+    }, nil
+}
+```
+
+This means **zero breaking changes** for `pkg/agent/loop.go` or `cmd/norman-server/main.go` during the transition.
+
+### 0.4 Provider Implementations (Planned)
+
+| Provider | Package | Status |
+|----------|---------|--------|
+| OpenAI-compatible (default) | `pkg/llm/openai.go` | ✅ Implemented |
+| Ollama (local) | `pkg/llm/ollama.go` | 🟡 Planned |
+| Anthropic Claude | `pkg/llm/anthropic.go` | 🟡 Planned |
+| Google Gemini | `pkg/llm/gemini.go` | 🟡 Planned |
+
+### 0.5 Configuration Changes
+
+Add a `providers` section to `~/.config/norman/config.yaml`:
+
+```yaml
+llm:
+  providers:
+    - name: "default"
+      type: "openai"
+      endpoint: "https://api.openai.com/v1"
+      model: "gpt-4o"
+      api_key_ref: "${secret:openai-key}"
+
+    - name: "local"
+      type: "ollama"
+      endpoint: "http://localhost:11434"
+      model: "llama3.1:8b"
+
+    - name: "embed"
+      type: "openai"
+      endpoint: "https://api.openai.com/v1"
+      model: "text-embedding-3-small"
+      api_key_ref: "${secret:openai-key}"
+      is_embedder: true
+
+  default_provider: "default"
+  embedder_provider: "embed"
+```
+
+### 0.6 Runtime Configuration (Implemented)
+
+The provider selection is controlled at two levels:
+
+| Flag | Purpose |
+|------|---------|
+| `-p NAME`, `--provider NAME` | Select a configured provider by name (overrides `default_provider`) |
+| `-v`, `--verbose` | Enable server-side debug logging |
+
+### Resolution Priority
+
+```
+CLI flag (-p) > config.yaml `default_provider` > first configured provider
+```
 
 ---
 
@@ -183,7 +348,30 @@ The current flow is:
 
 ---
 
-## 8. References
+## 8. What's Built (as of this merge)
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| `LLM` + `Embedder` interfaces | ✓ | `pkg/llm/interfaces.go` |
+| Typed errors (`ErrRateLimit`, etc.) | ✓ | `pkg/llm/errors.go` |
+| OpenAI-compatible client with streaming | ✓ | `pkg/llm/client.go` |
+| ClientAdapter wrapper | ✓ | `pkg/llm/adapter.go` |
+| Agent loop streaming integration | ✓ | `pkg/agent/loop.go` |
+| Provider config in `SystemConfig` | ✓ | `pkg/config/config.go` |
+| `-p/--provider` CLI flag | ✓ | `cmd/norman-server/main.go`, `cmd/norman/main.go` |
+| llamacpp provider with KV cache optimization | ✓ | `pkg/llm/llamacpp/` |
+
+### Remaining (Post-MVP)
+
+- Anthropic Claude provider implementation
+- Google Gemini provider implementation
+- PromptTemplate type (§7.3, deferred)
+- Embedding-specific provider configuration
+- Deployment patterns (health checks, graceful shutdown, connection pooling)
+
+---
+
+## 9. References
 
 - **OpenAI Chat Completions API:** https://platform.openai.com/docs/api-reference/chat/create
 - **NVIDIA OpenShell SDK (Go):** `github.com/NVIDIA/OpenShell/sdk/go/openshell/v1`
@@ -192,4 +380,4 @@ The current flow is:
 
 ---
 
-*Last updated: 2026-10-17. Items 1–7 all completed. See git history for commit hashes.*
+*Last updated: 2026-10-19. Items 1–7 all completed. See git history for commit hashes.*
