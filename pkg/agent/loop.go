@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
@@ -50,6 +51,7 @@ type Loop struct {
 	resultsCh   chan scheduler.TaskResult // results from scheduler (nil if not wired)
 	maxRetries  int
 	budget      *budget.SessionState // token budget tracker (nil if disabled)
+	workspaceDef *env.WorkspaceDefinition // workspace identity for system prompt injection
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -76,6 +78,16 @@ func (l *Loop) Temperature(workspaceID string) float64 {
 func (l *Loop) MaxTokens(workspaceID string) int {
 	ws := l.WorkspaceConfig(workspaceID)
 	return ws.MaxTokens
+}
+
+// SetWorkspaceDefinition assigns the workspace identity to the loop's system prompt context.
+func (l *Loop) SetWorkspaceDefinition(def *env.WorkspaceDefinition) {
+	l.workspaceDef = def
+}
+
+// GetWorkspaceDefinition returns the assigned workspace definition, or nil if not set.
+func (l *Loop) GetWorkspaceDefinition() *env.WorkspaceDefinition {
+	return l.workspaceDef
 }
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
@@ -716,7 +728,12 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 func (l *Loop) buildSystemPrompt(workspaceID string) string {
 	var parts []string
 
-	// Base system instructions
+	// 1. Workspace identity (if defined) — injected first so agent grounds its reasoning
+	if l.workspaceDef != nil {
+		parts = append(parts, l.workspaceDef.AsSystemPrompt())
+	}
+
+	// 2. Base system instructions
 	parts = append(parts, `You are Norman, a helpful AI assistant operating inside an OpenShell sandbox environment. You help users work on their projects by reading files, running commands, and reporting results.
 
 Rules:
@@ -727,7 +744,7 @@ Rules:
 - Never assume file contents without reading them first.
 - When done with a task, provide a clear summary of what you accomplished.`)
 
-	// Add workspace-specific system prompt if configured
+	// 3. Add workspace-specific system prompt if configured (e.g., custom instructions)
 	ws := l.WorkspaceConfig(workspaceID)
 	if ws.SystemPrompt != "" {
 		parts = append(parts, "\n\nWorkspace-specific instructions:\n"+ws.SystemPrompt)
