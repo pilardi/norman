@@ -197,10 +197,8 @@ func main() {
 	switch command {
 	case "config":
 		handleConfig(args)
-	case "create":
-		handleCreate(args)
-	case "list":
-		handleList(args)
+	case "workspace":
+		handleWorkspace(args)
 	case "skills":
 		handleSkills(args)
 	case "sessions":
@@ -226,15 +224,15 @@ Flags:
   -v, --verbose        Enable verbose/debug output (request details)
 
 Commands:
-  create <name>        Create a new workspace directory
-  list                 List available workspaces and their sessions
-  config               Show or edit current configuration
-  skills list          List installed skills
-  skills install <id>  Install a skill from registry
-  skills remove <id>   Remove an installed skill
-  sessions list                        List active chat sessions
-  sessions archive <session_id>        Archive a session's transcript via POST /api/sessions/{id}
-  sessions open <workspace_name> [<session_id>]       Open an interactive REPL chat session
+  workspace create <name>    Create a new workspace directory
+  workspace list             List available workspaces and their sessions
+  config                     Show or edit current configuration
+  skills list                List installed skills
+  skills install <id>        Install a skill from registry
+  skills remove <id>         Remove an installed skill
+  sessions list              List active chat sessions
+  sessions archive <session_id>   Archive a session's transcript via POST /api/sessions/{id}
+  sessions open <workspace_name> [<session_id>]   Open an interactive REPL chat session
 
 Use "norman help <command>" for detailed help on a specific command.`)
 }
@@ -410,10 +408,42 @@ func putConfig(updates map[string]interface{}) error {
 	return nil
 }
 
-// handleCreate delegates workspace creation to the agent server.
-func handleCreate(args []string) {
+// handleWorkspace handles workspace subcommands.
+func handleWorkspace(args []string) {
+	if len(args) == 0 {
+		printWorkspaceHelp()
+		return
+	}
+
+	sub := args[0]
+	switch sub {
+	case "create":
+		handleWorkspaceCreate(args[1:])
+	case "list":
+		handleWorkspaceList(args[1:])
+	case "--help", "-h":
+		printWorkspaceHelp()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown workspace subcommand: %s\n\n", sub)
+		printWorkspaceHelp()
+		os.Exit(1)
+	}
+}
+
+func printWorkspaceHelp() {
+	fmt.Println(`workspace — Manage workspaces
+
+Usage: norman workspace <subcommand> [args...]
+
+Subcommands:
+  create <name>       Create a new workspace directory
+  list                List available workspaces and their sessions`)
+}
+
+// handleWorkspaceCreate delegates workspace creation to the agent server.
+func handleWorkspaceCreate(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Usage: norman create <name>")
+		fmt.Fprintln(os.Stderr, "Usage: norman workspace create <name>")
 		os.Exit(1)
 	}
 
@@ -434,12 +464,12 @@ func handleCreate(args []string) {
 	fmt.Println("(Server manages OpenShell sandbox lifecycle)")
 }
 
-// handleList fetches workspace info from the server.
-func handleList(args []string) {
+// handleWorkspaceList fetches workspace info from the server.
+func handleWorkspaceList(args []string) {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(`list — List available workspaces and sessions
+		fmt.Println(`workspace list — List available workspaces and sessions
 
-Usage: norman list [--json]
+Usage: norman workspace list [--json]
 
 Queries the agent server for workspace information.`)
 		return
@@ -765,7 +795,7 @@ func handleChat(args []string) {
 			}
 		}
 		if foundID == "" {
-			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman list'.\n", workspaceName)
+			fmt.Fprintf(os.Stderr, "Workspace '%s' not found. Run 'norman workspace list'.\n", workspaceName)
 			os.Exit(1)
 		}
 
