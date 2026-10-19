@@ -10,6 +10,7 @@ import (
 
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
@@ -709,5 +710,84 @@ func TestSendMessageShellOnlyFallback(t *testing.T) {
 
 	if !strings.Contains(resp.Response, "hello world") {
 		t.Errorf("expected 'hello world' in response, got: %s", resp.Response)
+	}
+}
+
+func TestBuildMessagesWorkspaceBootstrap(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+	fakeClient := NewFakeOpenShellClient()
+
+	act := skills.NewActivator(nil, 0)
+
+	loop := New(nil, store, nil, act, fakeWSHub, fakeClient)
+
+	// Set workspace definition
+	loop.SetWorkspaceDefinition(&env.WorkspaceDefinition{
+		Name:    "api-migration",
+		Purpose: "Migrate legacy API endpoints to gRPC",
+		Scope:   []string{"payments-service", "auth-service"},
+		Tags:    []string{"api", "migration", "grpc"},
+	})
+
+	// Create a task with session history
+	task := &Task{
+		Prompt:    "Check the current API status",
+		SessionId: "session-1",
+	}
+
+	messages, _, _ := loop.buildMessages(task)
+
+	// Find the workspace bootstrap message
+	var foundBootstrap bool
+	for _, msg := range messages {
+		if strings.Contains(msg.Content, "[SESSION BOOTSTRAP]") {
+			foundBootstrap = true
+			if !strings.Contains(msg.Content, "Migrate legacy API endpoints to gRPC") {
+				t.Errorf("expected purpose text in bootstrap, got: %s", msg.Content)
+			}
+			if !strings.Contains(msg.Content, "payments-service") {
+				t.Errorf("expected scope items in bootstrap, got: %s", msg.Content)
+			}
+			if !strings.Contains(msg.Content, "Tags") {
+				t.Errorf("expected tags section in bootstrap, got: %s", msg.Content)
+			}
+			break
+		}
+	}
+
+	if !foundBootstrap {
+		t.Error("expected [SESSION BOOTSTRAP] section in messages")
+	}
+}
+
+func TestBuildMessagesNoWorkspaceDefinition(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+	fakeClient := NewFakeOpenShellClient()
+
+	act := skills.NewActivator(nil, 0)
+
+	loop := New(nil, store, nil, act, fakeWSHub, fakeClient)
+	// No workspace definition set
+
+	task := &Task{
+		Prompt:    "Check status",
+		SessionId: "session-1",
+	}
+
+	messages, _, _ := loop.buildMessages(task)
+
+	// Should NOT contain workspace bootstrap section
+	for _, msg := range messages {
+		if strings.Contains(msg.Content, "[SESSION BOOTSTRAP]") {
+			t.Errorf("expected no bootstrap when workspaceDef is nil, got: %s", msg.Content)
+		}
 	}
 }

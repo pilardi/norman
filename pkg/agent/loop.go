@@ -832,6 +832,32 @@ func (l *Loop) buildMessages(task *Task) ([]llm.Message, int, int) {
 		}
 	}
 
+	// 2.5. Workspace identity bootstrap (grounding context)
+	if l.workspaceDef != nil {
+		var wsParts []string
+		wsParts = append(wsParts, "[SESSION BOOTSTRAP]")
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "## Workspace Identity")
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, fmt.Sprintf("You are operating inside a **workspace** — a bounded project environment with a specific purpose."))
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "A workspace is defined by:")
+		wsParts = append(wsParts, "- **Purpose**: "+l.workspaceDef.Purpose)
+		if len(l.workspaceDef.Scope) > 0 {
+			wsParts = append(wsParts, fmt.Sprintf("- **Scope**: %s", strings.Join(l.workspaceDef.Scope, ", ")))
+		}
+		if len(l.workspaceDef.Tags) > 0 {
+			wsParts = append(wsParts, fmt.Sprintf("- **Tags**: %s", strings.Join(l.workspaceDef.Tags, ", ")))
+		}
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "Reference this identity when creating wiki entries or evaluating decisions.")
+
+		messages = append(messages, llm.Message{
+			Role:    "user",
+			Content: strings.Join(wsParts, "\n"),
+		})
+	}
+
 	// 3. Session history (conversation turns)
 	if task.SessionId != "" {
 		sessMap, err := l.store.LoadSession(task.SessionId)
