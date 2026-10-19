@@ -6,7 +6,7 @@
 
 ## Problem Statement
 
-Before this step, running any CLI command (e.g., `norman list`) produced a confusing JSON log line followed by the actual output:
+Before this step, running any CLI command (e.g., `norman workspace list`) produced a confusing JSON log line followed by the actual output:
 
 ```json
 {"time":"2026-10-14T15:56:06.468839413-04:00","id":"","remote_ip":"127.0.0.1",...}
@@ -119,8 +119,8 @@ rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose/debug 
 
 ## Acceptance Criteria
 
-- [ ] Default CLI output is clean (no JSON noise) — `norman list` shows only workspace names.
-- [ ] `norman -v list` prints `[debug] GET http://...` to stderr before actual output.
+- [ ] Default CLI output is clean (no JSON noise) — `norman workspace list` shows only workspace names.
+- [ ] `norman workspace list -v` prints `[debug] GET http://...` to stderr before actual output.
 - [ ] `LOGGING_VERBOSE=true` env var enables verbose mode even without `-v` flag.
 - [ ] Server respects `config.yaml` `logging.verbose: true` for request logging.
 - [ ] Help text documents the `-v` flag and its behavior.

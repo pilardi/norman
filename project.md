@@ -62,9 +62,9 @@
 
 ## Step 2 — Config parser + CLI scaffolding
 
-> **Status: ✅ COMPLETE** (config.yaml parser, `norman create/switch/list/config/skills/sessions/tasks` subcommands working via Echo routing)
+> **Status: ✅ COMPLETE** (config.yaml parser, `norman workspace create/list/config/skills/sessions/tasks` subcommands working via Echo routing)
 
-**Acceptance:** Running `norman config --help` shows subcommands; `norman create my-workspace` creates a workspace directory + `.openshell/` overlay.
+**Acceptance:** Running `norman config --help` shows subcommands; `norman workspace create my-workspace` creates a workspace directory + `.openshell/` overlay.
 
 - Parse YAML from `~/.config/norman/config.yaml` (or env var `NORMAN_CONFIG`).
 - **Do not resolve `${secret:...}` at parse time.** Store raw placeholders; resolve inside the environment via OpenShell's `get-secret`.
@@ -75,12 +75,12 @@
 
 > **Status: ✅ COMPLETE** (OpenShell Go SDK v0.1.x: client, session, workspace manager with crash recovery + exponential backoff)
 
-**Acceptance:** `norman create my-workspace` creates a persistent OpenShell session; running `norman run "echo hello"` executes inside that session and returns output.
+**Acceptance:** `norman workspace create my-workspace` creates a persistent OpenShell session; running `norman run "echo hello"` executes inside that session and returns output.
 
 - Create one persistent OpenShell session per workspace via the OpenShell CLI/API.
 - All file I/O goes through OpenShell's tools layer (`read`, `write`, `edit`) — **never** direct host OS access.
 - Check OpenShell version ≥ 0.1.0 on session creation; log warning if features are missing.
-- Session lifecycle: create on `norman create`, reuse across tasks, recover if crashed (retry up to 3× with exponential backoff).
+- Session lifecycle: create on `norman workspace create`, reuse across tasks, recover if crashed (retry up to 3× with exponential backoff).
 
 ## Step 4 — Skill discovery & progressive activation
 
@@ -238,7 +238,7 @@ See **[docs/step13-plan.md](docs/step13-plan.md)** for full architecture and sub
 - **13d** — `LOGGING_VERBOSE` env var support (`true`/`false`/`1`/`0`).
 - **13e** — `.env.example` updated; help text documented.
 
-Before: `norman list` → confusing JSON log line + output. After (default): clean output. After (`-v`): `[debug] GET ...` to stderr.
+Before: `norman workspace list` → confusing JSON log line + output. After (default): clean output. After (`-v`): `[debug] GET ...` to stderr.
 
 ---
 
