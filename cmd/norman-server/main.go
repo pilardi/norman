@@ -472,6 +472,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 		return srv.RemoveSkill(c, c.Param("name"))
 	})
 
+	// Update a skill from its source repo (PUT /api/skills/:name)
+	e.PUT("/api/skills/:name", func(c echo.Context) error {
+		return srv.UpdateSkill(c, c.Param("name"))
+	})
+
 	// Check if a skill has an update available (GET /api/skills/:name/check-version)
 	e.GET("/api/skills/:name/check-version", func(c echo.Context) error {
 		return srv.CheckVersion(c, c.Param("name"))
@@ -859,6 +864,43 @@ func (s *server) RemoveSkill(c echo.Context, name string) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func (s *server) UpdateSkill(c echo.Context, name string) error {
+	var req protocol.SkillInstallRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Updating skill '" + name + "' from repo " + req.Repo),
+	})
+
+	// Use the existing skills.Update() which handles clone + checkout + metadata read
+	version := ""
+	if req.Version != nil {
+		version = *req.Version
+	}
+
+	entry, err := skills.Update(req.Repo, version, s.cfg.System.Skills.Path)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Skill '" + entry.Name + "' updated to version " + entry.Version),
+	})
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"name":        entry.Name,
+		"version":     entry.Version,
+		"path":        entry.Path,
+		"updated":     true,
+	})
 }
 
 func (s *server) CheckVersion(c echo.Context, name string) error {

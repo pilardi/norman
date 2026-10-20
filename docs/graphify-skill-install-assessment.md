@@ -230,12 +230,16 @@ All 6 implementation steps are complete. The skills system now supports:
 
 ---
 
-## Pending Items (Post-Merge)
+## Completed Items
 
-| # | Item | Description |
-|---|------|-------------|
-| P1 | Wire `Update()` and `Uninstall()` routes in main.go | Handlers generated; need server-side implementation with WebSocket broadcast |
-| P3 | OpenShell sandbox-based dependency install | Currently uses local `pip install`; could be enhanced to run inside workspace env |
+All implementation steps and P1–P4 are **complete**. The following routes and functions are fully wired:
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| P1 | Wire `Update()` and `Uninstall()` routes in main.go | ✅ DONE | `PUT /api/skills/:name` (UpdateSkill) + `DELETE /api/skills/:name` (RemoveSkill) both wired with WebSocket broadcast |
+| P2 | Version comparison logic (`CheckRemoteVersion`, `HasUpdate`) | ✅ DONE | Uses `git ls-remote --tags` with HEAD fallback; exposed via `GET /api/skills/:name/check-version` |
+| P3 | OpenShell sandbox-based dependency install | ✅ DONE | `ActivateWithSession(name, session)` + `GetSession(workspaceID)` in `pkg/agent/loop.go` |
+| P4 | CLI companion command `norman skills list` with provenance | ✅ DONE | Added `remote` subcommand; displays `source_url`, `version`, `path` |
 
 ---
 
@@ -429,6 +433,7 @@ SkillFile:
 
 ### Commit History (on this branch)
 ```
+<P1_COMMIT> feat: P1 — wire UpdateSkill and RemoveSkill routes with WebSocket broadcast
 0f61ec5 feat: P2 — version comparison logic for update detection
 443fa52 feat: P4 — CLI companion command 'norman skills list' with provenance
 8b59772 feat: P3 — OpenShell sandbox-based dependency install
@@ -443,9 +448,9 @@ fab74bd feat(skills): add source_url + version tracking for update/uninstall
 ### Files Changed (new commits only, excluding prior merges)
 | File | Lines Changed | Purpose |
 |------|---------------|---------|
-| `api-spec.yaml` | +120/-1 | Added `/api/skills/install` + `/api/skills/:name/check-version` endpoint schemas |
+| `api-spec.yaml` | +135/-1 | Added `/api/skills/install`, `/api/skills/:name/check-version`, PUT `/api/skills/:name`; added SkillUpdateRequest schema |
 | `api-spec.md` | +12/-0 | Documented upload + install + check-version endpoints with examples |
-| `cmd/norman-server/main.go` | +138/-1 | InstallSkill, RemoveSkill, CheckVersion handlers; route wiring; NewWithClient |
+| `cmd/norman-server/main.go` | +195/-1 | InstallSkill, RemoveSkill, UpdateSkill, CheckVersion handlers; route wiring; NewWithClient |
 | `internal/api/handlers.go` | +26 | Regenerated interface methods |
 | `pkg/config/config.go` | +2 | SkillsConfig.Path field |
 | `pkg/protocol/types.go` | +33/-1 | SkillInstallRequest struct |
@@ -454,7 +459,7 @@ fab74bd feat(skills): add source_url + version tracking for update/uninstall
 | `pkg/skills/activate.go` | +9 | Wire InstallDependencies into Activate() |
 | `pkg/agent/loop.go` | +45/-0 | GetSession, ActivateWithSession for P3 sandbox activation |
 | `cmd/norman/main.go` | +60/-10 | P4: CLI skills list with provenance + remote subcommand |
-| `docs/graphify-skill-install-assessment.md` | +298 | Full assessment document |
+| `docs/graphify-skill-install-assessment.md` | +320 | Full assessment document (P1–P4 complete) |
 
 ---
 
