@@ -21,6 +21,12 @@ jobs:
       with:
         go-version: '1.25'
 
+    - name: Install oapi-codegen
+      run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+
+    - name: Generate protocol types and handlers from api-spec.yaml
+      run: make generate
+
     - name: Build
       run: go build -v ./...
 

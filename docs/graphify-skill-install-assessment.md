@@ -207,7 +207,7 @@ All 6 implementation steps are complete. The skills system now supports:
 | `pkg/skills/discover.go` (2nd commit) | Added `SourceURL`, `Version` fields; `Update()`, `Uninstall()` methods; frontmatter parsing for provenance |
 | `pkg/skills/activate.go` | Integrated `InstallDependencies()` into `Activate()` — non-fatal, logs warning on failure |
 | `pkg/skills/discover.go` (3rd commit) | Added `CheckRemoteVersion()`, `HasUpdate()`, `GetEntry()` for version comparison logic (P2) |
-| `api-spec.yaml` + `api-spec.md` | Added `/api/skills/{name}/check-version` GET endpoint with `SkillVersionCheck` response schema |
+| `api-spec.yaml` + `docs/api-reference.html` | Added `/api/skills/{name}/check-version` GET endpoint with `SkillVersionCheck` response schema |
 
 ### API Contract Summary
 | Endpoint | Method | Purpose |
@@ -449,7 +449,7 @@ fab74bd feat(skills): add source_url + version tracking for update/uninstall
 | File | Lines Changed | Purpose |
 |------|---------------|---------|
 | `api-spec.yaml` | +135/-1 | Added `/api/skills/install`, `/api/skills/:name/check-version`, PUT `/api/skills/:name`; added SkillUpdateRequest schema |
-| `api-spec.md` | +12/-0 | Documented upload + install + check-version endpoints with examples |
+| `docs/api-reference.html` | auto-generated | API reference HTML regenerated from api-spec.yaml via Redocly CLI |
 | `cmd/norman-server/main.go` | +195/-1 | InstallSkill, RemoveSkill, UpdateSkill, CheckVersion handlers; route wiring; NewWithClient |
 | `internal/api/handlers.go` | +26 | Regenerated interface methods |
 | `pkg/config/config.go` | +2 | SkillsConfig.Path field |

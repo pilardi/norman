@@ -7,3 +7,4 @@ internal/api/handlers.go
 dist/
 norman
 norman-server
+api-spec.md

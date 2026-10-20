@@ -9,7 +9,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build test test-race test-short clean
+.PHONY: help generate build test test-race test-short clean generate-docs
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -24,9 +24,10 @@ help:
 	@echo "  test        - Run all unit tests with coverage report"
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short  - Run short tests only (skip slow/integration)"
-	@echo "  clean       - Remove generated files and binaries in dist/"
+	@echo "  generate-docs - Generate API reference HTML from api-spec.yaml"
 
 generate:
+	@mkdir -p pkg/protocol internal/api
 	@echo "Generating protocol types..."
 	$(CODEGEN) -package protocol -generate types api-spec.yaml > pkg/protocol/types.go
 	@echo "Generating client library..."
@@ -36,7 +37,7 @@ generate:
 	@echo "Fixing cross-package type references in handlers..."
 	sed -i '/^import (/a\\t"github.com/norman/norman/pkg/protocol"' internal/api/handlers.go
 	sed -i 's/GetConfigParams\b/protocol.GetConfigParams/g; s/ListTasksParams\b/protocol.ListTasksParams/g; s/TailTaskLogParams\b/protocol.TailTaskLogParams/g; s/SessionHistoryParams\b/protocol.SessionHistoryParams/g' internal/api/handlers.go
-	@echo "Done. Run 'make build' to verify compilation."
+	@echo "Regenerated code; compiling..."
 
 build: generate
 	go mod tidy
@@ -60,3 +61,6 @@ test-short:
 
 clean:
 	rm -rf $(DIST)
+
+generate-docs:
+	npx @redocly/cli build-docs api-spec.yaml -o docs/api-reference.html --title "Norman API Reference"
