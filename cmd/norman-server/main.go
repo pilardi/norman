@@ -472,6 +472,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 		return srv.RemoveSkill(c, c.Param("name"))
 	})
 
+	// Check if a skill has an update available (GET /api/skills/:name/check-version)
+	e.GET("/api/skills/:name/check-version", func(c echo.Context) error {
+		return srv.CheckVersion(c, c.Param("name"))
+	})
+
 	// WebSocket hub for real-time push events
 	e.GET("/ws", func(c echo.Context) error {
 		conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
@@ -854,6 +859,33 @@ func (s *server) RemoveSkill(c echo.Context, name string) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func (s *server) CheckVersion(c echo.Context, name string) error {
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Checking update availability for skill: " + name),
+	})
+
+	// Look up the installed skill entry
+	entry, err := skills.GetEntry(name, s.cfg.System.Skills.Path)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	hasUpdate, newVersion, err := skills.HasUpdate(*entry)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	result := map[string]interface{}{
+		"name":          entry.Name,
+		"installed_version": entry.Version,
+		"has_update":    hasUpdate,
+		"latest_version": newVersion,
+	}
+
+	return c.JSON(http.StatusOK, result)
 }
 
 // AddDiscoveryPaths adds new paths to the skill discovery configuration.

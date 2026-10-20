@@ -512,6 +512,27 @@ paths:
         "204":
           description: Skill removed
 
+  /api/skills/{name}/check-version:
+    get:
+      tags: [skill]
+      summary: Check if a skill has an update available from its source URL
+      operationId: checkSkillVersion
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Update availability check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillVersionCheck"
+        "404":
+          description: Skill not found
+
   /api/tasks/scheduled:
     get:
       tags: [scheduled]
@@ -965,6 +986,22 @@ components:
         content:
           type: string
           description: File contents as a string (UTF-8)
+
+    SkillVersionCheck:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Skill name
+        installed_version:
+          type: string
+          description: Currently installed version (tag/branch/commit SHA)
+        has_update:
+          type: boolean
+          description: Whether a newer version is available on the source URL
+        latest_version:
+          type: string
+          description: Latest available version from remote source
 
     ScheduledTaskRequest:
       type: object

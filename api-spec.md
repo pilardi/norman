@@ -235,6 +235,18 @@ Client sends file contents (not paths). Server writes them to `~/.norman/skills/
 
 > Flow: `git clone <repo> → git checkout <version> → graphify install --platform agents → register in discovery`. WebSocket progress events broadcasted at each step.
 
+**Check Version (P2):**
+```json
+{
+  "name": "my-custom-skill",
+  "installed_version": "v1.0.0",
+  "has_update": true,
+  "latest_version": "v1.2.0"
+}
+```
+
+> Queries the source URL's remote git tags/commits and compares against the installed version. Returns `has_update: false` if already on latest. WebSocket progress event broadcasted during check.
+
 ### 2.5 Scheduled Tasks
 
 | Method | Path | Description |

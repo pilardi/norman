@@ -203,6 +203,79 @@ func InstallDependencies(entry SkillEntry, session *env.Session) error {
 	return nil
 }
 
+// CheckRemoteVersion fetches the latest available version (tag or HEAD commit SHA)
+// from the remote git repository. Returns the version string or an error.
+func CheckRemoteVersion(repo string) (string, error) {
+	// Try to get the most recent tag (sorted by version)
+	tagCmd := exec.Command("git", "ls-remote", "--tags", "--sort=-v:refname", repo, "refs/tags/*")
+	out, err := tagCmd.CombinedOutput()
+	if err != nil {
+		// Fall back to HEAD commit SHA
+		headCmd := exec.Command("git", "ls-remote", "--heads", repo, "HEAD")
+		headOut, headErr := headCmd.CombinedOutput()
+		if headErr != nil {
+			return "", fmt.Errorf("failed to fetch remote version: %w (tags: %s, head: %s)", headErr, string(out), string(headOut))
+		}
+
+		lines := strings.Split(strings.TrimSpace(string(headOut)), "\n")
+		if len(lines) > 0 && lines[0] != "" {
+			parts := strings.Fields(lines[0])
+			if len(parts) >= 1 {
+				return parts[0], nil
+			}
+		}
+		return "", fmt.Errorf("no HEAD commit found for %s", repo)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) > 0 && lines[0] != "" {
+		// Format: <sha>\trefs/tags/<tag>
+		fields := strings.Fields(lines[0])
+		if len(fields) >= 2 {
+			tagRef := fields[1]
+			// Strip "refs/tags/" prefix
+			tagName := strings.TrimPrefix(tagRef, "refs/tags/")
+			return tagName, nil
+		}
+	}
+
+	return "", fmt.Errorf("no tags found for %s", repo)
+}
+
+// HasUpdate checks whether a newer version of the skill exists on the remote source.
+// Returns (hasUpdate bool, newVersion string, error).
+func HasUpdate(entry SkillEntry) (bool, string, error) {
+	if entry.SourceURL == "" {
+		return false, "", nil // no provenance tracked, cannot compare
+	}
+
+	remoteVer, err := CheckRemoteVersion(entry.SourceURL)
+	if err != nil {
+		return false, "", fmt.Errorf("check remote version for '%s': %w", entry.Name, err)
+	}
+
+	if remoteVer == "" {
+		return false, "", nil // no tags available
+	}
+
+	// Simple string comparison: if remote version differs from installed version, update is available
+	if remoteVer != entry.Version {
+		return true, remoteVer, nil
+	}
+
+	return false, "", nil
+}
+
+// GetEntry looks up a skill entry by name from the base directory.
+func GetEntry(name string, destBaseDir string) (*SkillEntry, error) {
+	skillPath := filepath.Join(destBaseDir, name)
+	entry, err := readSkillMetadata(skillPath)
+	if err != nil {
+		return nil, fmt.Errorf("skill '%s' not found at %s: %w", name, skillPath, err)
+	}
+	return &entry, nil
+}
+
 // readSkillMetadata reads and parses a SKILL.md file, returning its metadata.
 func readSkillMetadata(dir string) (SkillEntry, error) {
 	skillFile := filepath.Join(dir, "SKILL.md")

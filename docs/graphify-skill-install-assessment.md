@@ -206,6 +206,8 @@ All 6 implementation steps are complete. The skills system now supports:
 | `pkg/config/config.go` | Added `Path string` field to `SkillsConfig` (default: `~/.norman/skills/`) |
 | `pkg/skills/discover.go` (2nd commit) | Added `SourceURL`, `Version` fields; `Update()`, `Uninstall()` methods; frontmatter parsing for provenance |
 | `pkg/skills/activate.go` | Integrated `InstallDependencies()` into `Activate()` — non-fatal, logs warning on failure |
+| `pkg/skills/discover.go` (3rd commit) | Added `CheckRemoteVersion()`, `HasUpdate()`, `GetEntry()` for version comparison logic (P2) |
+| `api-spec.yaml` + `api-spec.md` | Added `/api/skills/{name}/check-version` GET endpoint with `SkillVersionCheck` response schema |
 
 ### API Contract Summary
 | Endpoint | Method | Purpose |
@@ -213,6 +215,7 @@ All 6 implementation steps are complete. The skills system now supports:
 | `/api/skills/upload` | POST | Thin-client file upload path |
 | `/api/skills/install` | POST | Git-clone power-user path |
 | `/api/skills/{name}` | DELETE | Remove a skill (route registered) |
+| `/api/skills/{name}/check-version` | GET | Check if update is available from source URL (P2) |
 
 ### Library API (`pkg/skills/discover.go`)
 | Method | Signature | Purpose |
@@ -221,6 +224,9 @@ All 6 implementation steps are complete. The skills system now supports:
 | `Update` | `(repo, version, destBaseDir string) (*SkillEntry, error)` | Re-install from same source |
 | `Uninstall` | `(name, destBaseDir string) error` | Remove skill directory |
 | `InstallDependencies` | `(entry SkillEntry) error` | pip install before activation (non-fatal) |
+| `CheckRemoteVersion(repo string) (string, error)` | Fetch latest tag/commit SHA from remote git repo |
+| `HasUpdate(entry SkillEntry) (bool, string, error)` | Compare installed vs remote version |
+| `GetEntry(name string, destBaseDir string) (*SkillEntry, error)` | Lookup skill metadata by name |
 
 ---
 
@@ -229,9 +235,7 @@ All 6 implementation steps are complete. The skills system now supports:
 | # | Item | Description |
 |---|------|-------------|
 | P1 | Wire `Update()` and `Uninstall()` routes in main.go | Handlers generated; need server-side implementation with WebSocket broadcast |
-| P2 | Version comparison logic | Detect if a newer tag/commit exists on the source URL before activating an update |
 | P3 | OpenShell sandbox-based dependency install | Currently uses local `pip install`; could be enhanced to run inside workspace env |
-| P4 | CLI companion command `norman skills list` | Display installed skills with provenance (source_url, version) |
 
 ---
 
