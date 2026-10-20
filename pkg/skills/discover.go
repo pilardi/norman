@@ -25,6 +25,12 @@ type SkillEntry struct {
 
 	// Dependencies lists pip packages to install before activation (for Python-based skills).
 	Dependencies []string `json:"dependencies,omitempty"`
+
+	// SourceURL tracks the git repository URL this skill was installed from.
+	SourceURL string `json:"source_url,omitempty"`
+
+	// Version tracks the git tag/branch/commit SHA this skill is pinned to.
+	Version string `json:"version,omitempty"`
 }
 
 // DiscoverResult holds the result of a discovery scan.
@@ -105,6 +111,45 @@ func Install(repo, version, destBaseDir string) (*SkillEntry, error) {
 	return &entry, nil
 }
 
+// Update clones the git repository into the skills directory and validates SKILL.md.
+// Similar to Install but designed for re-installation from the same source.
+func Update(repo, version, destBaseDir string) (*SkillEntry, error) {
+	// Determine destination directory name from repo basename
+	destDir := filepath.Join(destBaseDir, filepath.Base(repo))
+
+	// Clone (or re-clone) the repository
+	cmd := exec.Command("git", "clone", repo, destDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("git clone failed: %w (output: %s)", err, string(out))
+	}
+
+	// Checkout specific version/tag/branch if provided
+	if version != "" {
+		cmd = exec.Command("git", "-C", destDir, "checkout", version)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("git checkout failed: %w (output: %s)", err, string(out))
+		}
+	}
+
+	// Validate SKILL.md exists and parse metadata
+	entry, err := readSkillMetadata(destDir)
+	if err != nil {
+		return nil, fmt.Errorf("invalid skill definition at %s: %w", destDir, err)
+	}
+
+	return &entry, nil
+}
+
+// Uninstall removes a skill directory from the skills base path.
+func Uninstall(name string, destBaseDir string) error {
+	destDir := filepath.Join(destBaseDir, name)
+	if _, err := os.Stat(destDir); os.IsNotExist(err) {
+		return fmt.Errorf("skill '%s' not found at %s", name, destDir)
+	}
+
+	return os.RemoveAll(destDir)
+}
+
 // readSkillMetadata reads and parses a SKILL.md file, returning its metadata.
 func readSkillMetadata(dir string) (SkillEntry, error) {
 	skillFile := filepath.Join(dir, "SKILL.md")
@@ -138,6 +183,10 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 		// MCP fields (optional)
 		MCPEndpoint    string   `yaml:"mcp_endpoint"`
 		MCPCapabilities []string `yaml:"mcp_capabilities"`
+
+		// Install provenance fields (optional)
+		SourceURL string `yaml:"source_url"`
+		Version   string `yaml:"version"`
 	}
 
 	if err := yaml.Unmarshal([]byte(fmContent), &meta); err != nil {
@@ -165,6 +214,14 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 	if meta.MCPEndpoint != "" {
 		entry.MCPEndpoint = meta.MCPEndpoint
 		entry.MCPCapabilities = meta.MCPCapabilities
+	}
+
+	// Set provenance fields if present in frontmatter
+	if meta.SourceURL != "" {
+		entry.SourceURL = meta.SourceURL
+	}
+	if meta.Version != "" {
+		entry.Version = meta.Version
 	}
 
 	return entry, nil
