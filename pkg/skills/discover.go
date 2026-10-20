@@ -3,6 +3,7 @@ package skills
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -150,28 +151,42 @@ func Uninstall(name string, destBaseDir string) error {
 	return os.RemoveAll(destDir)
 }
 
-// InstallDependencies writes a temporary requirements.txt and runs pip install
-// for the skill's declared dependencies. Non-fatal — logs a warning on failure
-// but does not block skill activation. Returns any error encountered.
+// InstallDependencies installs the skill's declared Python dependencies inside
+// a per-skill virtualenv (.venv), isolating them from the system Python.
+// Non-fatal — logs a warning on failure but does not block skill activation.
+// Returns any error encountered.
 func InstallDependencies(entry SkillEntry) error {
 	if len(entry.Dependencies) == 0 {
 		return nil // nothing to install
 	}
 
-	// Write temporary requirements.txt in the skill's directory
-	reqFile := filepath.Join(entry.Path, ".requirements.txt")
+	skillDir := entry.Path
+
+	// Write .requirements.txt in the skill's directory
+	reqFile := filepath.Join(skillDir, ".requirements.txt")
 	reqContent := strings.Join(entry.Dependencies, "\n") + "\n"
 	if err := os.WriteFile(reqFile, []byte(reqContent), 0644); err != nil {
 		return fmt.Errorf("write requirements.txt: %w", err)
 	}
 
-	// Run pip install inside the skill directory
-	cmd := exec.Command("pip", "install", "-r", reqFile)
-	cmd.Dir = entry.Path
+	// Create or reuse a per-skill virtualenv for isolation
+	venvDir := filepath.Join(skillDir, ".venv")
+	if _, err := os.Stat(venvDir); os.IsNotExist(err) {
+		cmd := exec.Command("python3", "-m", "venv", venvDir)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("create venv for %s: %w (output: %s)", entry.Name, err, string(out))
+		}
+	}
+
+	// Run pip install inside the skill's venv (isolated from system)
+	pipPath := filepath.Join(venvDir, "bin", "pip")
+	cmd := exec.Command(pipPath, "install", "-r", reqFile)
+	cmd.Dir = skillDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("pip install failed for %s: %w (output: %s)", entry.Name, err, string(out))
 	}
 
+	log.Printf("[skills] installed dependencies for '%s' in %s/.venv", entry.Name, skillDir)
 	return nil
 }
 
