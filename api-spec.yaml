@@ -447,10 +447,60 @@ paths:
                     items:
                       type: string
 
+  /api/skills/upload:
+    post:
+      tags: [skill]
+      summary: Upload skill files to the server's skills directory
+      operationId: uploadSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillUploadRequest"
+      responses:
+        "201":
+          description: Skill files uploaded and registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installed:
+                    type: boolean
+                  path:
+                    type: string
+                    description: Server-side path where skill was written
+
+  /api/skills/install:
+    post:
+      tags: [skill]
+      summary: Install a skill from a git repository via graphify install --platform agents
+      operationId: installSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillInstallRequest"
+      responses:
+        "201":
+          description: Skill installed from git repo and registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installed:
+                    type: boolean
+                  path:
+                    type: string
+                    description: Server-side path where skill was installed
+
   /api/skills/{name}:
     delete:
       tags: [skill]
-      summary: Remove a skill (handler exists; route not yet wired)
+      summary: Remove a skill
       operationId: removeSkill
       parameters:
         - name: name
@@ -461,6 +511,51 @@ paths:
       responses:
         "204":
           description: Skill removed
+
+    put:
+      tags: [skill]
+      summary: Update a skill from its source repository
+      operationId: updateSkill
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillUpdateRequest"
+      responses:
+        "200":
+          description: Skill updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillEntry"
+
+  /api/skills/{name}/check-version:
+    get:
+      tags: [skill]
+      summary: Check if a skill has an update available from its source URL
+      operationId: checkSkillVersion
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Update availability check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillVersionCheck"
+        "404":
+          description: Skill not found
 
   /api/tasks/scheduled:
     get:
@@ -881,11 +976,67 @@ components:
 
     SkillInstallRequest:
       type: object
-      required: [name]
+      required: [repo]
       properties:
         name:
           type: string
-          description: Skill name to install from discovery paths
+          description: Display name for the skill in the registry (defaults to repo basename if omitted)
+        repo:
+          type: string
+          description: Git repository URL to clone (e.g., "https://github.com/user/skill-repo")
+        version:
+          type: string
+          description: Git tag, branch, or commit SHA to check out (defaults to default branch if omitted)
+
+    SkillUpdateRequest:
+      type: object
+      required: [repo]
+      properties:
+        repo:
+          type: string
+          description: Git repository URL to clone for update (e.g., "https://github.com/user/skill-repo")
+        version:
+          type: string
+          description: Git tag, branch, or commit SHA to check out (defaults to default branch if omitted)
+
+    SkillUploadRequest:
+      type: object
+      required: [name, files]
+      properties:
+        name:
+          type: string
+          description: Skill name for registry (used as directory name)
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillFile"
+
+    SkillFile:
+      type: object
+      required: [name, content]
+      properties:
+        name:
+          type: string
+          description: Relative file path within the skill directory (e.g., "SKILL.md", "references/query.md")
+        content:
+          type: string
+          description: File contents as a string (UTF-8)
+
+    SkillVersionCheck:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Skill name
+        installed_version:
+          type: string
+          description: Currently installed version (tag/branch/commit SHA)
+        has_update:
+          type: boolean
+          description: Whether a newer version is available on the source URL
+        latest_version:
+          type: string
+          description: Latest available version from remote source
 
     ScheduledTaskRequest:
       type: object

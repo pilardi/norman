@@ -503,10 +503,25 @@ type Skill struct {
 	Version     *string      `json:"version,omitempty"`
 }
 
+// SkillFile defines model for SkillFile.
+type SkillFile struct {
+	// Content File contents as a string (UTF-8)
+	Content string `json:"content"`
+
+	// Name Relative file path within the skill directory (e.g., "SKILL.md", "references/query.md")
+	Name string `json:"name"`
+}
+
 // SkillInstallRequest defines model for SkillInstallRequest.
 type SkillInstallRequest struct {
-	// Name Skill name to install from discovery paths
-	Name string `json:"name"`
+	// Name Display name for the skill in the registry (defaults to repo basename if omitted)
+	Name *string `json:"name,omitempty"`
+
+	// Repo Git repository URL to clone (e.g., "https://github.com/user/skill-repo")
+	Repo string `json:"repo"`
+
+	// Version Git tag, branch, or commit SHA to check out (defaults to default branch if omitted)
+	Version *string `json:"version,omitempty"`
 }
 
 // SkillTool defines model for SkillTool.
@@ -522,6 +537,14 @@ type SkillTool struct {
 
 // SkillToolType defines model for SkillTool.Type.
 type SkillToolType string
+
+// SkillUploadRequest defines model for SkillUploadRequest.
+type SkillUploadRequest struct {
+	Files []SkillFile `json:"files"`
+
+	// Name Skill name for registry (used as directory name)
+	Name string `json:"name"`
+}
 
 // SkillsConfig defines model for SkillsConfig.
 type SkillsConfig struct {
@@ -736,8 +759,14 @@ type ArchiveSessionJSONRequestBody = ArchiveSessionRequest
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
 
+// InstallSkillJSONRequestBody defines body for InstallSkill for application/json ContentType.
+type InstallSkillJSONRequestBody = SkillInstallRequest
+
 // AddDiscoveryPathsJSONRequestBody defines body for AddDiscoveryPaths for application/json ContentType.
 type AddDiscoveryPathsJSONRequestBody = SkillInstallRequest
+
+// UploadSkillJSONRequestBody defines body for UploadSkill for application/json ContentType.
+type UploadSkillJSONRequestBody = SkillUploadRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = TaskCreateRequest

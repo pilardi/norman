@@ -200,6 +200,20 @@ type ClientInterface interface {
 	// Corresponds with GET /api/skills (the `ListSkills` operationId).
 	ListSkills(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// InstallSkillWithBody Install a skill from a git repository via graphify install --platform agents
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+	InstallSkillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// InstallSkill Install a skill from a git repository via graphify install --platform agents
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+	InstallSkill(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AddDiscoveryPathsWithBody Add discovery paths for skill scanning (replaces legacy /install)
 	//
 	// Takes any type of body and a specified content type.
@@ -213,6 +227,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
 	AddDiscoveryPaths(ctx context.Context, body AddDiscoveryPathsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadSkillWithBody Upload skill files to the server's skills directory
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+	UploadSkillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadSkill Upload skill files to the server's skills directory
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+	UploadSkill(ctx context.Context, body UploadSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RemoveSkill Remove a skill (handler exists; route not yet wired)
 	//
@@ -611,6 +639,40 @@ func (c *Client) ListSkills(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+// InstallSkillWithBody Install a skill from a git repository via graphify install --platform agents
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+func (c *Client) InstallSkillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInstallSkillRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// InstallSkill Install a skill from a git repository via graphify install --platform agents
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+func (c *Client) InstallSkill(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewInstallSkillRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // AddDiscoveryPathsWithBody Add discovery paths for skill scanning (replaces legacy /install)
 //
 // Takes any type of body and a specified content type.
@@ -635,6 +697,40 @@ func (c *Client) AddDiscoveryPathsWithBody(ctx context.Context, contentType stri
 // Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
 func (c *Client) AddDiscoveryPaths(ctx context.Context, body AddDiscoveryPathsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAddDiscoveryPathsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UploadSkillWithBody Upload skill files to the server's skills directory
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+func (c *Client) UploadSkillWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadSkillRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UploadSkill Upload skill files to the server's skills directory
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+func (c *Client) UploadSkill(ctx context.Context, body UploadSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadSkillRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1436,6 +1532,46 @@ func NewListSkillsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewInstallSkillRequest calls the generic InstallSkill builder with application/json body
+func NewInstallSkillRequest(server string, body InstallSkillJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewInstallSkillRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewInstallSkillRequestWithBody constructs an http.Request for the InstallSkill method, with any body, and a specified content type
+func NewInstallSkillRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/skills/install")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewAddDiscoveryPathsRequest calls the generic AddDiscoveryPaths builder with application/json body
 func NewAddDiscoveryPathsRequest(server string, body AddDiscoveryPathsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1457,6 +1593,46 @@ func NewAddDiscoveryPathsRequestWithBody(server string, contentType string, body
 	}
 
 	operationPath := fmt.Sprintf("/api/skills/paths")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUploadSkillRequest calls the generic UploadSkill builder with application/json body
+func NewUploadSkillRequest(server string, body UploadSkillJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUploadSkillRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUploadSkillRequestWithBody constructs an http.Request for the UploadSkill method, with any body, and a specified content type
+func NewUploadSkillRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/skills/upload")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -2179,6 +2355,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/skills (the `ListSkills` operationId).
 	ListSkillsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSkillsResponse, error)
 
+	// InstallSkillWithBodyWithResponse Install a skill from a git repository via graphify install --platform agents
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+	InstallSkillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error)
+
+	// InstallSkillWithResponse Install a skill from a git repository via graphify install --platform agents
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+	InstallSkillWithResponse(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error)
+
 	// AddDiscoveryPathsWithBodyWithResponse Add discovery paths for skill scanning (replaces legacy /install)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -2192,6 +2382,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/skills/paths (the `AddDiscoveryPaths` operationId).
 	AddDiscoveryPathsWithResponse(ctx context.Context, body AddDiscoveryPathsJSONRequestBody, reqEditors ...RequestEditorFn) (*AddDiscoveryPathsResponse, error)
+
+	// UploadSkillWithBodyWithResponse Upload skill files to the server's skills directory
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+	UploadSkillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadSkillResponse, error)
+
+	// UploadSkillWithResponse Upload skill files to the server's skills directory
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+	UploadSkillWithResponse(ctx context.Context, body UploadSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*UploadSkillResponse, error)
 
 	// RemoveSkillWithResponse Remove a skill (handler exists; route not yet wired)
 	//
@@ -2833,6 +3037,57 @@ func (r ListSkillsResponse) ContentType() string {
 	return ""
 }
 
+type InstallSkillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *struct {
+		Installed *bool `json:"installed,omitempty"`
+
+		// Path Server-side path where skill was installed
+		Path *string `json:"path,omitempty"`
+	}
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r InstallSkillResponse) GetJSON201() *struct {
+	Installed *bool `json:"installed,omitempty"`
+
+	// Path Server-side path where skill was installed
+	Path *string `json:"path,omitempty"`
+} {
+	return r.JSON201
+}
+
+// GetBody returns the raw response body bytes
+func (r InstallSkillResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r InstallSkillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r InstallSkillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r InstallSkillResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type AddDiscoveryPathsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2874,6 +3129,57 @@ func (r AddDiscoveryPathsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AddDiscoveryPathsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UploadSkillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *struct {
+		Installed *bool `json:"installed,omitempty"`
+
+		// Path Server-side path where skill was written
+		Path *string `json:"path,omitempty"`
+	}
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r UploadSkillResponse) GetJSON201() *struct {
+	Installed *bool `json:"installed,omitempty"`
+
+	// Path Server-side path where skill was written
+	Path *string `json:"path,omitempty"`
+} {
+	return r.JSON201
+}
+
+// GetBody returns the raw response body bytes
+func (r UploadSkillResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UploadSkillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UploadSkillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UploadSkillResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3673,6 +3979,32 @@ func (c *ClientWithResponses) ListSkillsWithResponse(ctx context.Context, reqEdi
 	return ParseListSkillsResponse(rsp)
 }
 
+// InstallSkillWithBodyWithResponse Install a skill from a git repository via graphify install --platform agents
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+func (c *ClientWithResponses) InstallSkillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error) {
+	rsp, err := c.InstallSkillWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInstallSkillResponse(rsp)
+}
+
+// InstallSkillWithResponse Install a skill from a git repository via graphify install --platform agents
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/skills/install (the `InstallSkill` operationId).
+func (c *ClientWithResponses) InstallSkillWithResponse(ctx context.Context, body InstallSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*InstallSkillResponse, error) {
+	rsp, err := c.InstallSkill(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseInstallSkillResponse(rsp)
+}
+
 // AddDiscoveryPathsWithBodyWithResponse Add discovery paths for skill scanning (replaces legacy /install)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -3697,6 +4029,32 @@ func (c *ClientWithResponses) AddDiscoveryPathsWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseAddDiscoveryPathsResponse(rsp)
+}
+
+// UploadSkillWithBodyWithResponse Upload skill files to the server's skills directory
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+func (c *ClientWithResponses) UploadSkillWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadSkillResponse, error) {
+	rsp, err := c.UploadSkillWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadSkillResponse(rsp)
+}
+
+// UploadSkillWithResponse Upload skill files to the server's skills directory
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
+func (c *ClientWithResponses) UploadSkillWithResponse(ctx context.Context, body UploadSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*UploadSkillResponse, error) {
+	rsp, err := c.UploadSkill(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadSkillResponse(rsp)
 }
 
 // RemoveSkillWithResponse Remove a skill (handler exists; route not yet wired)
@@ -4244,6 +4602,37 @@ func ParseListSkillsResponse(rsp *http.Response) (*ListSkillsResponse, error) {
 	return response, nil
 }
 
+// ParseInstallSkillResponse parses an HTTP response from a InstallSkillWithResponse call
+func ParseInstallSkillResponse(rsp *http.Response) (*InstallSkillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &InstallSkillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			Installed *bool `json:"installed,omitempty"`
+
+			// Path Server-side path where skill was installed
+			Path *string `json:"path,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseAddDiscoveryPathsResponse parses an HTTP response from a AddDiscoveryPathsWithResponse call
 func ParseAddDiscoveryPathsResponse(rsp *http.Response) (*AddDiscoveryPathsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4262,6 +4651,37 @@ func ParseAddDiscoveryPathsResponse(rsp *http.Response) (*AddDiscoveryPathsRespo
 		var dest struct {
 			Added *int      `json:"added,omitempty"`
 			Paths *[]string `json:"paths,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUploadSkillResponse parses an HTTP response from a UploadSkillWithResponse call
+func ParseUploadSkillResponse(rsp *http.Response) (*UploadSkillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UploadSkillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			Installed *bool `json:"installed,omitempty"`
+
+			// Path Server-side path where skill was written
+			Path *string `json:"path,omitempty"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err

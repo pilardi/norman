@@ -53,9 +53,15 @@ type ServerInterface interface {
 	// ListSkills List discovered skills (metadata only)
 	// (GET /api/skills)
 	ListSkills(ctx echo.Context) error
+	// InstallSkill Install a skill from a git repository via graphify install --platform agents
+	// (POST /api/skills/install)
+	InstallSkill(ctx echo.Context) error
 	// AddDiscoveryPaths Add discovery paths for skill scanning (replaces legacy /install)
 	// (POST /api/skills/paths)
 	AddDiscoveryPaths(ctx echo.Context) error
+	// UploadSkill Upload skill files to the server's skills directory
+	// (POST /api/skills/upload)
+	UploadSkill(ctx echo.Context) error
 	// RemoveSkill Remove a skill (handler exists; route not yet wired)
 	// (DELETE /api/skills/{name})
 	RemoveSkill(ctx echo.Context, name string) error
@@ -275,12 +281,30 @@ func (w *ServerInterfaceWrapper) ListSkills(ctx echo.Context) error {
 	return err
 }
 
+// InstallSkill converts echo context to params.
+func (w *ServerInterfaceWrapper) InstallSkill(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.InstallSkill(ctx)
+	return err
+}
+
 // AddDiscoveryPaths converts echo context to params.
 func (w *ServerInterfaceWrapper) AddDiscoveryPaths(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.AddDiscoveryPaths(ctx)
+	return err
+}
+
+// UploadSkill converts echo context to params.
+func (w *ServerInterfaceWrapper) UploadSkill(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UploadSkill(ctx)
 	return err
 }
 
@@ -545,6 +569,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/api/tasks/:id/log", wrapper.TailTaskLog, options.OperationMiddlewares["tailTaskLog"]...)
 	router.GET(options.BaseURL+"/api/skills", wrapper.ListSkills, options.OperationMiddlewares["listSkills"]...)
 	router.POST(options.BaseURL+"/api/skills/paths", wrapper.AddDiscoveryPaths, options.OperationMiddlewares["addDiscoveryPaths"]...)
+	router.POST(options.BaseURL+"/api/skills/upload", wrapper.UploadSkill, options.OperationMiddlewares["uploadSkill"]...)
+	router.POST(options.BaseURL+"/api/skills/install", wrapper.InstallSkill, options.OperationMiddlewares["installSkill"]...)
 	router.DELETE(options.BaseURL+"/api/skills/:name", wrapper.RemoveSkill, options.OperationMiddlewares["removeSkill"]...)
 	router.GET(options.BaseURL+"/api/tasks/scheduled", wrapper.ListScheduledTasks, options.OperationMiddlewares["listScheduledTasks"]...)
 	router.POST(options.BaseURL+"/api/tasks/:id/complete", wrapper.ReportTaskComplete, options.OperationMiddlewares["reportTaskComplete"]...)
