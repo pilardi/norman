@@ -2,6 +2,7 @@
 package skills
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/norman/norman/pkg/env"
 	"gopkg.in/yaml.v3"
 )
 
@@ -151,11 +153,11 @@ func Uninstall(name string, destBaseDir string) error {
 	return os.RemoveAll(destDir)
 }
 
-// InstallDependencies installs the skill's declared Python dependencies inside
-// a per-skill virtualenv (.venv), isolating them from the system Python.
+// InstallDependencies installs the skill's declared Python dependencies.
+// If session is non-nil, deps are installed inside the OpenShell sandbox
+// (preferred for P3 — proper isolation). Otherwise falls back to local venv.
 // Non-fatal — logs a warning on failure but does not block skill activation.
-// Returns any error encountered.
-func InstallDependencies(entry SkillEntry) error {
+func InstallDependencies(entry SkillEntry, session *env.Session) error {
 	if len(entry.Dependencies) == 0 {
 		return nil // nothing to install
 	}
@@ -169,7 +171,19 @@ func InstallDependencies(entry SkillEntry) error {
 		return fmt.Errorf("write requirements.txt: %w", err)
 	}
 
-	// Create or reuse a per-skill virtualenv for isolation
+	// P3: If a workspace session is provided, install inside that sandbox
+	if session != nil {
+		ctx := context.Background()
+		cmdStr := "pip install -r .requirements.txt"
+		output, err := session.Exec(ctx, []string{"bash", "-c", cmdStr})
+		if err != nil {
+			return fmt.Errorf("pip install in sandbox '%s': %w (output: %s)", session.SandboxName(), err, output)
+		}
+		log.Printf("[skills] installed dependencies for '%s' in sandbox '%s'", entry.Name, session.SandboxName())
+		return nil
+	}
+
+	// Fallback: local venv approach
 	venvDir := filepath.Join(skillDir, ".venv")
 	if _, err := os.Stat(venvDir); os.IsNotExist(err) {
 		cmd := exec.Command("python3", "-m", "venv", venvDir)
@@ -178,7 +192,6 @@ func InstallDependencies(entry SkillEntry) error {
 		}
 	}
 
-	// Run pip install inside the skill's venv (isolated from system)
 	pipPath := filepath.Join(venvDir, "bin", "pip")
 	cmd := exec.Command(pipPath, "install", "-r", reqFile)
 	cmd.Dir = skillDir

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	"github.com/norman/norman/pkg/env"
 )
 
 // Activator manages progressive activation of skill tools into agent context.
@@ -26,8 +28,9 @@ func NewActivator(registry map[string]SkillEntry, maxActive int) *Activator {
 }
 
 // Activate activates a skill's tools into the current context.
+// If session is non-nil, dependencies are installed inside that OpenShell sandbox.
 // Returns the injected tool definitions as a string (for prompt injection).
-func (a *Activator) Activate(name string) (string, error) {
+func (a *Activator) Activate(name string, session *env.Session) (string, error) {
 	entry, ok := a.registry[name]
 	if !ok {
 		return "", fmt.Errorf("skill '%s' not found in registry", name)
@@ -35,7 +38,7 @@ func (a *Activator) Activate(name string) (string, error) {
 
 	// Install dependencies before activation (non-fatal)
 	if len(entry.Dependencies) > 0 {
-		if err := InstallDependencies(entry); err != nil {
+		if err := InstallDependencies(entry, session); err != nil {
 			// Log warning but don't block activation
 			log.Printf("[skills] dependency install for '%s': %v", name, err)
 		}

@@ -52,6 +52,7 @@ type Loop struct {
 	maxRetries  int
 	budget      *budget.SessionState // token budget tracker (nil if disabled)
 	workspaceDef *env.WorkspaceDefinition // workspace identity for system prompt injection
+	openShellClient *env.Client        // concrete client for session creation (P3 sandbox dep install)
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -90,6 +91,40 @@ func (l *Loop) GetWorkspaceDefinition() *env.WorkspaceDefinition {
 	return l.workspaceDef
 }
 
+// ActivateWithSession activates a skill with dependency install inside the given workspace's sandbox.
+// Falls back to local venv if session is nil.
+func (l *Loop) ActivateWithSession(name string, session *env.Session) error {
+	if l.activator != nil {
+		_, err := l.activator.Activate(name, session)
+		return err
+	}
+	return nil
+}
+
+// GetSession returns an OpenShell session for the given workspace ID.
+// Creates a new sandbox if one doesn't already exist for this workspace.
+func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {
+	// Use the concrete client to create sessions
+	client := l.openShellClient
+
+	// Try to get existing sandbox
+	sb, err := client.GetSandbox(context.Background(), "default", workspaceID)
+	if err == nil && sb != nil {
+		log.Printf("[loop] using existing sandbox '%s' for workspace '%s'", sb.Name, workspaceID)
+		return env.NewSession(client, "default", sb.Name), nil
+	}
+
+	// Create a new sandbox
+	sandboxName := fmt.Sprintf("ws-%s", workspaceID)
+	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName)
+	if err != nil {
+		return nil, fmt.Errorf("create sandbox for workspace %s: %w", workspaceID, err)
+	}
+
+	log.Printf("[loop] created new sandbox '%s' for workspace '%s'", sandboxName, workspaceID)
+	return env.NewSession(client, "default", sandboxName), nil
+}
+
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
 	CreateSandbox(ctx context.Context, workspace, name string) (string, error)
@@ -121,6 +156,13 @@ func New(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources,
 		maxRetries: 3,
 		budget:     nil, // disabled by default; set via SetBudget()
 	}
+}
+
+// NewWithClient is like New but also stores the concrete *env.Client for sandbox-based dep install (P3).
+func NewWithClient(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources, activator *skills.Activator, wsHub WSHubPublisher, client OpenShellClient, concreteClient *env.Client) *Loop {
+	l := New(cfg, store, rawSources, activator, wsHub, client)
+	l.openShellClient = concreteClient
+	return l
 }
 
 // WithNotifier injects a notification notifier into the loop. Returns the modified Loop.
@@ -392,7 +434,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	skillsToActivate := l.resolveSkills(task.Prompt)
 	if l.activator != nil {
 		for _, name := range skillsToActivate {
-			_, err := l.activator.Activate(name)
+			_, err := l.activator.Activate(name, nil) // nil = local venv fallback
 			if err != nil {
 				log.Printf("agent: failed to activate skill %s: %v", name, err)
 			}
@@ -453,6 +495,20 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		task.Error = fmt.Sprintf("sandbox not ready: %v", waitErr)
 		l.pushCompletion(task)
 		return
+	}
+
+	// P3: Re-activate active skills with workspace session for sandbox-based dependency install.
+	if l.activator != nil && len(l.activator.Active()) > 0 {
+		wsSession, err := l.GetSession(task.Workspace)
+		if err != nil {
+			log.Printf("[loop] get session for workspace '%s': %v", task.Workspace, err)
+		} else {
+			for _, name := range l.activator.Active() {
+				if err := l.ActivateWithSession(name, wsSession); err != nil {
+					log.Printf("[loop] activate with session for '%s': %v", name, err)
+				}
+			}
+		}
 	}
 
 	// Final sanity check: re-fetch sandbox state right before execution.

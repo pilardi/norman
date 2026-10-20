@@ -243,8 +243,8 @@ Workspace-level overrides (per-workspace in config.yaml):
 		log.Fatalf("failed to init raw sources store: %v", err)
 	}
 
-	// Create agent loop
-	loop := agent.New(cfg, store, rawSources, activator, wsHub, loopClient)
+	// Create agent loop (with concrete client for P3 sandbox dep install)
+	loop := agent.NewWithClient(cfg, store, rawSources, activator, wsHub, loopClient, openShellClient)
 
 	// Wire LLM client into the agent loop.
 	if llmClient != nil {
