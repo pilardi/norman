@@ -9,7 +9,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build test test-race test-short clean
+.PHONY: help generate build test test-race test-short clean generate-docs
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -24,7 +24,7 @@ help:
 	@echo "  test        - Run all unit tests with coverage report"
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short  - Run short tests only (skip slow/integration)"
-	@echo "  clean       - Remove generated files and binaries in dist/"
+	@echo "  generate-docs - Generate API reference HTML from api-spec.yaml"
 
 generate:
 	@echo "Generating protocol types..."
@@ -60,3 +60,6 @@ test-short:
 
 clean:
 	rm -rf $(DIST)
+
+generate-docs:
+	npx @redocly/cli build-docs api-spec.yaml -o docs/api-reference.html --title "Norman API Reference"
