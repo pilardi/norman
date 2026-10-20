@@ -252,7 +252,7 @@ See **[docs/step14-plan.md](docs/step14-plan.md)** for full architecture, all 9 
 
 | # | Issue | Severity | Effort | Priority |
 |---|-------|----------|--------|----------|
-| 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and api-spec.md | Low | Quick win | High | ✅ DONE |
+| 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and `docs/api-reference.html` | Low | Quick win | High | ✅ DONE |
 | 14b | Session archive format inconsistency: `SaveTask` → `.json`, `ArchiveSession` → `.jsonl` | Medium | Small fix | Medium | ✅ DONE |
 | 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low | ✅ DONE — type suffix appended to slug |
 | 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium | ✅ DONE — WriteSchema/ReadSchema added; GitDiff/GitCommit wired via exec.Command |

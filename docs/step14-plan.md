@@ -6,7 +6,7 @@
 
 ## Problem Statement
 
-A comprehensive review of `requirements.md`, `glossary.md`, `docs/step*.md`, `api-spec.md`, and the current codebase against the implementation revealed multiple issues: stale config paths, session format inconsistency, TitleToSlug collisions, missing schema.md support, plan persistence gaps, Raw Sources layer missing, budget threshold integration incomplete, workspace registry in-memory only, and skill discovery paths hardcoded. All 9 sub-steps (14a–14i) have been implemented and tested.
+A comprehensive review of `requirements.md`, `glossary.md`, `docs/step*.md`, `docs/api-reference.html`, and the current codebase against the implementation revealed multiple issues: stale config paths, session format inconsistency, TitleToSlug collisions, missing schema.md support, plan persistence gaps, Raw Sources layer missing, budget threshold integration incomplete, workspace registry in-memory only, and skill discovery paths hardcoded. All 9 sub-steps (14a–14i) have been implemented and tested.
 
 ---
 
@@ -14,7 +14,7 @@ A comprehensive review of `requirements.md`, `glossary.md`, `docs/step*.md`, `ap
 
 | # | Issue | Severity | Effort | Priority |
 |---|-------|----------|--------|----------|
-| 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and api-spec.md | Low | Quick win | High | ✅ DONE |
+| 14a | Stale config path `~/.config/norman/config.yaml` in glossary.md and `docs/api-reference.html` | Low | Quick win | High | ✅ DONE |
 | 14b | Session archive format inconsistency: `SaveTask` → `.json`, `ArchiveSession` → `.jsonl` | Medium | Small fix | Medium | ✅ DONE |
 | 14c | TitleToSlug collision risk: two entries with same title but different types would collide on disk (e.g., "Docker" as entity vs task) | Low | Design decision | Low | ✅ DONE — type suffix appended to slug |
 | 14d | `schema.md` read/write + git operations not implemented in wiki engine | Medium | Implementation | Medium | ✅ DONE — WriteSchema/ReadSchema added; GitDiff/GitCommit wired via exec.Command |
@@ -29,7 +29,7 @@ A comprehensive review of `requirements.md`, `glossary.md`, `docs/step*.md`, `ap
 ## Sub-steps (detailed implementation notes)
 
 ### 14a ✅ DONE — Update stale docs config path references
-- `api-spec.md` §1: replaced `~/.config/norman/config.yaml` → `~/.norman/config.yaml`
+- `docs/api-reference.html` §1: replaced `~/.config/norman/config.yaml` → `~/.norman/config.yaml`
 - `glossary.md`: no stale references found (already clean)
 
 ### 14b ✅ DONE — Session format alignment
