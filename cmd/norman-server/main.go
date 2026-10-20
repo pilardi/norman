@@ -467,6 +467,11 @@ Workspace-level overrides (per-workspace in config.yaml):
 	e.POST("/api/skills/upload", srv.UploadSkill)
 	e.POST("/api/skills/install", srv.InstallSkill)
 
+	// Remove a skill by name (DELETE /api/skills/:name)
+	e.DELETE("/api/skills/:name", func(c echo.Context) error {
+		return srv.RemoveSkill(c, c.Param("name"))
+	})
+
 	// WebSocket hub for real-time push events
 	e.GET("/ws", func(c echo.Context) error {
 		conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
@@ -843,6 +848,10 @@ func (s *server) RemoveSkill(c echo.Context, name string) error {
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Removing skill: " + name),
 	})
+
+	if err := skills.Uninstall(name, s.cfg.System.Skills.Path); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
 
 	return c.NoContent(http.StatusOK)
 }

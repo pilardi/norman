@@ -183,6 +183,8 @@
 |--------|------|-------------|
 | `GET` | `/api/skills` | List discovered skills (metadata only) |
 | `POST` | `/api/skills/paths` | Add discovery paths for skill scanning |
+| `POST` | `/api/skills/upload` | Upload skill files to the server's skills directory (thin-client model) |
+| `POST` | `/api/skills/install` | Install a skill from a git repository via `graphify install --platform agents` |
 | `DELETE` | `/api/skills/{name}` | Remove a skill |
 
 **Request (Add Discovery Paths):**
@@ -191,6 +193,47 @@
   "name": "monitoring.check-endpoint"
 }
 ```
+
+**Request (Upload Skill — thin-client model):**
+Client sends file contents (not paths). Server writes them to `~/.norman/skills/<name>/`.
+```json
+{
+  "name": "my-custom-skill",
+  "files": [
+    { "name": "SKILL.md", "content": "# My Skill\n..." },
+    { "name": "references/query.md", "content": "..."}
+  ]
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "installed": true,
+  "path": "/home/user/.norman/skills/my-custom-skill"
+}
+```
+
+**Request (Install from Git):**
+```json
+{
+  "name": "my-custom-skill",
+  "repo": "https://github.com/user/skill-repo",
+  "version": "v1.2.0"
+}
+```
+
+> `name` is optional — defaults to repo basename. `version` is optional — defaults to default branch.
+
+**Response (201 Created):**
+```json
+{
+  "installed": true,
+  "path": "/home/user/.norman/skills/my-custom-skill"
+}
+```
+
+> Flow: `git clone <repo> → git checkout <version> → graphify install --platform agents → register in discovery`. WebSocket progress events broadcasted at each step.
 
 ### 2.5 Scheduled Tasks
 
