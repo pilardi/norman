@@ -27,6 +27,7 @@ help:
 	@echo "  generate-docs - Generate API reference HTML from api-spec.yaml"
 
 generate:
+	@mkdir -p pkg/protocol internal/api
 	@echo "Generating protocol types..."
 	$(CODEGEN) -package protocol -generate types api-spec.yaml > pkg/protocol/types.go
 	@echo "Generating client library..."
