@@ -139,7 +139,7 @@ Build a queryable knowledge graph from code, docs, PDFs, images, or videos.
 Use `graphify query "<question>"` before grepping raw files. Use `graphify path A B` for relationships.
 After modifying code, run `graphify update .` to keep the graph current.
 
-## Available Commands
+### Available Commands
 - `graphify install <path>` — build initial graph from a directory
 - `graphify query "<question>"` — BFS/DFS traversal against existing graph
 - `graphify path "A" "B"` — shortest path between two concepts
@@ -424,122 +424,39 @@ SkillFile:
 ## 12. Branch Summary
 
 **Branch:** `feat/skills-install` (branched from main)
-**Commits:** 4 new commits on top of existing history
-**Diff against main:** ~1050 insertions, ~35 deletions across 12 files
+**Commits:** 9 commits on top of existing history
+**Diff against main:** ~1660 insertions, ~18 deletions across 14 files
 
 ### Commit History (on this branch)
 ```
+0f61ec5 feat: P2 — version comparison logic for update detection
+443fa52 feat: P4 — CLI companion command 'norman skills list' with provenance
+8b59772 feat: P3 — OpenShell sandbox-based dependency install
+f28f7b7 feat: isolate skill dependencies in per-skill venv for safety
+4572d56 feat: wire up /api/skills/upload and /api/skills/install routes; update api-spec.md docs
+1deabee docs: update assessment with full status, pending items, and branch summary
 4c9e53c feat(skills): wire dependency install into activation flow
 fab74bd feat(skills): add source_url + version tracking for update/uninstall
 80b182f feat(skills): add git-clone install path + Install() method
-c7553b2 feat: nest workspace commands under 'norman workspaces' (#6)
-a50eaa5 feat: implement workspace definition across all memory layers (#5)
 ```
 
 ### Files Changed (new commits only, excluding prior merges)
 | File | Lines Changed | Purpose |
 |------|---------------|---------|
-| `api-spec.yaml` | +83/-1 | Added `/api/skills/install` endpoint schema |
-| `cmd/norman-server/main.go` | +106/-1 | InstallSkill handler + route wiring |
-| `internal/api/handlers.go` | +26 | Regenerated interface method |
+| `api-spec.yaml` | +120/-1 | Added `/api/skills/install` + `/api/skills/:name/check-version` endpoint schemas |
+| `api-spec.md` | +12/-0 | Documented upload + install + check-version endpoints with examples |
+| `cmd/norman-server/main.go` | +138/-1 | InstallSkill, RemoveSkill, CheckVersion handlers; route wiring; NewWithClient |
+| `internal/api/handlers.go` | +26 | Regenerated interface methods |
 | `pkg/config/config.go` | +2 | SkillsConfig.Path field |
 | `pkg/protocol/types.go` | +33/-1 | SkillInstallRequest struct |
 | `pkg/protocol/client.go` | +420 | Regenerated client library |
-| `pkg/skills/discover.go` | +115 | Install, Update, Uninstall, InstallDependencies methods |
+| `pkg/skills/discover.go` | +188 | Install, Update, Uninstall, InstallDependencies, CheckRemoteVersion, HasUpdate, GetEntry methods |
 | `pkg/skills/activate.go` | +9 | Wire InstallDependencies into Activate() |
+| `pkg/agent/loop.go` | +45/-0 | GetSession, ActivateWithSession for P3 sandbox activation |
+| `cmd/norman/main.go` | +60/-10 | P4: CLI skills list with provenance + remote subcommand |
 | `docs/graphify-skill-install-assessment.md` | +298 | Full assessment document |
 
 ---
 
-*Last updated: 2026-10-19 — All 6 implementation steps complete. Ready for PR review.*
+*Last updated: 2026-10-20 — All implementation steps and P1–P4 complete. Ready for merge.*
 
----
-
-## 8. Client → Server File Transfer (Primary Mechanism)
-
-### The Design Principle: No Local Discovery
-
-All interactions happen on the server host and workspace environment. The client is a thin client (Berd desktop app, web browser) — it never points at local paths. Instead, the client **sends file contents** over HTTP, and the server owns everything.
-
-This eliminates the path-based `AddDiscoveryPaths` approach (which was a design smell for thin clients: a web browser can't reference `/home/pablo/myskills/`).
-
-### The Flow (Upload-Based)
-
-```
-Client (Berd / Web / CLI)                    Server (localhost:8080)
-─────────────────────                        ─────────────────────────
-1. User drags/drops skill folder or runs:    ← local read on client side
-   norman skills install <local_path>
-
-2. Client reads SKILL.md + references/       ← only needed for thin-client
-   (sends file contents, not paths)
-
-3. Sends contents over HTTP                   ← always happens
-   POST /api/skills/upload { name, files[] }
-
-4. Server writes into:                        ← server owns them
-   ~/.norman/skills/graphify-custom/
-   (SKILL.md + references/)
-
-5. Server scans its own filesystem             ← same result for any client
-   → picks up the new skill via Discover()
-
-6. Any client (Berd, web, CLI) sees the same skills  ← no host-path dependency
-```
-
-### API Contract (New Endpoint)
-
-```yaml
-# api-spec.yaml - new endpoint
-POST /api/skills/upload
-request: SkillUploadRequest {
-    name: string          # skill name for registry
-    files: [{name: string, content: string}]  # file contents as base64 or JSON strings
-}
-response: { installed: true, path: "~/.norman/skills/<name>/" }
-
-# For complex skills with many files (optional optimization):
-POST /api/skills/upload-tarball
-request: multipart/form-data   # ← tarball stream
-response: { installed: true }
-```
-
-### Server-Side Write Logic
-
-The `/api/skills/upload` handler writes files into `~/.norman/skills/<name>/`:
-```go
-func (s *server) UploadSkill(c echo.Context) error {
-    var req protocol.SkillUploadRequest
-    if err := c.Bind(&req); err != nil {
-        return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
-    }
-
-    destDir := filepath.Join(s.config.System.Skills.Path, req.Name)
-    os.MkdirAll(destDir, 0755)
-
-    for _, f := range req.Files {
-        dst := filepath.Join(destDir, f.Name)
-        if err := os.WriteFile(dst, f.Content, 0644); err != nil {
-            return c.JSON(http.StatusInternalServerError, map[string]string{
-                "error": fmt.Sprintf("failed to write %s: %v", f.Name, err),
-            })
-        }
-    }
-
-    // Re-scan discovery paths → picks up the new skill
-    s.discoverer.Scan()
-
-    return c.JSON(http.StatusCreated, map[string]string{"status": "installed"})
-}
-```
-
-### Effort Estimate
-
-| Component | Where it lives | Complexity |
-|-----------|---------------|------------|
-| New `/api/skills/upload` endpoint (JSON payload) | `pkg/api/handlers.go` + `api-spec.yaml` | Low — add route, parse body, write files |
-| Multipart tarball upload (optional, for complex skills) | Same handler | Medium — stream extract into target dir |
-| Per-workspace: wire into `session.Exec()` | `pkg/env/session.go` | Low — reuse existing Exec pattern |
-| Client CLI: read + send logic | `berdctl skill install` or `norman cli` | Low — local file read + HTTP POST |
-
-This is the **lowest-effort gap** to close — it's primarily adding a new API route and a file-write helper. No structural changes to `SkillEntry` or discovery are needed beyond what was already planned in Section 6.
