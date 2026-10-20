@@ -508,8 +508,9 @@ func handleSkills(args []string) {
 Usage: norman skills <subcommand> [args...]
 
 Subcommands:
-  list       Show installed skills
-  install <path>  Install a skill from a directory path
+  list       Show installed skills with provenance
+  install <path|repo>  Install a skill from a local path or git repo URL
+  remote <git-url>     Install a skill from a git repository (alias for install)
   remove <name>   Remove an installed skill by name`)
 		return
 	}
@@ -520,10 +521,16 @@ Subcommands:
 		listSkills()
 	case "install":
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: norman skills install <path>\n")
+			fmt.Fprintf(os.Stderr, "Usage: norman skills install <path|repo>\n")
 			os.Exit(1)
 		}
 		installSkill(args[1])
+	case "remote":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: norman skills remote <git-url> [version]\n")
+			os.Exit(1)
+		}
+		installRemote(args[1])
 	case "remove":
 		if len(args) < 2 {
 			fmt.Fprintf(os.Stderr, "Usage: norman skills remove <name>\n")
@@ -536,7 +543,7 @@ Subcommands:
 	}
 }
 
-// listSkills fetches installed skills from the server.
+// listSkills fetches installed skills from the server and displays provenance.
 func listSkills() {
 	body, err := httpGet("/api/skills")
 	if err != nil {
@@ -560,6 +567,8 @@ func listSkills() {
 		name, _ := s["name"].(string)
 		desc, _ := s["description"].(string)
 		path, _ := s["path"].(string)
+		sourceURL, _ := s["source_url"].(string)
+		version, _ := s["version"].(string)
 		tools, _ := s["tools"].([]interface{})
 
 		fmt.Printf("  📦 %s\n", name)
@@ -575,18 +584,35 @@ func listSkills() {
 			}
 			fmt.Printf("     Tools: %s\n", strings.Join(toolNames, ", "))
 		}
-		fmt.Printf("     Path: %s\n", path)
+		fmt.Printf("     Path:    %s\n", path)
+		if sourceURL != "" {
+			fmt.Printf("     Source:  %s\n", sourceURL)
+		}
+		if version != "" {
+			fmt.Printf("     Version: %s\n", version)
+		}
 		fmt.Println()
 	}
 }
 
 // installSkill delegates to the server's /api/skills/install endpoint.
 func installSkill(sourcePath string) {
-	if err := httpPost("/api/skills/install", map[string]string{"name": sourcePath}); err != nil {
+	payload := map[string]string{"repo": sourcePath}
+	if err := httpPost("/api/skills/install", payload); err != nil {
 		fmt.Fprintf(os.Stderr, "Error installing skill: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("Requesting server to install skill from '%s'\n", sourcePath)
+}
+
+// installRemote installs a skill from a git repository URL.
+func installRemote(repoURL string) {
+	payload := map[string]string{"repo": repoURL}
+	if err := httpPost("/api/skills/install", payload); err != nil {
+		fmt.Fprintf(os.Stderr, "Error installing skill: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Requesting server to install skill from repo '%s'\n", repoURL)
 }
 
 // removeSkill delegates to the server's /api/skills/:name endpoint.
