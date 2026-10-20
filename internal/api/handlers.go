@@ -62,9 +62,15 @@ type ServerInterface interface {
 	// UploadSkill Upload skill files to the server's skills directory
 	// (POST /api/skills/upload)
 	UploadSkill(ctx echo.Context) error
-	// RemoveSkill Remove a skill (handler exists; route not yet wired)
+	// RemoveSkill Remove a skill
 	// (DELETE /api/skills/{name})
 	RemoveSkill(ctx echo.Context, name string) error
+	// UpdateSkill Update a skill from its source repository
+	// (PUT /api/skills/{name})
+	UpdateSkill(ctx echo.Context, name string) error
+	// CheckSkillVersion Check if a skill has an update available from its source URL
+	// (GET /api/skills/{name}/check-version)
+	CheckSkillVersion(ctx echo.Context, name string) error
 	// ListTasks List active and scheduled (manual + emergent) tasks
 	// (GET /api/tasks)
 	ListTasks(ctx echo.Context, params protocol.ListTasksParams) error
@@ -324,6 +330,38 @@ func (w *ServerInterfaceWrapper) RemoveSkill(ctx echo.Context) error {
 	return err
 }
 
+// UpdateSkill converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateSkill(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", ctx.Param("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter name: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateSkill(ctx, name)
+	return err
+}
+
+// CheckSkillVersion converts echo context to params.
+func (w *ServerInterfaceWrapper) CheckSkillVersion(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", ctx.Param("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter name: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CheckSkillVersion(ctx, name)
+	return err
+}
+
 // ListTasks converts echo context to params.
 func (w *ServerInterfaceWrapper) ListTasks(ctx echo.Context) error {
 	var err error
@@ -572,6 +610,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/api/skills/upload", wrapper.UploadSkill, options.OperationMiddlewares["uploadSkill"]...)
 	router.POST(options.BaseURL+"/api/skills/install", wrapper.InstallSkill, options.OperationMiddlewares["installSkill"]...)
 	router.DELETE(options.BaseURL+"/api/skills/:name", wrapper.RemoveSkill, options.OperationMiddlewares["removeSkill"]...)
+	router.PUT(options.BaseURL+"/api/skills/:name", wrapper.UpdateSkill, options.OperationMiddlewares["updateSkill"]...)
+	router.GET(options.BaseURL+"/api/skills/:name/check-version", wrapper.CheckSkillVersion, options.OperationMiddlewares["checkSkillVersion"]...)
 	router.GET(options.BaseURL+"/api/tasks/scheduled", wrapper.ListScheduledTasks, options.OperationMiddlewares["listScheduledTasks"]...)
 	router.POST(options.BaseURL+"/api/tasks/:id/complete", wrapper.ReportTaskComplete, options.OperationMiddlewares["reportTaskComplete"]...)
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck, options.OperationMiddlewares["healthCheck"]...)

@@ -479,7 +479,7 @@ Workspace-level overrides (per-workspace in config.yaml):
 
 	// Check if a skill has an update available (GET /api/skills/:name/check-version)
 	e.GET("/api/skills/:name/check-version", func(c echo.Context) error {
-		return srv.CheckVersion(c, c.Param("name"))
+		return srv.CheckSkillVersion(c, c.Param("name"))
 	})
 
 	// WebSocket hub for real-time push events
@@ -903,7 +903,7 @@ func (s *server) UpdateSkill(c echo.Context, name string) error {
 	})
 }
 
-func (s *server) CheckVersion(c echo.Context, name string) error {
+func (s *server) CheckSkillVersion(c echo.Context, name string) error {
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Checking update availability for skill: " + name),

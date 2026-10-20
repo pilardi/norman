@@ -242,10 +242,29 @@ type ClientInterface interface {
 	// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
 	UploadSkill(ctx context.Context, body UploadSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RemoveSkill Remove a skill (handler exists; route not yet wired)
+	// RemoveSkill Remove a skill
 	//
 	// Corresponds with DELETE /api/skills/{name} (the `RemoveSkill` operationId).
 	RemoveSkill(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSkillWithBody Update a skill from its source repository
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+	UpdateSkillWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSkill Update a skill from its source repository
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+	UpdateSkill(ctx context.Context, name string, body UpdateSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckSkillVersion Check if a skill has an update available from its source URL
+	//
+	// Corresponds with GET /api/skills/{name}/check-version (the `CheckSkillVersion` operationId).
+	CheckSkillVersion(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTasks List active and scheduled (manual + emergent) tasks
 	//
@@ -741,11 +760,60 @@ func (c *Client) UploadSkill(ctx context.Context, body UploadSkillJSONRequestBod
 	return c.Client.Do(req)
 }
 
-// RemoveSkill Remove a skill (handler exists; route not yet wired)
+// RemoveSkill Remove a skill
 //
 // Corresponds with DELETE /api/skills/{name} (the `RemoveSkill` operationId).
 func (c *Client) RemoveSkill(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRemoveSkillRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSkillWithBody Update a skill from its source repository
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+func (c *Client) UpdateSkillWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSkillRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSkill Update a skill from its source repository
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+func (c *Client) UpdateSkill(ctx context.Context, name string, body UpdateSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSkillRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CheckSkillVersion Check if a skill has an update available from its source URL
+//
+// Corresponds with GET /api/skills/{name}/check-version (the `CheckSkillVersion` operationId).
+func (c *Client) CheckSkillVersion(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckSkillVersionRequest(c.Server, name)
 	if err != nil {
 		return nil, err
 	}
@@ -1686,6 +1754,87 @@ func NewRemoveSkillRequest(server string, name string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewUpdateSkillRequest calls the generic UpdateSkill builder with application/json body
+func NewUpdateSkillRequest(server string, name string, body UpdateSkillJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSkillRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewUpdateSkillRequestWithBody constructs an http.Request for the UpdateSkill method, with any body, and a specified content type
+func NewUpdateSkillRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/skills/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCheckSkillVersionRequest constructs an http.Request for the CheckSkillVersion method
+func NewCheckSkillVersionRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/skills/%s/check-version", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListTasksRequest constructs an http.Request for the ListTasks method
 func NewListTasksRequest(server string, params *ListTasksParams) (*http.Request, error) {
 	var err error
@@ -2397,12 +2546,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/skills/upload (the `UploadSkill` operationId).
 	UploadSkillWithResponse(ctx context.Context, body UploadSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*UploadSkillResponse, error)
 
-	// RemoveSkillWithResponse Remove a skill (handler exists; route not yet wired)
+	// RemoveSkillWithResponse Remove a skill
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/skills/{name} (the `RemoveSkill` operationId).
 	RemoveSkillWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*RemoveSkillResponse, error)
+
+	// UpdateSkillWithBodyWithResponse Update a skill from its source repository
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+	UpdateSkillWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSkillResponse, error)
+
+	// UpdateSkillWithResponse Update a skill from its source repository
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+	UpdateSkillWithResponse(ctx context.Context, name string, body UpdateSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSkillResponse, error)
+
+	// CheckSkillVersionWithResponse Check if a skill has an update available from its source URL
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/skills/{name}/check-version (the `CheckSkillVersion` operationId).
+	CheckSkillVersionWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*CheckSkillVersionResponse, error)
 
 	// ListTasksWithResponse List active and scheduled (manual + emergent) tasks
 	//
@@ -3214,6 +3384,88 @@ func (r RemoveSkillResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RemoveSkillResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateSkillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SkillEntry
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSkillResponse) GetJSON200() *SkillEntry {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSkillResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSkillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSkillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSkillResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CheckSkillVersionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SkillVersionCheck
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CheckSkillVersionResponse) GetJSON200() *SkillVersionCheck {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r CheckSkillVersionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckSkillVersionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckSkillVersionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckSkillVersionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4057,7 +4309,7 @@ func (c *ClientWithResponses) UploadSkillWithResponse(ctx context.Context, body 
 	return ParseUploadSkillResponse(rsp)
 }
 
-// RemoveSkillWithResponse Remove a skill (handler exists; route not yet wired)
+// RemoveSkillWithResponse Remove a skill
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -4068,6 +4320,45 @@ func (c *ClientWithResponses) RemoveSkillWithResponse(ctx context.Context, name 
 		return nil, err
 	}
 	return ParseRemoveSkillResponse(rsp)
+}
+
+// UpdateSkillWithBodyWithResponse Update a skill from its source repository
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+func (c *ClientWithResponses) UpdateSkillWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSkillResponse, error) {
+	rsp, err := c.UpdateSkillWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSkillResponse(rsp)
+}
+
+// UpdateSkillWithResponse Update a skill from its source repository
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/skills/{name} (the `UpdateSkill` operationId).
+func (c *ClientWithResponses) UpdateSkillWithResponse(ctx context.Context, name string, body UpdateSkillJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSkillResponse, error) {
+	rsp, err := c.UpdateSkill(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSkillResponse(rsp)
+}
+
+// CheckSkillVersionWithResponse Check if a skill has an update available from its source URL
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/skills/{name}/check-version (the `CheckSkillVersion` operationId).
+func (c *ClientWithResponses) CheckSkillVersionWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*CheckSkillVersionResponse, error) {
+	rsp, err := c.CheckSkillVersion(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckSkillVersionResponse(rsp)
 }
 
 // ListTasksWithResponse List active and scheduled (manual + emergent) tasks
@@ -4704,6 +4995,61 @@ func ParseRemoveSkillResponse(rsp *http.Response) (*RemoveSkillResponse, error) 
 	response := &RemoveSkillResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSkillResponse parses an HTTP response from a UpdateSkillWithResponse call
+func ParseUpdateSkillResponse(rsp *http.Response) (*UpdateSkillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSkillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SkillEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckSkillVersionResponse parses an HTTP response from a CheckSkillVersionWithResponse call
+func ParseCheckSkillVersionResponse(rsp *http.Response) (*CheckSkillVersionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckSkillVersionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SkillVersionCheck
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 404:
+		break // No content-type
+
 	}
 
 	return response, nil

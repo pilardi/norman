@@ -138,6 +138,27 @@ func (e SessionTurnRole) Valid() bool {
 	}
 }
 
+// Defines values for SkillEntryActivation.
+const (
+	Auto     SkillEntryActivation = "auto"
+	Manual   SkillEntryActivation = "manual"
+	OnDemand SkillEntryActivation = "on-demand"
+)
+
+// Valid indicates whether the value is a known member of the SkillEntryActivation enum.
+func (e SkillEntryActivation) Valid() bool {
+	switch e {
+	case Auto:
+		return true
+	case Manual:
+		return true
+	case OnDemand:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SkillToolType.
 const (
 	BuiltIn SkillToolType = "built-in"
@@ -503,6 +524,42 @@ type Skill struct {
 	Version     *string      `json:"version,omitempty"`
 }
 
+// SkillEntry defines model for SkillEntry.
+type SkillEntry struct {
+	// Activation Activation mode — manual (user requests), auto (matches task keywords), on-demand (lazy load)
+	Activation *SkillEntryActivation `json:"activation,omitempty"`
+
+	// Dependencies Pip packages to install before activation
+	Dependencies *[]string `json:"dependencies,omitempty"`
+
+	// Description Human-readable skill description
+	Description *string `json:"description,omitempty"`
+
+	// McpCapabilities List of MCP capabilities advertised by the skill's endpoint
+	McpCapabilities *[]string `json:"mcp_capabilities,omitempty"`
+
+	// McpEndpoint Optional MCP server endpoint URI for this skill
+	McpEndpoint *string `json:"mcp_endpoint,omitempty"`
+
+	// Name Unique skill identifier
+	Name *string `json:"name,omitempty"`
+
+	// Path Absolute filesystem path to the skill directory
+	Path *string `json:"path,omitempty"`
+
+	// SourceUrl Git repository URL this skill was installed from
+	SourceUrl *string `json:"source_url,omitempty"`
+
+	// Tools List of tool names provided by this skill
+	Tools *[]string `json:"tools,omitempty"`
+
+	// Version Git tag/branch/commit SHA this skill is pinned to
+	Version *string `json:"version,omitempty"`
+}
+
+// SkillEntryActivation Activation mode — manual (user requests), auto (matches task keywords), on-demand (lazy load)
+type SkillEntryActivation string
+
 // SkillFile defines model for SkillFile.
 type SkillFile struct {
 	// Content File contents as a string (UTF-8)
@@ -538,12 +595,36 @@ type SkillTool struct {
 // SkillToolType defines model for SkillTool.Type.
 type SkillToolType string
 
+// SkillUpdateRequest defines model for SkillUpdateRequest.
+type SkillUpdateRequest struct {
+	// Repo Git repository URL to clone for update (e.g., "https://github.com/user/skill-repo")
+	Repo string `json:"repo"`
+
+	// Version Git tag, branch, or commit SHA to check out (defaults to default branch if omitted)
+	Version *string `json:"version,omitempty"`
+}
+
 // SkillUploadRequest defines model for SkillUploadRequest.
 type SkillUploadRequest struct {
 	Files []SkillFile `json:"files"`
 
 	// Name Skill name for registry (used as directory name)
 	Name string `json:"name"`
+}
+
+// SkillVersionCheck defines model for SkillVersionCheck.
+type SkillVersionCheck struct {
+	// HasUpdate Whether a newer version is available on the source URL
+	HasUpdate *bool `json:"has_update,omitempty"`
+
+	// InstalledVersion Currently installed version (tag/branch/commit SHA)
+	InstalledVersion *string `json:"installed_version,omitempty"`
+
+	// LatestVersion Latest available version from remote source
+	LatestVersion *string `json:"latest_version,omitempty"`
+
+	// Name Skill name
+	Name *string `json:"name,omitempty"`
 }
 
 // SkillsConfig defines model for SkillsConfig.
@@ -767,6 +848,9 @@ type AddDiscoveryPathsJSONRequestBody = SkillInstallRequest
 
 // UploadSkillJSONRequestBody defines body for UploadSkill for application/json ContentType.
 type UploadSkillJSONRequestBody = SkillUploadRequest
+
+// UpdateSkillJSONRequestBody defines body for UpdateSkill for application/json ContentType.
+type UpdateSkillJSONRequestBody = SkillUpdateRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = TaskCreateRequest
