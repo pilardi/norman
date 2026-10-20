@@ -70,6 +70,7 @@ type Config struct {
 type SkillsConfig struct {
 	DiscoveryPaths []string `yaml:"discovery_paths"` // paths to scan for SKILL.md files
 	MaxActive      int      `yaml:"max_active"`     // max concurrent active skills (0 = unlimited)
+	Path           string   `yaml:"path"`           // base directory where uploaded skills are stored
 }
 
 // NotifyConfig holds notification delivery settings.
@@ -123,6 +124,7 @@ func DefaultSystemConfig() *SystemConfig {
 				"/usr/share/norman/skills/",
 			},
 			MaxActive: DefaultMaxActive,
+			Path:      "~/.norman/skills/",
 		},
 		Notify: NotifyConfig{
 			BellEnabled:     DefaultBellEnabled,

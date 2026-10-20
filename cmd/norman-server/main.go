@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -462,6 +463,10 @@ Workspace-level overrides (per-workspace in config.yaml):
 	// Skill discovery path management (Step 14i)
 	e.POST("/api/skills/paths", srv.AddDiscoveryPaths)
 
+	// Skill file upload (Step 15a)
+	e.POST("/api/skills/upload", srv.UploadSkill)
+	e.POST("/api/skills/install", srv.InstallSkill)
+
 	// WebSocket hub for real-time push events
 	e.GET("/ws", func(c echo.Context) error {
 		conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
@@ -703,6 +708,47 @@ func (s *server) SessionHistory(c echo.Context, id string, params protocol.Sessi
 	return c.JSON(http.StatusOK, result)
 }
 
+
+// UploadSkill writes skill files into the server's skills directory.
+// Accepts a JSON body with "name" and "files" array.
+func (s *server) UploadSkill(c echo.Context) error {
+	var req protocol.SkillUploadRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if len(req.Files) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "files array must not be empty"})
+	}
+
+	// Write files into the server's skills directory
+	destDir := filepath.Join(s.cfg.System.Skills.Path, req.Name)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to create skill dir: %v", err),
+		})
+	}
+
+	for _, f := range req.Files {
+		dst := filepath.Join(destDir, f.Name)
+		if err := os.WriteFile(dst, []byte(f.Content), 0644); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to write %s: %v", f.Name, err),
+			})
+		}
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr(fmt.Sprintf("Installed skill '%s' with %d file(s)", req.Name, len(req.Files))),
+		Step:    intPtr(0),
+	})
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"installed": true,
+		"path":      destDir,
+	})
+}
 func (s *server) ListSkills(c echo.Context) error {
 	skillsResult, err := skills.Discover(s.cfg.System.Skills.DiscoveryPaths)
 	if err != nil {
@@ -728,12 +774,68 @@ func (s *server) InstallSkill(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	// Determine the skill name: use explicit name if provided, otherwise derive from repo basename
+	skillName := req.Repo // default to repo basename
+	if req.Name != nil && *req.Name != "" {
+		skillName = *req.Name
+	} else {
+		skillName = filepath.Base(req.Repo)
+	}
+
+	destDir := filepath.Join(s.cfg.System.Skills.Path, skillName)
+
+	// Step 1: Clone the git repo into the skills directory
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
-		Message: strPtr("Installing skill: " + req.Name),
+		Message: strPtr("Cloning repo " + req.Repo),
 	})
 
-	return c.NoContent(http.StatusCreated)
+	cmd := exec.Command("git", "clone", req.Repo, destDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("git clone failed: %v", string(out)),
+		})
+	}
+
+	// Step 2: Checkout specific version/tag/branch if provided
+	if req.Version != nil && *req.Version != "" {
+		s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			Message: strPtr("Checking out version " + *req.Version),
+		})
+
+		cmd = exec.Command("git", "-C", destDir, "checkout", *req.Version)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("git checkout failed: %v", string(out)),
+			})
+		}
+	}
+
+	// Step 3: Run graphify install --platform agents to generate SKILL.md + references/
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Running graphify install --platform agents"),
+	})
+
+	cmd = exec.Command("graphify", "install", "--platform", "agents")
+	cmd.Dir = destDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("graphify install failed: %v", string(out)),
+		})
+	}
+
+	// Step 4: Register in discovery paths
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Registered skill '" + skillName + "' in discovery"),
+	})
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"installed": true,
+		"path":      destDir,
+	})
 }
 
 func (s *server) RemoveSkill(c echo.Context, name string) error {

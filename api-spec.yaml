@@ -447,6 +447,56 @@ paths:
                     items:
                       type: string
 
+  /api/skills/upload:
+    post:
+      tags: [skill]
+      summary: Upload skill files to the server's skills directory
+      operationId: uploadSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillUploadRequest"
+      responses:
+        "201":
+          description: Skill files uploaded and registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installed:
+                    type: boolean
+                  path:
+                    type: string
+                    description: Server-side path where skill was written
+
+  /api/skills/install:
+    post:
+      tags: [skill]
+      summary: Install a skill from a git repository via graphify install --platform agents
+      operationId: installSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillInstallRequest"
+      responses:
+        "201":
+          description: Skill installed from git repo and registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installed:
+                    type: boolean
+                  path:
+                    type: string
+                    description: Server-side path where skill was installed
+
   /api/skills/{name}:
     delete:
       tags: [skill]
@@ -881,11 +931,40 @@ components:
 
     SkillInstallRequest:
       type: object
-      required: [name]
+      required: [repo]
       properties:
         name:
           type: string
-          description: Skill name to install from discovery paths
+          description: Display name for the skill in the registry (defaults to repo basename if omitted)
+        repo:
+          type: string
+          description: Git repository URL to clone (e.g., "https://github.com/user/skill-repo")
+        version:
+          type: string
+          description: Git tag, branch, or commit SHA to check out (defaults to default branch if omitted)
+
+    SkillUploadRequest:
+      type: object
+      required: [name, files]
+      properties:
+        name:
+          type: string
+          description: Skill name for registry (used as directory name)
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillFile"
+
+    SkillFile:
+      type: object
+      required: [name, content]
+      properties:
+        name:
+          type: string
+          description: Relative file path within the skill directory (e.g., "SKILL.md", "references/query.md")
+        content:
+          type: string
+          description: File contents as a string (UTF-8)
 
     ScheduledTaskRequest:
       type: object

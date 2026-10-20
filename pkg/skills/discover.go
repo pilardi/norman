@@ -4,6 +4,7 @@ package skills
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -21,6 +22,9 @@ type SkillEntry struct {
 	// MCPConnection holds optional MCP endpoint configuration for this skill.
 	MCPEndpoint    string   `json:"mcp_endpoint,omitempty"`
 	MCPCapabilities []string `json:"mcp_capabilities,omitempty"`
+
+	// Dependencies lists pip packages to install before activation (for Python-based skills).
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 // DiscoverResult holds the result of a discovery scan.
@@ -70,6 +74,35 @@ func Discover(paths []string) (*DiscoverResult, error) {
 	}
 
 	return result, nil
+}
+
+// Install clones a git repository into the skills directory and validates SKILL.md.
+// Returns the installed SkillEntry or an error if cloning or validation fails.
+func Install(repo, version, destBaseDir string) (*SkillEntry, error) {
+	// Determine destination directory name from repo basename
+	destDir := filepath.Join(destBaseDir, filepath.Base(repo))
+
+	// Clone the repository
+	cmd := exec.Command("git", "clone", repo, destDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("git clone failed: %w (output: %s)", err, string(out))
+	}
+
+	// Checkout specific version/tag/branch if provided
+	if version != "" {
+		cmd = exec.Command("git", "-C", destDir, "checkout", version)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("git checkout failed: %w (output: %s)", err, string(out))
+		}
+	}
+
+	// Validate SKILL.md exists and parse metadata
+	entry, err := readSkillMetadata(destDir)
+	if err != nil {
+		return nil, fmt.Errorf("invalid skill definition at %s: %w", destDir, err)
+	}
+
+	return &entry, nil
 }
 
 // readSkillMetadata reads and parses a SKILL.md file, returning its metadata.
