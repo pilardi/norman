@@ -150,6 +150,31 @@ func Uninstall(name string, destBaseDir string) error {
 	return os.RemoveAll(destDir)
 }
 
+// InstallDependencies writes a temporary requirements.txt and runs pip install
+// for the skill's declared dependencies. Non-fatal — logs a warning on failure
+// but does not block skill activation. Returns any error encountered.
+func InstallDependencies(entry SkillEntry) error {
+	if len(entry.Dependencies) == 0 {
+		return nil // nothing to install
+	}
+
+	// Write temporary requirements.txt in the skill's directory
+	reqFile := filepath.Join(entry.Path, ".requirements.txt")
+	reqContent := strings.Join(entry.Dependencies, "\n") + "\n"
+	if err := os.WriteFile(reqFile, []byte(reqContent), 0644); err != nil {
+		return fmt.Errorf("write requirements.txt: %w", err)
+	}
+
+	// Run pip install inside the skill directory
+	cmd := exec.Command("pip", "install", "-r", reqFile)
+	cmd.Dir = entry.Path
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("pip install failed for %s: %w (output: %s)", entry.Name, err, string(out))
+	}
+
+	return nil
+}
+
 // readSkillMetadata reads and parses a SKILL.md file, returning its metadata.
 func readSkillMetadata(dir string) (SkillEntry, error) {
 	skillFile := filepath.Join(dir, "SKILL.md")

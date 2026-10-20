@@ -2,6 +2,7 @@ package skills
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -30,6 +31,14 @@ func (a *Activator) Activate(name string) (string, error) {
 	entry, ok := a.registry[name]
 	if !ok {
 		return "", fmt.Errorf("skill '%s' not found in registry", name)
+	}
+
+	// Install dependencies before activation (non-fatal)
+	if len(entry.Dependencies) > 0 {
+		if err := InstallDependencies(entry); err != nil {
+			// Log warning but don't block activation
+			log.Printf("[skills] dependency install for '%s': %v", name, err)
+		}
 	}
 
 	// Check if already active (idempotent)

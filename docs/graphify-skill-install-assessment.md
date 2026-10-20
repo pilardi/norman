@@ -167,7 +167,7 @@ After modifying code, run `graphify update .` to keep the graph current.
 2. ✅ **Add `/api/skills/upload` endpoint** — accept `{name, files[]}` and write into `~/.norman/skills/<name>/`. This is the primary thin-client install path. **(DONE)**
 3. ✅ **Add `/api/skills/install` endpoint** — accept `{repo, version}` and call `Install()` (git-clone variant for power users). **(DONE)**
 4. ✅ **Add `dependencies:` field to `SkillEntry`** — trigger pip install inside OpenShell env before activation. **(DONE)**
-5. ⬜ **(Optional) Add `source_url` + version tracking** — enable `update` and `uninstall` commands.
+5. ✅ **Add `source_url` + version tracking** — enable `update` and `uninstall` commands. **(DONE)**
 6. ⬜ **Dependency install step** — run `pip install` inside OpenShell env for skills with dependencies before activation.
 
 > **Note:** Steps 2 (upload contents) and 3 (clone repo) are two complementary install paths:
@@ -184,7 +184,7 @@ After modifying code, run `graphify update .` to keep the graph current.
 
 Graphify is a well-structured Python CLI with existing per-platform skill infrastructure. The main gaps are **not in Graphify itself** but in Norman's skills system:
 - No git-clone/install mechanism (currently only path-scanning). **(RESOLVED — `/api/skills/install` endpoint added)**
-- No provenance/version tracking on `SkillEntry`. **(PARTIALLY RESOLVED — Dependencies field added; source_url pending)**
+- No provenance/version tracking on `SkillEntry`. **(RESOLVED — SourceURL + Version fields added; Update/Uninstall methods available)**
 - No dependency installation step for non-CLI tools. **(PENDING — Step 6 remaining)**
 
 The process to make `norman skills install <github-repo>` work is straightforward: add a clone+validate step, use `graphify install --platform agents` to generate the SKILL.md + references/ structure, and wire it into the discovery paths. The bulk of the work is in Norman's Go code; **Graphify needs no changes** — its existing `install.py` subsystem handles everything.
@@ -199,6 +199,12 @@ The process to make `norman skills install <github-repo>` work is straightforwar
 | `cmd/norman-server/main.go` | Implemented `InstallSkill` handler (clone → checkout → graphify install → register) + route wiring |
 | `pkg/skills/discover.go` | Added `Install(repo, version, destBaseDir string)` reusable method |
 | `pkg/config/config.go` | Added `Path string` field to `SkillsConfig` (default: `~/.norman/skills/`) |
+| `pkg/skills/discover.go` (2nd commit) | Added `SourceURL`, `Version` fields; `Update()`, `Uninstall()` methods; frontmatter parsing for provenance |
+
+### Remaining: Step 6 — Dependency Install
+Before activating a skill, run `pip install <dependencies>` inside the OpenShell sandbox environment. This requires:
+- Access to the OpenShell client (already available in main.go as `s.openShell`)
+- A method like `InstallDependencies(entry SkillEntry)` that runs pip install per workspace env
 
 ---
 
