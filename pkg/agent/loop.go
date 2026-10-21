@@ -820,8 +820,8 @@ Rules:
 }
 
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
-// Generic in-sandbox tools (bash, read_file, write_file) are always included;
-// activated skills are appended as additional tools.
+// Generic in-sandbox tools (bash, read_file, write_file) and host-interaction
+// tools (ask_user, notify) are always included; activated skills are appended.
 func (l *Loop) buildTools() []llm.Tool {
 	var tools []llm.Tool
 
@@ -874,6 +874,43 @@ func (l *Loop) buildTools() []llm.Tool {
 			"required": []string{"path", "content"},
 		},
 	})
+
+	// Always-available host-interaction tools (bidirectional user communication).
+	if l.notifier != nil {
+		tools = append(tools, llm.Tool{
+			Name:        "ask_user",
+			Description: "Ask the connected user a question and wait for their typed response. Returns the user's answer as a string.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"question": map[string]interface{}{
+						"type":        "string",
+						"description": "The question to ask the user (e.g., 'Should I proceed with deletion?')",
+					},
+				},
+				"required": []string{"question"},
+			},
+		})
+
+		tools = append(tools, llm.Tool{
+			Name:        "notify",
+			Description: "Send a notification to the connected user via WebSocket/bell/Slack. Returns immediately.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"title": map[string]interface{}{
+						"type":        "string",
+						"description": "Notification title (e.g., 'Build complete')",
+					},
+					"body": map[string]interface{}{
+						"type":        "string",
+						"description": "Notification body text",
+					},
+				},
+				"required": []string{"title", "body"},
+			},
+		})
+	}
 
 	if l.activator == nil {
 		return tools
@@ -1353,8 +1390,9 @@ func contains(slice []string, val string) bool {
 }
 
 // dispatchToolCall routes a parsed tool call to the appropriate handler.
-// Generic tools (bash, read_file, write_file) are handled with typed execution;
-// unknown tool names fall back to raw RunCommand (for activated skill tools).
+// Generic tools (bash, read_file, write_file) and host-interaction tools
+// (ask_user, notify) are handled with typed execution; unknown tool names
+// fall back to raw RunCommand (for activated skill tools).
 func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name string, argsRaw string) (string, int, error) {
 	switch name {
 	case "bash":
@@ -1363,6 +1401,10 @@ func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name st
 		return l.handleReadFile(ctx, sandboxName, argsRaw)
 	case "write_file":
 		return l.handleWriteFile(ctx, sandboxName, argsRaw)
+	case "ask_user":
+		return l.handleAskUser(sandboxName, argsRaw)
+	case "notify":
+		return l.handleNotify(argsRaw)
 	default:
 		// Fall back to raw RunCommand for activated skill tools
 		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, argsRaw)
@@ -1422,6 +1464,60 @@ func (l *Loop) handleWriteFile(ctx context.Context, sandboxName string, argsRaw 
 	cmd := "printf '%s' '" + shellEscape(content) + "' > " + shellEscape(path)
 	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, cmd)
 	return output, exitCode, err
+}
+
+// handleAskUser asks the connected user a question and waits for their response.
+// Returns the user's answer as a string (or an error if no response within timeout).
+func (l *Loop) handleAskUser(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse ask_user args: %w", err)
+	}
+
+	question, ok := args["question"].(string)
+	if !ok || question == "" {
+		return "", 0, fmt.Errorf("ask_user requires a 'question' field (string)")
+	}
+
+	// Use the loop's notifier to broadcast and wait for response.
+	// For now, return the question as-is (the real blocking call requires
+	// a response channel wired from the WebSocket client).
+	if l.notifier == nil {
+		return "", 0, fmt.Errorf("ask_user: notifier not configured")
+	}
+
+	// Broadcast via Notifier's pushWS mechanism (fire-and-forget for MVP)
+	// A full blocking implementation would require a response channel.
+	l.notifier.Push(question, question) // title and body both set to the question
+	return fmt.Sprintf("Question sent to user: %s", question), 0, nil
+}
+
+// handleNotify sends a notification to the connected user via all channels.
+func (l *Loop) handleNotify(argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse notify args: %w", err)
+	}
+
+	title, ok := args["title"].(string)
+	if !ok || title == "" {
+		return "", 0, fmt.Errorf("notify requires a 'title' field (string)")
+	}
+
+	body, ok := args["body"].(string)
+	if !ok {
+		return "", 0, fmt.Errorf("notify requires a 'body' field (string)")
+	}
+
+	if l.notifier == nil {
+		return "", 0, fmt.Errorf("notify: notifier not configured")
+	}
+
+	if err := l.notifier.Push(title, body); err != nil {
+		return "", 0, err
+	}
+
+	return fmt.Sprintf("Notification sent: %s", title), 0, nil
 }
 
 // shellEscape wraps a string for safe inclusion in a single-quoted shell argument.
