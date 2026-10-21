@@ -76,7 +76,7 @@ This satisfies the critical constraint: *the agent only operates inside its sand
 | **Execute command** (typed) | ✅ Implemented: `bash(command)` with typed string arg | P0 done — structured tool call instead of raw text |
 | **Permission request / ask user** | ✅ Implemented: `ask_user(question)` broadcasts via Notifier, returns confirmation | P1 done — fire-and-forget for MVP; blocking wait requires response channel |
 | **Send notification to user** | ✅ Implemented: `notify(title, body)` pushes via WebSocket/bell/Slack | P1 done — typed tool call replaces manual shell echo → notifier |
-| **List directory / glob** | ❌ Manual shell command in prompt text | No `list_dir(path)` tool (P1) |
+| **List directory / glob** | ✅ Implemented: `list_dir(path)` and `find_files(pattern)` with typed string args | P1 done — replaces manual `ls -la` / `find . -name` shell commands |
 | **Structured argument passing** | ⚠️ Weak for skills — generic `{args}` pattern remains | Skills still use opaque `{args: object}`; P0 tools have proper typed schemas |
 | **MCP tools discoverable at runtime** | ❌ Only accessible via skill activation | No general-purpose `ListTools()` call from the LLM (P1) |
 
@@ -190,7 +190,15 @@ Both are now in `buildTools()` and routed through `dispatchToolCall()`. The inte
 
 **P1 Status:** ✅ Done. The Notifier's `Push(title, body string)` method is exposed as a typed tool. A full blocking `AskUser(question) (string, error)` variant would require wiring a response channel from the WebSocket client — this is a P2 enhancement.
 
-### 4.3 Raw Sources Are Read-Only Snapshots
+### 4.3 Read-Only Filesystem Helpers (P1 ✅ Implemented)
+
+Two new read-only tools have been added to `buildTools()`:
+- **`list_dir(path)`** — executes `ls -la <path>` inside the sandbox; returns a detailed directory listing.
+- **`find_files(pattern)`** — executes `find . -name '<pattern>'` inside the sandbox; returns matched file paths.
+
+Both use typed `{path: string}` / `{pattern: string}` schemas and are routed through `dispatchToolCall()` to dedicated handlers (`handleListDir`, `handleFindFiles`). They provide a cleaner, structured alternative to embedding raw shell commands in LLM output text.
+
+### 4.4 Raw Sources Are Read-Only Snapshots
 
 `RawSources.Snapshot()` records environment reads but doesn't expose a live `read_file(path)` tool. The context injection (`buildMessages`) embeds raw source content as markdown blocks — useful for "reading" but not for targeted file access during task execution.
 
@@ -209,13 +217,13 @@ Both are now in `buildTools()` and routed through `dispatchToolCall()`. The inte
 
 2. **Notifier as agent tool** — ⚠️ Partially done: The Notifier exists but is NOT yet exposed as a callable tool in the LLM loop. This remains a P1 item (see below).
 
-### 🔲 P1 — Next Implementation Priority (Remaining)
+### 🔲 P1 — Remaining (Partially Done)
 
 3. **Per-tool parameter schemas for skills** — Replace generic `{args: object}` with actual typed `properties` definitions per skill entry. This requires extending `SkillEntry` to carry schema metadata or generating it from the skill's tool definitions.
 
-4. **Add `list_dir(path)` and `find_files(pattern)`** — Read-only helpers using shell `ls` and `find`/`glob`. These are common operations that currently require manual shell scripting in the LLM output.
+4. **Make MCP tools discoverable at runtime** — Expose `ListTools()` and `CallTool()` as general-purpose tools (not just skill-bound). The agent should be able to call any registered MCP tool without prior skill activation.
 
-5. **Make MCP tools discoverable at runtime** — Expose `ListTools()` and `CallTool()` as general-purpose tools (not just skill-bound). The agent should be able to call any registered MCP tool without prior skill activation.
+> **Note:** `list_dir(path)` and `find_files(pattern)` were implemented during this session and are now part of the in-sandbox tool set.
 
 ### 🔲 P2 — Post-MVP
 
@@ -240,16 +248,20 @@ Both are now in `buildTools()` and routed through `dispatchToolCall()`. The inte
 │              Agent Loop (loop.go)                     │
 │  ┌─────────────────────────────────────────────┐    │
 │  │ LLM Multi-Turn Loop                         │    │
-│  │  tools[] = [bash, read_file, write_file,    │ ✅ P0
+│  │  tools[] = [bash, read_file, write_file,    │ ✅ P0+P1
+│  │             list_dir(path), find_files(pat), │    │
+│  │             ask_user(), notify(),            │    │
 │  │             <activated skill tools>]        │    │
 │  └──────────────┬─────────────────────────────┘    │
 │         tool calls parsed from LLM response         │
 ├─────────────────┼───────────────────────────────────┤
-│  In-Sandbox Tools (P0 ✅)                            │
+│  In-Sandbox Tools (P0 ✅, P1 ✅)                       │
 │  ┌──────────────────┐                                │
 │  │ bash(command)     │   ← typed string arg          │
 │  │ read_file(path)   │   ← typed path arg            │
 │  │ write_file(p,c)   │   ← typed path + content      │
+│  │ list_dir(path)    │   ← typed path arg            │
+│  │ find_files(pat)   │   ← typed pattern arg         │
 │  └────────┬─────────┘                                │
 │           │ RunCommand / session.ReadFile/WriteFile() │
 ├───────────▼──────────────────────────────────────────┤
@@ -267,7 +279,7 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | File | Change | Status |
 |------|--------|--------|
 | `pkg/llm/interfaces.go` | Add `ToolCall` struct with typed `Arguments` field (currently uses `json.RawMessage`) | 🔲 P2 |
-| `pkg/agent/loop.go` | `buildTools()` — add generic tools + ask_user + notify; dispatch handlers for all tool types | ✅ P0+P1 done |
+| `pkg/agent/loop.go` | `buildTools()` — add generic tools + ask_user + notify + list_dir + find_files; dispatch handlers for all tool types | ✅ P0+P1 done |
 | `pkg/env/session.go` | Add `ReadFile(path)` and `WriteFile(path, content)` methods on Session | ✅ P0 done |
 | `pkg/notify/notifier.go` | Expose `Push(title, body string)` method for typed LLM tool calls; `AskUser(question) (string, error)` blocking variant | ⚠️ Partially done (`Push` done, blocking `AskUser` needs response channel) |
 | `pkg/mcp/client.go` | Expose `ListTools()` and `CallTool()` as discoverable tools (not just skill-bound) | 🔲 P1 |

@@ -875,6 +875,37 @@ func (l *Loop) buildTools() []llm.Tool {
 		},
 	})
 
+	// Read-only in-sandbox filesystem tools.
+	tools = append(tools, llm.Tool{
+		Name:        "list_dir",
+		Description: "List the contents of a directory inside the sandbox environment. Returns a detailed listing (equivalent to 'ls -la').",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Absolute or relative path to the directory to list (e.g., '/tmp/data')",
+				},
+			},
+			"required": []string{"path"},
+		},
+	})
+
+	tools = append(tools, llm.Tool{
+		Name:        "find_files",
+		Description: "Search for files matching a pattern inside the sandbox environment. Returns matched file paths.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"pattern": map[string]interface{}{
+					"type":        "string",
+					"description": "Glob or filename pattern to search for (e.g., '*.log', 'config.*')",
+				},
+			},
+			"required": []string{"pattern"},
+		},
+	})
+
 	// Always-available host-interaction tools (bidirectional user communication).
 	if l.notifier != nil {
 		tools = append(tools, llm.Tool{
@@ -1401,6 +1432,10 @@ func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name st
 		return l.handleReadFile(ctx, sandboxName, argsRaw)
 	case "write_file":
 		return l.handleWriteFile(ctx, sandboxName, argsRaw)
+	case "list_dir":
+		return l.handleListDir(sandboxName, argsRaw)
+	case "find_files":
+		return l.handleFindFiles(sandboxName, argsRaw)
 	case "ask_user":
 		return l.handleAskUser(sandboxName, argsRaw)
 	case "notify":
@@ -1518,6 +1553,40 @@ func (l *Loop) handleNotify(argsRaw string) (string, int, error) {
 	}
 
 	return fmt.Sprintf("Notification sent: %s", title), 0, nil
+}
+
+// handleListDir lists the contents of a directory inside the sandbox.
+func (l *Loop) handleListDir(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse list_dir args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("list_dir requires a 'path' field (string)")
+	}
+
+	cmd := "ls -la " + shellEscape(path)
+	output, exitCode, err := l.openShell.RunCommand(context.Background(), sandboxName, cmd)
+	return output, exitCode, err
+}
+
+// handleFindFiles searches for files matching a glob pattern inside the sandbox.
+func (l *Loop) handleFindFiles(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse find_files args: %w", err)
+	}
+
+	pattern, ok := args["pattern"].(string)
+	if !ok || pattern == "" {
+		return "", 0, fmt.Errorf("find_files requires a 'pattern' field (string)")
+	}
+
+	cmd := "find . -name '" + pattern + "'"
+	output, exitCode, err := l.openShell.RunCommand(context.Background(), sandboxName, cmd)
+	return output, exitCode, err
 }
 
 // shellEscape wraps a string for safe inclusion in a single-quoted shell argument.
