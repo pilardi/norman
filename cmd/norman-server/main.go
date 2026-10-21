@@ -45,6 +45,7 @@ type server struct {
 	wsHub      *WSHub
 	notifier   *notify.Notifier
 	scheduler  *scheduler.Scheduler
+	registry   *skills.Registry
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
 	mu         sync.Mutex
@@ -278,6 +279,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 	loop = loop.WithNotifier(notifier).WithResultsChannel(resultsCh)
 
 	// Build server with all dependencies
+	registryPath := filepath.Join(os.Getenv("HOME"), ".norman", "skills_registry.json")
+	reg := skills.NewRegistry(registryPath)
+
 	srv := &server{
 		cfg:        cfg,
 		store:      store,
@@ -287,8 +291,19 @@ Workspace-level overrides (per-workspace in config.yaml):
 		wsHub:      wsHub,
 		notifier:   notifier,
 		scheduler:  sched,
+		registry:   reg,
 		workspaces: make(map[string]*protocol.Workspace),
 		startTime:  time.Now(),
+	}
+
+	// Seed registry from activator's current entries (host-installed skills)
+	for name, entry := range activator.Registry() {
+		reg.Register(name, skills.RegistryEntry{
+			SourceURL:           entry.SourceURL,
+			Version:             entry.Version,
+			Description:         entry.Description,
+			InstalledInWorkspaces: []string{},
+		})
 	}
 
 	// Load persisted workspaces from disk on startup
@@ -1706,19 +1721,6 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 		})
 	}
 
-	// After install, deploy to sandbox (ensures SKILL.md is readable by the activator)
-	skillName := req.Name
-	defer func() {
-		if entry, err := s.activator.DeployToSandbox(skillName, session); err != nil {
-			log.Printf("[server] DeployToSandbox for '%s' in workspace '%s': %v", skillName, wsName, err)
-		} else if entry != nil {
-			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-				Event:   protocol.TaskProgress,
-				Message: strPtr("Deployed '" + entry.Name + "' to sandbox"),
-			})
-		}
-	}()
-
 	skillDir := filepath.Join("/workspace", wsName, "skills", req.Name)
 
 	// Path 1: Git clone from repo URL
@@ -1749,6 +1751,31 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 			Message: strPtr("Skill '" + req.Name + "' installed in workspace '" + wsName + "'"),
 		})
 
+		// Deploy to sandbox and register in global registry
+		if entry, err := s.activator.DeployToSandbox(req.Name, session); err != nil {
+			log.Printf("[server] DeployToSandbox for '%s' in workspace '%s': %v", req.Name, wsName, err)
+		} else if entry != nil {
+			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+				Event:   protocol.TaskProgress,
+				Message: strPtr("Deployed '" + entry.Name + "' to sandbox"),
+			})
+
+			// Register in global persistent registry
+			s.registry.Register(req.Name, skills.RegistryEntry{
+				SourceURL:           entry.SourceURL,
+				Version:             entry.Version,
+				Description:         entry.Description,
+				InstalledInWorkspaces: []string{wsName},
+			})
+
+			return c.JSON(http.StatusCreated, map[string]interface{}{
+				"installed": true,
+				"path":      skillDir,
+				"type":      "git-clone",
+			})
+		}
+
+		// Fallback if DeployToSandbox failed
 		return c.JSON(http.StatusCreated, map[string]interface{}{
 			"installed": true,
 			"path":      skillDir,
@@ -1789,6 +1816,31 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 		Message: strPtr("Skill '" + req.Name + "' uploaded to workspace '" + wsName + "'"),
 	})
 
+	// Deploy to sandbox and register in global registry
+	if entry, err := s.activator.DeployToSandbox(req.Name, session); err != nil {
+		log.Printf("[server] DeployToSandbox for '%s' in workspace '%s': %v", req.Name, wsName, err)
+	} else if entry != nil {
+		s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			Message: strPtr("Deployed '" + entry.Name + "' to sandbox"),
+		})
+
+		// Register in global persistent registry
+		s.registry.Register(req.Name, skills.RegistryEntry{
+			SourceURL:           entry.SourceURL,
+			Version:             entry.Version,
+			Description:         entry.Description,
+			InstalledInWorkspaces: []string{wsName},
+		})
+
+		return c.JSON(http.StatusCreated, map[string]interface{}{
+			"installed": true,
+			"path":      skillDir,
+			"type":      "upload",
+		})
+	}
+
+	// Fallback if DeployToSandbox failed (files present but SKILL.md unreadable)
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"installed": true,
 		"path":      skillDir,
@@ -1798,17 +1850,19 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 
 // GetSkillsRegistry returns the global skills registry (names → source_url, version, workspaces).
 func (s *server) GetSkillsRegistry(c echo.Context) error {
-	registry := map[string]interface{}{}
-	for name, entry := range s.activator.Registry() {
-		registry[name] = map[string]interface{}{
-			"source_url":  entry.SourceURL,
-			"version":     entry.Version,
-			"description": entry.Description,
-			"path":        entry.Path,
+	entries := s.registry.GetAll()
+	result := map[string]interface{}{}
+
+	for name, entry := range entries {
+		result[name] = map[string]interface{}{
+			"source_url":            entry.SourceURL,
+			"version":               entry.Version,
+			"description":           entry.Description,
+			"installed_in_workspaces": entry.InstalledInWorkspaces,
 		}
 	}
 
-	return c.JSON(http.StatusOK, registry)
+	return c.JSON(http.StatusOK, result)
 }
 
 func strPtr(s string) *string { return &s }
