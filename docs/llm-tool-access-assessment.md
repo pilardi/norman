@@ -77,7 +77,7 @@ This satisfies the critical constraint: *the agent only operates inside its sand
 | **Permission request / ask user** | ✅ Implemented: `ask_user(question)` blocks via `AskUserBlocking()`; `request_permission(description, scope)` guard tool added | P2 done — blocking wait now wired via internal response channel; permission guard for destructive actions |
 | **Send notification to user** | ✅ Implemented: `notify(title, body)` pushes via WebSocket/bell/Slack | P1 done — typed tool call replaces manual shell echo → notifier |
 | **List directory / glob** | ✅ Implemented: `list_dir(path)` and `find_files(pattern)` with typed string args | P1 done — replaces manual `ls -la` / `find . -name` shell commands |
-| **Structured argument passing** | ⚠️ Weak for skills — generic `{args}` pattern remains | Skills still use opaque `{args: object}`; P0 tools have proper typed schemas |
+| **Structured argument passing** | ⚠️ Infrastructure ready, adoption pending — most skills still emit generic `{args}` blob | Typed schema path exists (`ToolDef.Parameters` + `loop.go` typed-properties builder); no real skill definitions populate it yet. P0 tools have proper typed schemas. Per-tool typed schemas for skills is P1. |
 | **MCP tools discoverable at runtime** | ✅ Implemented: `mcp_list_tools()` and `mcp_call(name, arguments)` exposed as always-available tools | P1 done — general-purpose MCP discovery/invocation not bound to skill activation |
 
 ### 2.3 MCP Tools (Remote)
@@ -178,7 +178,7 @@ func (l *Loop) buildTools() []llm.Tool {
 
 Each generic tool now has its own typed `properties` schema (not a generic `{args}` blob). A `dispatchToolCall()` handler routes parsed calls to the correct executor.
 
-**Remaining gap for skills:** Activated skill tools still use the generic `{args: object}` pattern — per-tool schemas are P1.
+**Remaining gap for skills:** The typed-schema infrastructure (`ToolDef.Parameters`, `loop.go` properties builder) is implemented but **not yet adopted** by real skill definitions. Most skills still pass generic `{args: object}`. P1 = populate `parameters` in SKILL.md frontmatter for all active skills so the typed-properties path is exercised end-to-end.
 
 ### 4.2 No Agent-Initiated User Interaction (P1 ✅ Implemented)
 
@@ -309,7 +309,7 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 
 | Aspect | Before P0 | After P0 (Current) | Target State |
 |--------|-----------|-------------------|--------------|
-| Tool granularity | Skill-based, generic `{args}` blob | ✅ Generic tools have typed schemas; skills still generic | Typed per-tool schemas for all tools |
+| Tool granularity | Skill-based, generic `{args}` blob | ✅ Generic tools have typed schemas; skills infrastructure ready but not yet adopted | Typed per-tool schemas for all tools (P1: populate `parameters` in SKILL.md frontmatter) |
 | Shell access | Manual text → `RunCommand` | ✅ Structured `bash(command)` tool | Same (P0) |
 | File I/O | Read-only raw sources injection | ✅ `read_file` + `write_file` tools | Same (P0) |
 | User interaction | Server push only (notifier) | ✅ `ask_user` + `notify` + `request_permission` + `file_diff` wired as LLM tools; blocking variant implemented | Bidirectional `ask_user` (blocking via `AskUserBlocking`), `notify`, permission guard, file diff |
