@@ -45,6 +45,7 @@ type server struct {
 	wsHub      *WSHub
 	notifier   *notify.Notifier
 	scheduler  *scheduler.Scheduler
+	registry   *skills.Registry
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
 	mu         sync.Mutex
@@ -278,6 +279,9 @@ Workspace-level overrides (per-workspace in config.yaml):
 	loop = loop.WithNotifier(notifier).WithResultsChannel(resultsCh)
 
 	// Build server with all dependencies
+	registryPath := filepath.Join(os.Getenv("HOME"), ".norman", "skills_registry.json")
+	reg := skills.NewRegistry(registryPath)
+
 	srv := &server{
 		cfg:        cfg,
 		store:      store,
@@ -287,8 +291,19 @@ Workspace-level overrides (per-workspace in config.yaml):
 		wsHub:      wsHub,
 		notifier:   notifier,
 		scheduler:  sched,
+		registry:   reg,
 		workspaces: make(map[string]*protocol.Workspace),
 		startTime:  time.Now(),
+	}
+
+	// Seed registry from activator's current entries (host-installed skills)
+	for name, entry := range activator.Registry() {
+		reg.Register(name, skills.RegistryEntry{
+			SourceURL:           entry.SourceURL,
+			Version:             entry.Version,
+			Description:         entry.Description,
+			InstalledInWorkspaces: []string{},
+		})
 	}
 
 	// Load persisted workspaces from disk on startup
@@ -481,6 +496,12 @@ Workspace-level overrides (per-workspace in config.yaml):
 	e.GET("/api/skills/:name/check-version", func(c echo.Context) error {
 		return srv.CheckSkillVersion(c, c.Param("name"))
 	})
+
+	// Workspace-level skill install (POST /api/workspaces/:ws/skills/install)
+	e.POST("/api/workspaces/:ws/skills/install", srv.InstallSkillToWorkspace)
+
+	// Global skills registry (GET /api/skills/registry)
+	e.GET("/api/skills/registry", srv.GetSkillsRegistry)
 
 	// WebSocket hub for real-time push events
 	e.GET("/ws", func(c echo.Context) error {
@@ -1664,6 +1685,184 @@ func (h *WSHub) writeLoop() {
 		}
 		h.mu.RUnlock()
 	}
+}
+
+// InstallSkillToWorkspace clones a skill into the target workspace's sandbox.
+// Accepts: {"repo": "github.com/...", "version": "v1.0"} or {"files": [...]} for upload path.
+func (s *server) InstallSkillToWorkspace(c echo.Context) error {
+	wsName := c.Param("ws")
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Installing skill into workspace '" + wsName + "'"),
+	})
+
+	// Accept either a repo URL (git clone path) or files[] (upload path)
+	var req struct {
+		Repo    string   `json:"repo"`
+		Version string   `json:"version"`
+		Name    string   `json:"name"`
+		Files   []struct {
+			Name     string `json:"name"`
+			Content  string `json:"content"`
+			Executable bool `json:"executable,omitempty"`
+		} `json:"files"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	// Get the session for this workspace
+	session, err := s.loop.GetSession(wsName)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("get session for workspace '%s': %v", wsName, err),
+		})
+	}
+
+	skillDir := filepath.Join("/workspace", wsName, "skills", req.Name)
+
+	// Path 1: Git clone from repo URL
+	if req.Repo != "" {
+		s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			Message: strPtr("Cloning " + req.Repo + " into sandbox"),
+		})
+
+		cmd := exec.Command("git", "clone", "--depth", "1", req.Repo, skillDir)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("git clone: %v", string(out)),
+			})
+		}
+
+		if req.Version != "" {
+			cmd = exec.Command("git", "-C", skillDir, "checkout", req.Version)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{
+					"error": fmt.Sprintf("git checkout: %v", string(out)),
+				})
+			}
+		}
+
+		s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			Message: strPtr("Skill '" + req.Name + "' installed in workspace '" + wsName + "'"),
+		})
+
+		// Deploy to sandbox and register in global registry
+		if entry, err := s.activator.DeployToSandbox(req.Name, session); err != nil {
+			log.Printf("[server] DeployToSandbox for '%s' in workspace '%s': %v", req.Name, wsName, err)
+		} else if entry != nil {
+			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+				Event:   protocol.TaskProgress,
+				Message: strPtr("Deployed '" + entry.Name + "' to sandbox"),
+			})
+
+			// Register in global persistent registry
+			s.registry.Register(req.Name, skills.RegistryEntry{
+				SourceURL:           entry.SourceURL,
+				Version:             entry.Version,
+				Description:         entry.Description,
+				InstalledInWorkspaces: []string{wsName},
+			})
+
+			return c.JSON(http.StatusCreated, map[string]interface{}{
+				"installed": true,
+				"path":      skillDir,
+				"type":      "git-clone",
+			})
+		}
+
+		// Fallback if DeployToSandbox failed
+		return c.JSON(http.StatusCreated, map[string]interface{}{
+			"installed": true,
+			"path":      skillDir,
+			"type":      "git-clone",
+		})
+	}
+
+	// Path 2: Upload files (thin-client)
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Uploading skill '" + req.Name + "' to workspace '" + wsName + "'"),
+	})
+
+	// Create directory if needed
+	cmd := exec.Command("mkdir", "-p", skillDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("mkdir: %v", string(out)),
+		})
+	}
+
+	for _, f := range req.Files {
+		content := []byte(f.Content)
+		mode := os.FileMode(0644)
+		if f.Executable {
+			mode = 0755
+		}
+		fullPath := filepath.Join(skillDir, f.Name)
+		if err := os.WriteFile(fullPath, content, mode); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("write %s: %v", f.Name, err),
+			})
+		}
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Skill '" + req.Name + "' uploaded to workspace '" + wsName + "'"),
+	})
+
+	// Deploy to sandbox and register in global registry
+	if entry, err := s.activator.DeployToSandbox(req.Name, session); err != nil {
+		log.Printf("[server] DeployToSandbox for '%s' in workspace '%s': %v", req.Name, wsName, err)
+	} else if entry != nil {
+		s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+			Event:   protocol.TaskProgress,
+			Message: strPtr("Deployed '" + entry.Name + "' to sandbox"),
+		})
+
+		// Register in global persistent registry
+		s.registry.Register(req.Name, skills.RegistryEntry{
+			SourceURL:           entry.SourceURL,
+			Version:             entry.Version,
+			Description:         entry.Description,
+			InstalledInWorkspaces: []string{wsName},
+		})
+
+		return c.JSON(http.StatusCreated, map[string]interface{}{
+			"installed": true,
+			"path":      skillDir,
+			"type":      "upload",
+		})
+	}
+
+	// Fallback if DeployToSandbox failed (files present but SKILL.md unreadable)
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"installed": true,
+		"path":      skillDir,
+		"type":      "upload",
+	})
+}
+
+// GetSkillsRegistry returns the global skills registry (names → source_url, version, workspaces).
+func (s *server) GetSkillsRegistry(c echo.Context) error {
+	entries := s.registry.GetAll()
+	result := map[string]interface{}{}
+
+	for name, entry := range entries {
+		result[name] = map[string]interface{}{
+			"source_url":            entry.SourceURL,
+			"version":               entry.Version,
+			"description":           entry.Description,
+			"installed_in_workspaces": entry.InstalledInWorkspaces,
+		}
+	}
+
+	return c.JSON(http.StatusOK, result)
 }
 
 func strPtr(s string) *string { return &s }
