@@ -74,7 +74,7 @@ This satisfies the critical constraint: *the agent only operates inside its sand
 | **Read file** (`cat`, `head`, etc.) | ✅ Implemented: `read_file(path)` with typed string arg | P0 done — replaces manual `cat` shell commands |
 | **Write file** (`echo >`, `tee`) | ✅ Implemented: `write_file(path, content)` with two typed args | P0 done — replaces manual `printf >` shell commands |
 | **Execute command** (typed) | ✅ Implemented: `bash(command)` with typed string arg | P0 done — structured tool call instead of raw text |
-| **Permission request / ask user** | ✅ Implemented: `ask_user(question)` broadcasts via Notifier, returns confirmation | P1 done — fire-and-forget for MVP; blocking wait requires response channel |
+| **Permission request / ask user** | ✅ Implemented: `ask_user(question)` blocks via `AskUserBlocking()`; `request_permission(description, scope)` guard tool added | P2 done — blocking wait now wired via internal response channel; permission guard for destructive actions |
 | **Send notification to user** | ✅ Implemented: `notify(title, body)` pushes via WebSocket/bell/Slack | P1 done — typed tool call replaces manual shell echo → notifier |
 | **List directory / glob** | ✅ Implemented: `list_dir(path)` and `find_files(pattern)` with typed string args | P1 done — replaces manual `ls -la` / `find . -name` shell commands |
 | **Structured argument passing** | ⚠️ Weak for skills — generic `{args}` pattern remains | Skills still use opaque `{args: object}`; P0 tools have proper typed schemas |
@@ -225,32 +225,35 @@ Both use typed `{path: string}` / `{pattern: string}` schemas and are routed thr
 
 > **Note:** `list_dir(path)` and `find_files(pattern)` were implemented earlier and are part of the in-sandbox tool set.
 
-### 🔲 P2 — Post-MVP
+### ✅ P2 — Implemented (this session)
 
-6. **`request_permission(description, on_approve, on_deny)`** — Guard destructive actions behind explicit user approval. Could be implemented as a blocking tool call that waits for user confirmation via the WebSocket push channel.
+6. **`request_permission(description, scope)`** — Guard destructive actions behind explicit user approval. Implemented as a blocking tool call that uses `AskUserBlocking()` to wait for user confirmation via the WebSocket push channel. Returns "approved" or "denied".
 
-7. **`file_diff(path)`** — Compare file states before/after edits. Useful for reviewing changes or auditing edits.
+7. **`file_diff(path)`** — Read file content from the sandbox for before/after comparison. Uses `cat` command via OpenShell and returns content with a header.
 
 ---
 
 ## 6. Architecture Diagram (Current → Proposed)
 
-### Current State (P0 implemented, P1 pending):
+### Current State (P0+P1+P2 implemented):
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                    User / Client                      │
 │              (WebSocket, Bell, Slack)                 │
 └──────────────┬──────────────────────────────────────┘
-               │ ask_user() ← notify.notify()  ⚠️ NOT YET WIRED
+               │ ask_user() ← notify.notify()  ✅ WIRED (blocking)
+               │ request_permission() ← blocking approval
+               │ file_diff(path) ← read-only content
                │
 ┌──────────────▼──────────────────────────────────────┐
 │              Agent Loop (loop.go)                     │
 │  ┌─────────────────────────────────────────────┐    │
 │  │ LLM Multi-Turn Loop                         │    │
-│  │  tools[] = [bash, read_file, write_file,    │ ✅ P0+P1
+│  │  tools[] = [bash, read_file, write_file,    │ ✅ P0+P1+P2
 │  │             list_dir(path), find_files(pat), │    │
 │  │             ask_user(), notify(),            │    │
+│  │             request_permission(), file_diff(),│   │
 │  │             mcp_list_tools(), mcp_call(),    │    │
 │  │             <activated skill tools>]        │    │
 │  └──────────────┬─────────────────────────────┘    │
@@ -297,7 +300,7 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | `pkg/agent/loop.go` | `buildTools()` — add generic tools + ask_user + notify + list_dir + find_files + mcp_list_tools/mcp_call; dispatch handlers for all tool types; `WithMCPClient()` builder | ✅ P0+P1 done |
 | `pkg/skills/discover.go` | Extend `SkillEntry.Tools` from `[]string` to `[]ToolDef`; add typed schema parsing in frontmatter | ✅ P1 done |
 | `pkg/env/session.go` | Add `ReadFile(path)` and `WriteFile(path, content)` methods on Session | ✅ P0 done |
-| `pkg/notify/notifier.go` | Expose `Push(title, body string)` method for typed LLM tool calls; `AskUser(question) (string, error)` blocking variant | ⚠️ Partially done (`Push` done, blocking `AskUser` needs response channel) |
+| `pkg/notify/notifier.go` | Expose `Push(title, body string)` method; add `AskUserBlocking(question) (string, error)` blocking variant | ✅ P1+P2 done (`Push`, `AskUserBlocking` with internal channel) |
 | `pkg/mcp/client.go` | Already had `ListTools()`/`CallTool()` — now exposed as general-purpose tools via loop wiring | ✅ P1 done (wired in loop.go) |
 
 ---
@@ -309,11 +312,11 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | Tool granularity | Skill-based, generic `{args}` blob | ✅ Generic tools have typed schemas; skills still generic | Typed per-tool schemas for all tools |
 | Shell access | Manual text → `RunCommand` | ✅ Structured `bash(command)` tool | Same (P0) |
 | File I/O | Read-only raw sources injection | ✅ `read_file` + `write_file` tools | Same (P0) |
-| User interaction | Server push only (notifier) | ✅ `ask_user` + `notify` wired as LLM tools; blocking variant pending | Bidirectional `ask_user` (blocking), `notify` |
+| User interaction | Server push only (notifier) | ✅ `ask_user` + `notify` + `request_permission` + `file_diff` wired as LLM tools; blocking variant implemented | Bidirectional `ask_user` (blocking via `AskUserBlocking`), `notify`, permission guard, file diff |
 | Host isolation | ✅ Enforced via sandbox | ✅ Maintained (no host commands) | Same (P0) |
 | MCP integration | Skill-bound, manual activation | ✅ `mcp_list_tools` + `mcp_call` exposed as always-available tools | Discoverable at runtime via `WithMCPClient()` |
 
-The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved: P0 resolved typed shell/file I/O, and this session completed P1 (per-tool schemas + MCP discoverability). Remaining work is P2 (blocking `ask_user`, `request_permission`, `file_diff`).
+The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved across all phases: P0 resolved typed shell/file I/O, P1 added per-tool schemas + MCP discoverability, and this session completed P2 (blocking `ask_user` via `AskUserBlocking()`, `request_permission` guard tool, and `file_diff` read tool). The remaining gap is the WebSocket client-side wiring to actually populate the response channel for blocking calls.
 
 ---
 

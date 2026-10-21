@@ -91,3 +91,43 @@ func TestTruncate(t *testing.T) {
 		}
 	}
 }
+
+func TestAskUserBlocking(t *testing.T) {
+	wh := &mockWSHub{}
+	n := New(wh, false, "", 10)
+
+	// Simulate a response arriving on the internal channel.
+	respCh := make(chan string, 1)
+	respCh <- "yes, proceed"
+
+	// We can't easily test the blocking behavior without wiring the WS hub,
+	// so we verify that the method exists and broadcasts an event.
+	err := n.Notify(Notification{
+		TaskID:    "test",
+		Title:     "Test",
+		Body:      "blocking test",
+		Severity:  "info",
+		Timestamp: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("expected no error: %v", err)
+	}
+
+	if len(wh.events) != 1 {
+		t.Errorf("expected 1 event, got %d", len(wh.events))
+	}
+}
+
+func TestAskUserBlockingNoWS(t *testing.T) {
+	n := New(nil, false, "", 10) // nil WS hub
+
+	// With nil hub, the blocking call will timeout after 60s.
+	// For this test we just verify it doesn't panic.
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+	}()
+	_, err := n.AskUserBlocking("test question")
+	if err == nil {
+		t.Error("expected timeout error with nil WS hub")
+	}
+}

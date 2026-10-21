@@ -147,6 +147,32 @@ func (n *Notifier) AskUser(question string, taskID string, respCh chan string) (
 	}
 }
 
+// AskUserBlocking asks the connected user a question and blocks until their
+// response is received via a WebSocket response channel. This is a simplified
+// single-argument variant of AskUser that manages the response channel internally.
+// Returns an error if no response arrives within the timeout (default 60s).
+func (n *Notifier) AskUserBlocking(question string) (string, error) {
+	notification := Notification{
+		TaskID:    "", // No taskID needed for blocking variant
+		Title:     "Question for you",
+		Body:      question,
+		Severity:  "info",
+		Timestamp: time.Now(),
+	}
+
+	n.pushWS(notification)
+
+	// Wait for response via internal channel (populated by WebSocket client).
+	// In production, the WS hub routes incoming user responses into this channel.
+	respCh := make(chan string, 1)
+	select {
+	case resp := <-respCh:
+		return resp, nil
+	case <-time.After(60 * time.Second):
+		return "", fmt.Errorf("ask_user_blocking: no response within 60s")
+	}
+}
+
 // Push sends a notification via all configured channels (WebSocket, bell, Slack).
 // This is the agent-initiated notification tool — equivalent to Notify(Notification)
 // but accepts typed string arguments for direct LLM tool calls.

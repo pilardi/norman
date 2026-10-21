@@ -952,6 +952,28 @@ func (l *Loop) buildTools() []llm.Tool {
 		})
 	}
 
+	// Permission guard tool for destructive actions.
+	if l.notifier != nil {
+		tools = append(tools, llm.Tool{
+			Name:        "request_permission",
+			Description: "Ask the connected user to approve or deny a potentially destructive action. Returns 'approved' or 'denied'.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"description": map[string]interface{}{
+						"type":        "string",
+						"description": "Description of the action to be performed (e.g., 'Delete all files in /tmp/cache')",
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional scope/context for the action (e.g., 'sandbox', 'host')",
+					},
+				},
+				"required": []string{"description"},
+			},
+		})
+	}
+
 	// Remote MCP tools (discoverable at runtime).
 	if l.mcpClient != nil {
 		tools = append(tools, llm.Tool{
@@ -1518,6 +1540,10 @@ func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name st
 		return l.handleAskUser(sandboxName, argsRaw)
 	case "notify":
 		return l.handleNotify(argsRaw)
+	case "request_permission":
+		return l.handleRequestPermission(sandboxName, argsRaw)
+	case "file_diff":
+		return l.handleFileDiff(ctx, sandboxName, argsRaw)
 	case "mcp_list_tools":
 		return l.handleMCPListTools(sandboxName, argsRaw)
 	case "mcp_call":
@@ -1596,17 +1622,16 @@ func (l *Loop) handleAskUser(sandboxName string, argsRaw string) (string, int, e
 		return "", 0, fmt.Errorf("ask_user requires a 'question' field (string)")
 	}
 
-	// Use the loop's notifier to broadcast and wait for response.
-	// For now, return the question as-is (the real blocking call requires
-	// a response channel wired from the WebSocket client).
 	if l.notifier == nil {
 		return "", 0, fmt.Errorf("ask_user: notifier not configured")
 	}
 
-	// Broadcast via Notifier's pushWS mechanism (fire-and-forget for MVP)
-	// A full blocking implementation would require a response channel.
-	l.notifier.Push(question, question) // title and body both set to the question
-	return fmt.Sprintf("Question sent to user: %s", question), 0, nil
+	// Use the blocking variant that waits for a user response via WebSocket.
+	resp, err := l.notifier.AskUserBlocking(question)
+	if err != nil {
+		return "", 0, err
+	}
+	return resp, 0, nil
 }
 
 // handleNotify sends a notification to the connected user via all channels.
@@ -1635,6 +1660,65 @@ func (l *Loop) handleNotify(argsRaw string) (string, int, error) {
 	}
 
 	return fmt.Sprintf("Notification sent: %s", title), 0, nil
+}
+
+// handleRequestPermission asks the user to approve or deny a destructive action.
+// Returns "approved" or "denied" as a string response.
+func (l *Loop) handleRequestPermission(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse request_permission args: %w", err)
+	}
+
+	description, ok := args["description"].(string)
+	if !ok || description == "" {
+		return "", 0, fmt.Errorf("request_permission requires a 'description' field (string)")
+	}
+
+	scope, _ := args["scope"].(string) // optional
+
+	if l.notifier == nil {
+		return "", 0, fmt.Errorf("request_permission: notifier not configured")
+	}
+
+	// Use AskUserBlocking to wait for the user's approval decision.
+	resp, err := l.notifier.AskUserBlocking(fmt.Sprintf(
+		"Approve or deny this action?\nAction: %s\nScope: %s", description, scope))
+	if err != nil {
+		return "", 0, err
+	}
+
+	// Normalize the response to "approved" or "denied".
+	resp = strings.ToLower(strings.TrimSpace(resp))
+	switch resp {
+	case "approve", "approved", "yes", "y":
+		return fmt.Sprintf("Permission granted for: %s", description), 0, nil
+	case "deny", "denied", "no", "n":
+		return fmt.Sprintf("Permission denied for: %s", description), 0, nil
+	default:
+		return fmt.Sprintf("Unclear response '%s' — treating as denied", resp), 0, nil
+	}
+}
+
+// handleFileDiff reads a file and returns its current content for comparison.
+func (l *Loop) handleFileDiff(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse file_diff args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("file_diff requires a 'path' field (string)")
+	}
+
+	// Read the file via cat command in the sandbox.
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, "cat "+shellEscape(path))
+	if err != nil {
+		return "", exitCode, fmt.Errorf("file_diff read error: %w", err)
+	}
+
+	return fmt.Sprintf("# File: %s\n%s", path, output), 0, nil
 }
 
 // handleListDir lists the contents of a directory inside the sandbox.
