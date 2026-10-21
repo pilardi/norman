@@ -4,6 +4,9 @@
 > **Author:** Norman agent (session assessment)  
 > **Scope:** How tools are granted to the LLM for interacting with the OpenShell workspace environment.  
 > **Constraint:** The agent must never execute commands on the host machine — only inside its sandbox or via interaction with the user.
+>
+> **Status Update (2026-10-21):** P0 implementation merged on branch `feature/llm-tool-access-assessment`.  
+> Generic typed tools (`bash`, `read_file`, `write_file`) are now always available to the LLM.
 
 ---
 
@@ -68,13 +71,14 @@ This satisfies the critical constraint: *the agent only operates inside its sand
 
 | Capability | Status | Impact |
 |-----------|--------|--------|
-| **Read file** (`cat`, `head`, etc.) | ❌ Not a dedicated tool — agent must write shell commands manually | Agent constructs `"ls -la /workspace"` as a JSON blob; no typed `read_file(path)` call |
-| **Write file** (`echo >`, `tee`) | ❌ Same — manual shell scripting in LLM output | No structured `write_file(path, content)` API |
-| **Execute command** (typed) | ⚠️ Exists as `RunCommand` but not exposed as a tool to the LLM | The loop calls it internally; the LLM doesn't invoke it directly with typed arguments |
+| **Read file** (`cat`, `head`, etc.) | ✅ Implemented: `read_file(path)` with typed string arg | P0 done — replaces manual `cat` shell commands |
+| **Write file** (`echo >`, `tee`) | ✅ Implemented: `write_file(path, content)` with two typed args | P0 done — replaces manual `printf >` shell commands |
+| **Execute command** (typed) | ✅ Implemented: `bash(command)` with typed string arg | P0 done — structured tool call instead of raw text |
 | **Permission request / ask user** | ❌ No agent-initiated notification mechanism | User interaction is server-side push (notifier), not agent-initiated Q&A |
 | **Send notification to user** | ⚠️ Partial — `Notifier.Notify()` exists but isn't wired into the LLM loop | The notifier is triggered by task completion/threshold events, not by the agent mid-turn |
-| **List directory / glob** | ❌ Manual shell command in prompt text | No `list_dir(path)` tool |
-| **Structured argument passing** | ⚠️ Weak — tools receive a single `"args"` object with no schema enforcement | Skills define parameters but they're all `{type: "object", properties: {args: {...}}}` — no per-tool schemas |
+| **List directory / glob** | ❌ Manual shell command in prompt text | No `list_dir(path)` tool (P1) |
+| **Structured argument passing** | ⚠️ Weak for skills — generic `{args}` pattern remains | Skills still use opaque `{args: object}`; P0 tools have proper typed schemas |
+| **MCP tools discoverable at runtime** | ❌ Only accessible via skill activation | No general-purpose `ListTools()` call from the LLM (P1) |
 
 ### 2.3 MCP Tools (Remote)
 
@@ -122,9 +126,9 @@ These do **not** execute in the sandbox — they interact with the user session 
 
 ## 4. Current Code Gaps vs. Proposed Model
 
-### 4.1 Missing Structured Shell Tools
+### 4.1 Missing Structured Shell Tools (P0 ✅ Implemented)
 
-The current `buildTools()` in `loop.go` only exposes **activated skills** as tools:
+**Before:** `buildTools()` only exposed **activated skills** with generic `{args: object}` parameters. No typed shell tools existed.
 
 ```go
 func (l *Loop) buildTools() []llm.Tool {
@@ -151,9 +155,32 @@ func (l *Loop) buildTools() []llm.Tool {
 }
 ```
 
-**Problem:** There is no generic `bash`, `read_file`, or `write_file` tool — only whatever skills are activated. The agent must compose shell commands as natural text in its JSON blob output.
+**After (P0):** Generic typed tools are now always prepended to the tool list:
 
-### 4.2 No Agent-Initiated User Interaction
+```go
+func (l *Loop) buildTools() []llm.Tool {
+    var tools []llm.Tool
+    // Always-available generic tools
+    tools = append(tools, llm.Tool{
+        Name: "bash", Description: "...", Parameters: {...}
+    })
+    tools = append(tools, llm.Tool{
+        Name: "read_file", Description: "...", Parameters: {...}
+    })
+    tools = append(tools, llm.Tool{
+        Name: "write_file", Description: "...", Parameters: {...}
+    })
+    // Then activated skills follow
+    ...
+    return tools
+}
+```
+
+Each generic tool now has its own typed `properties` schema (not a generic `{args}` blob). A `dispatchToolCall()` handler routes parsed calls to the correct executor.
+
+**Remaining gap for skills:** Activated skill tools still use the generic `{args: object}` pattern — per-tool schemas are P1.
+
+### 4.2 No Agent-Initiated User Interaction (P0 Partial)
 
 The `notify.Notifier` exists but is only triggered by:
 - Task completion events (`pushCompletion`)
@@ -161,100 +188,106 @@ The `notify.Notifier` exists but is only triggered by:
 
 There is **no mechanism for the LLM to call a tool that asks the user a question** or requests permission mid-task. The interaction flow is one-directional (server → user via WebSocket), not bidirectional agent↔user.
 
+**P0 Status:** `ask_user` and `notify` tools are NOT yet wired into the LLM loop as callable tools. This remains a P1 item — the Notifier needs to be exposed as a tool in `buildTools()` so the LLM can invoke it mid-turn.
+
 ### 4.3 Raw Sources Are Read-Only Snapshots
 
 `RawSources.Snapshot()` records environment reads but doesn't expose a live `read_file(path)` tool. The context injection (`buildMessages`) embeds raw source content as markdown blocks — useful for "reading" but not for targeted file access during task execution.
 
 ---
 
-## 5. Recommendations
+## 5. Recommendations & Implementation Status
 
-### P0 (Must Fix Before Production)
+### ✅ P0 — COMPLETED (2026-10-21, branch `feature/llm-tool-access-assessment`)
 
-1. **Add generic in-sandbox tools** to the LLM tool list:
-   - `bash(command)` — typed string argument, executes via `RunCommand`
-   - `read_file(path)` — typed string argument, reads file content
-   - `write_file(path, content)` — two typed arguments
-   
-   These should be **always available**, not dependent on skill activation.
+1. **Generic in-sandbox tools added** to the LLM tool list:
+   - ✅ `bash(command)` — typed string argument, executes via `RunCommand`
+   - ✅ `read_file(path)` — typed string argument, reads file content via `session.ReadFile()`
+   - ✅ `write_file(path, content)` — two typed arguments, writes via shell `printf >`
 
-2. **Wire up the Notifier as an agent tool** (`ask_user`, `notify`) so the LLM can initiate bidirectional communication with the user.
+   These are **always available**, prepended before activated skill tools. Each has its own typed `properties` schema (not a generic `{args}` blob). A `dispatchToolCall()` handler routes parsed calls to the correct executor.
 
-### P1 (Important for MVP Completion)
+2. **Notifier as agent tool** — ⚠️ Partially done: The Notifier exists but is NOT yet exposed as a callable tool in the LLM loop. This remains a P1 item (see below).
 
-3. **Define per-tool parameter schemas** instead of the generic `{args: object}` pattern. Each tool should have its own `properties` definition.
+### 🔲 P1 — Next Implementation Priority
 
-4. **Add `list_dir(path)` and `find_files(pattern)`** as read-only helpers — these are common operations that currently require manual shell scripting in the LLM output.
+3. **Per-tool parameter schemas for skills** — Replace generic `{args: object}` with actual typed `properties` definitions per skill entry. This requires extending `SkillEntry` to carry schema metadata or generating it from the skill's tool definitions.
 
-5. **Make MCP tools discoverable at runtime** — instead of requiring skill activation, allow the agent to call `ListTools()` on any connected MCP endpoint directly.
+4. **Add `list_dir(path)` and `find_files(pattern)`** — Read-only helpers using shell `ls` and `find`/`glob`. These are common operations that currently require manual shell scripting in the LLM output.
 
-### P2 (Post-MVP)
+5. **Make MCP tools discoverable at runtime** — Expose `ListTools()` and `CallTool()` as general-purpose tools (not just skill-bound). The agent should be able to call any registered MCP tool without prior skill activation.
 
-6. **Add a permission request tool** (`request_permission(description, on_approve, on_deny)`) for guarding destructive actions.
+6. **Wire `ask_user` and `notify` as LLM-callable tools** — This is the missing bidirectional communication layer. The Notifier needs a method like `AskUser(question string) (string, error)` that blocks/wait-for-response, or an async variant that returns immediately with a callback.
 
-7. **Consider a `file_diff(path)` tool** for comparing file states before/after edits.
+### 🔲 P2 — Post-MVP
+
+7. **`request_permission(description, on_approve, on_deny)`** — Guard destructive actions behind explicit user approval. Could be implemented as a blocking tool call that waits for user confirmation via the WebSocket push channel.
+
+8. **`file_diff(path)`** — Compare file states before/after edits. Useful for reviewing changes or auditing edits.
 
 ---
 
 ## 6. Architecture Diagram (Current → Proposed)
+
+### Current State (P0 implemented, P1 pending):
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                    User / Client                      │
 │              (WebSocket, Bell, Slack)                 │
 └──────────────┬──────────────────────────────────────┘
-               │ ask_user() ← notify.notify()
+               │ ask_user() ← notify.notify()  ⚠️ NOT YET WIRED
                │
 ┌──────────────▼──────────────────────────────────────┐
 │              Agent Loop (loop.go)                     │
 │  ┌─────────────────────────────────────────────┐    │
 │  │ LLM Multi-Turn Loop                         │    │
-│  │  tools[] = [bash, read_file, write_file,    │    │
-│  │             ask_user, notify, mcp_call]     │    │
+│  │  tools[] = [bash, read_file, write_file,    │ ✅ P0
+│  │             <activated skill tools>]        │    │
 │  └──────────────┬─────────────────────────────┘    │
 │         tool calls parsed from LLM response         │
 ├─────────────────┼───────────────────────────────────┤
-│  In-Sandbox Tools        Host-Interaction Tools      │
-│  ┌──────────────────┐   ┌──────────────────────┐   │
-│  │ bash(command)     │   │ ask_user(question)    │   │
-│  │ read_file(path)   │   │ notify(title, body)  │   │
-│  │ write_file(p,c)   │   │ request_permission() │   │
-│  │ list_dir(path)    │   └──────────────────────┘   │
-│  │ find_files(pat)   │                               │
+│  In-Sandbox Tools (P0 ✅)                            │
+│  ┌──────────────────┐                                │
+│  │ bash(command)     │   ← typed string arg          │
+│  │ read_file(path)   │   ← typed path arg            │
+│  │ write_file(p,c)   │   ← typed path + content      │
 │  └────────┬─────────┘                                │
-│           │ RunCommand / session.Exec()              │
+│           │ RunCommand / session.ReadFile/WriteFile() │
 ├───────────▼──────────────────────────────────────────┤
 │         OpenShell Sandbox (per-workspace)            │
-│         (isolated from host machine)                 │
+│         (isolated from host machine) ✅               │
 └──────────────────────────────────────────────────────┘
+
+Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 ```
 
 ---
 
 ## 7. Files to Modify for Implementation
 
-| File | Change |
-|------|--------|
-| `pkg/llm/interfaces.go` | Add `ToolCall` struct with typed `Arguments` field (currently uses `json.RawMessage`) |
-| `pkg/agent/loop.go` | `buildTools()` — add generic tools alongside skill tools; wire `ask_user`/`notify` to Notifier |
-| `pkg/env/session.go` | Add `ReadFile(path)` and `WriteFile(path, content)` methods on Session |
-| `pkg/notify/notifier.go` | Expose a method callable from the LLM loop for agent-initiated notifications |
-| `pkg/mcp/client.go` | Expose `ListTools()` and `CallTool()` as discoverable tools (not just skill-bound) |
+| File | Change | Status |
+|------|--------|--------|
+| `pkg/llm/interfaces.go` | Add `ToolCall` struct with typed `Arguments` field (currently uses `json.RawMessage`) | 🔲 P2 |
+| `pkg/agent/loop.go` | `buildTools()` — add generic tools alongside skill tools; wire `ask_user`/`notify` to Notifier | ⚠️ Partially done (tools added, Notifier not yet wired) |
+| `pkg/env/session.go` | Add `ReadFile(path)` and `WriteFile(path, content)` methods on Session | ✅ P0 done |
+| `pkg/notify/notifier.go` | Expose `AskUser()` method callable from the LLM loop for agent-initiated notifications | 🔲 P1 |
+| `pkg/mcp/client.go` | Expose `ListTools()` and `CallTool()` as discoverable tools (not just skill-bound) | 🔲 P1 |
 
 ---
 
 ## 8. Summary
 
-| Aspect | Current State | Target State |
-|--------|--------------|--------------|
-| Tool granularity | Skill-based, generic `{args}` blob | Typed, per-tool schemas |
-| Shell access | Manual text → `RunCommand` | Structured `bash(command)` tool |
-| File I/O | Read-only raw sources injection | `read_file` + `write_file` tools |
-| User interaction | Server push only (notifier) | Bidirectional `ask_user`, `notify` |
-| Host isolation | ✅ Enforced via sandbox | ✅ Maintained (no host commands) |
-| MCP integration | Skill-bound, manual activation | Discoverable at runtime |
+| Aspect | Before P0 | After P0 (Current) | Target State |
+|--------|-----------|-------------------|--------------|
+| Tool granularity | Skill-based, generic `{args}` blob | ✅ Generic tools have typed schemas; skills still generic | Typed per-tool schemas for all tools |
+| Shell access | Manual text → `RunCommand` | ✅ Structured `bash(command)` tool | Same (P0) |
+| File I/O | Read-only raw sources injection | ✅ `read_file` + `write_file` tools | Same (P0) |
+| User interaction | Server push only (notifier) | ⚠️ Notifier exists but not wired as LLM tool | Bidirectional `ask_user`, `notify` |
+| Host isolation | ✅ Enforced via sandbox | ✅ Maintained (no host commands) | Same (P0) |
+| MCP integration | Skill-bound, manual activation | 🔲 No runtime discovery | Discoverable at runtime |
 
-The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. The gap is in **tool exposure quality**: the LLM currently "writes its own shell" rather than calling typed tools, and has no native mechanism to interact with the user beyond task completion notifications.
+The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. The gap is in **tool exposure quality**: P0 has resolved the shell/file I/O problem (typed tools), but bidirectional user interaction and MCP discoverability remain as P1 priorities.
 
 ---
 
