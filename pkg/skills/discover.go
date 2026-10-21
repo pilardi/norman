@@ -15,11 +15,18 @@ import (
 )
 
 // SkillEntry represents a discovered skill with its metadata.
+// ToolDef defines a single tool with its name, description, and typed parameter schema.
+type ToolDef struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+}
+
 type SkillEntry struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Path        string   `json:"path"`
-	Tools       []string `json:"tools,omitempty"`
+	Tools       []ToolDef `json:"tools,omitempty"`
 	Activation  string   `json:"activation,omitempty"` // "manual", "auto", "on-demand"
 
 	// MCPConnection holds optional MCP endpoint configuration for this skill.
@@ -300,54 +307,73 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 	frontmatterEnd += 3 // account for the leading ---
 	fmContent := content[frontmatterStart+3:frontmatterEnd]
 
-	var meta struct {
-		Name        string   `yaml:"name"`
-		Description string   `yaml:"description"`
-		Tools       []string `yaml:"tools"`
-		Activation  string   `yaml:"activation"`
-
-		// MCP fields (optional)
-		MCPEndpoint    string   `yaml:"mcp_endpoint"`
-		MCPCapabilities []string `yaml:"mcp_capabilities"`
-
-		// Install provenance fields (optional)
-		SourceURL string `yaml:"source_url"`
-		Version   string `yaml:"version"`
-	}
-
-	if err := yaml.Unmarshal([]byte(fmContent), &meta); err != nil {
+	// Parse frontmatter into a generic map for flexible tool schema support.
+	var rawMap map[string]interface{}
+	if err := yaml.Unmarshal([]byte(fmContent), &rawMap); err != nil {
 		return SkillEntry{}, fmt.Errorf("parse frontmatter: %w", err)
 	}
 
-	if meta.Name == "" {
+	name, _ := rawMap["name"].(string)
+	description, _ := rawMap["description"].(string)
+	activation, _ := rawMap["activation"].(string)
+	mcPEndpoint, _ := rawMap["mcp_endpoint"].(string)
+	mcpCapabilities, _ := rawMap["mcp_capabilities"].([]interface{})
+	sourceURL, _ := rawMap["source_url"].(string)
+	version, _ := rawMap["version"].(string)
+
+	if name == "" {
 		return SkillEntry{}, fmt.Errorf("missing 'name' in frontmatter")
 	}
 
-	meta.Activation = strings.ToLower(meta.Activation)
-	if meta.Activation == "" {
-		meta.Activation = "on-demand" // default
+	activation = strings.ToLower(activation)
+	if activation == "" {
+		activation = "on-demand" // default
 	}
 
 	entry := SkillEntry{
-		Name:        meta.Name,
-		Description: meta.Description,
+		Name:        name,
+		Description: description,
 		Path:        dir,
-		Tools:       meta.Tools,
-		Activation:  meta.Activation,
+		Activation:  activation,
 	}
 
-	// Only set MCP fields if endpoint is provided (optional)
-	if meta.MCPEndpoint != "" {
-		entry.MCPEndpoint = meta.MCPEndpoint
-		entry.MCPCapabilities = meta.MCPCapabilities
+	// Parse tools — supports both string array (backward compat) and structured definitions.
+	if toolsRaw, ok := rawMap["tools"].([]interface{}); ok {
+		for _, item := range toolsRaw {
+			switch v := item.(type) {
+			case string:
+				// Backward compatible: simple tool name string
+				entry.Tools = append(entry.Tools, ToolDef{Name: v})
+			case map[string]interface{}:
+				// Structured definition with typed parameters
+				td := ToolDef{
+					Name:        v["name"].(string),
+					Description: v["description"].(string),
+				}
+				if params, ok := v["parameters"].(map[string]interface{}); ok {
+					td.Parameters = params
+				}
+				entry.Tools = append(entry.Tools, td)
+			}
+		}
 	}
 
-	// Set provenance fields if present in frontmatter
-	if meta.SourceURL != "" {
-		entry.SourceURL = meta.SourceURL
+	// Set MCP fields if provided.
+	if mcPEndpoint != "" {
+		entry.MCPEndpoint = mcPEndpoint
+		for _, cap := range mcpCapabilities {
+			if s, ok := cap.(string); ok {
+				entry.MCPCapabilities = append(entry.MCPCapabilities, s)
+			}
+		}
 	}
-	if meta.Version != "" {
-		entry.Version = meta.Version
+
+	// Set provenance fields if present.
+	if sourceURL != "" {
+		entry.SourceURL = sourceURL
+	}
+	if version != "" {
+		entry.Version = version
 	}
 
 	return entry, nil

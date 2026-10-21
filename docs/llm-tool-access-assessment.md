@@ -78,7 +78,7 @@ This satisfies the critical constraint: *the agent only operates inside its sand
 | **Send notification to user** | ✅ Implemented: `notify(title, body)` pushes via WebSocket/bell/Slack | P1 done — typed tool call replaces manual shell echo → notifier |
 | **List directory / glob** | ✅ Implemented: `list_dir(path)` and `find_files(pattern)` with typed string args | P1 done — replaces manual `ls -la` / `find . -name` shell commands |
 | **Structured argument passing** | ⚠️ Weak for skills — generic `{args}` pattern remains | Skills still use opaque `{args: object}`; P0 tools have proper typed schemas |
-| **MCP tools discoverable at runtime** | ❌ Only accessible via skill activation | No general-purpose `ListTools()` call from the LLM (P1) |
+| **MCP tools discoverable at runtime** | ✅ Implemented: `mcp_list_tools()` and `mcp_call(name, arguments)` exposed as always-available tools | P1 done — general-purpose MCP discovery/invocation not bound to skill activation |
 
 ### 2.3 MCP Tools (Remote)
 
@@ -217,13 +217,13 @@ Both use typed `{path: string}` / `{pattern: string}` schemas and are routed thr
 
 2. **Notifier as agent tool** — ⚠️ Partially done: The Notifier exists but is NOT yet exposed as a callable tool in the LLM loop. This remains a P1 item (see below).
 
-### 🔲 P1 — Remaining (Partially Done)
+### ✅ P1 — Implemented (this session)
 
-3. **Per-tool parameter schemas for skills** — Replace generic `{args: object}` with actual typed `properties` definitions per skill entry. This requires extending `SkillEntry` to carry schema metadata or generating it from the skill's tool definitions.
+3. **Per-tool parameter schemas for skills** — `SkillEntry.Tools` extended from `[]string` to `[]ToolDef`. Skills can now define typed `{name, description, parameters}` schemas in their SKILL.md frontmatter. The `buildTools()` function generates individual `llm.Tool` entries with proper typed properties instead of generic `{args}`.
 
-4. **Make MCP tools discoverable at runtime** — Expose `ListTools()` and `CallTool()` as general-purpose tools (not just skill-bound). The agent should be able to call any registered MCP tool without prior skill activation.
+4. **Make MCP tools discoverable at runtime** — `mcp_list_tools()` and `mcp_call(name, arguments)` are now always-available tools in the LLM tool list (not bound to skill activation). The Loop accepts an MCP client via `WithMCPClient()`.
 
-> **Note:** `list_dir(path)` and `find_files(pattern)` were implemented during this session and are now part of the in-sandbox tool set.
+> **Note:** `list_dir(path)` and `find_files(pattern)` were implemented earlier and are part of the in-sandbox tool set.
 
 ### 🔲 P2 — Post-MVP
 
@@ -251,6 +251,7 @@ Both use typed `{path: string}` / `{pattern: string}` schemas and are routed thr
 │  │  tools[] = [bash, read_file, write_file,    │ ✅ P0+P1
 │  │             list_dir(path), find_files(pat), │    │
 │  │             ask_user(), notify(),            │    │
+│  │             mcp_list_tools(), mcp_call(),    │    │
 │  │             <activated skill tools>]        │    │
 │  └──────────────┬─────────────────────────────┘    │
 │         tool calls parsed from LLM response         │
@@ -263,6 +264,20 @@ Both use typed `{path: string}` / `{pattern: string}` schemas and are routed thr
 │  │ list_dir(path)    │   ← typed path arg            │
 │  │ find_files(pat)   │   ← typed pattern arg         │
 │  └────────┬─────────┘                                │
+│           │ RunCommand / session.ReadFile/WriteFile() │
+├───────────▼──────────────────────────────────────────┤
+│  Remote MCP Tools (P1 ✅)                              │
+│  ┌──────────────────────┐                             │
+│  │ mcp_list_tools()      │   ← discovers available tools │
+│  │ mcp_call(name, args)  │   ← invokes a remote tool     │
+│  └──────────────────────┘                             │
+│           │ mcp.Client.ListTools() / CallTool()       │
+├───────────────────────────────────────────────────────┤
+│  Skill Tools (P1 ✅)                                   │
+│  ┌──────────────────────┐                             │
+│  │ <typed tool defs>     │   ← per-tool typed schemas  │
+│  └──────────────────────┘                             │
+│           │ SkillEntry.Tools []ToolDef                │
 │           │ RunCommand / session.ReadFile/WriteFile() │
 ├───────────▼──────────────────────────────────────────┤
 │         OpenShell Sandbox (per-workspace)            │
@@ -279,10 +294,11 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | File | Change | Status |
 |------|--------|--------|
 | `pkg/llm/interfaces.go` | Add `ToolCall` struct with typed `Arguments` field (currently uses `json.RawMessage`) | 🔲 P2 |
-| `pkg/agent/loop.go` | `buildTools()` — add generic tools + ask_user + notify + list_dir + find_files; dispatch handlers for all tool types | ✅ P0+P1 done |
+| `pkg/agent/loop.go` | `buildTools()` — add generic tools + ask_user + notify + list_dir + find_files + mcp_list_tools/mcp_call; dispatch handlers for all tool types; `WithMCPClient()` builder | ✅ P0+P1 done |
+| `pkg/skills/discover.go` | Extend `SkillEntry.Tools` from `[]string` to `[]ToolDef`; add typed schema parsing in frontmatter | ✅ P1 done |
 | `pkg/env/session.go` | Add `ReadFile(path)` and `WriteFile(path, content)` methods on Session | ✅ P0 done |
 | `pkg/notify/notifier.go` | Expose `Push(title, body string)` method for typed LLM tool calls; `AskUser(question) (string, error)` blocking variant | ⚠️ Partially done (`Push` done, blocking `AskUser` needs response channel) |
-| `pkg/mcp/client.go` | Expose `ListTools()` and `CallTool()` as discoverable tools (not just skill-bound) | 🔲 P1 |
+| `pkg/mcp/client.go` | Already had `ListTools()`/`CallTool()` — now exposed as general-purpose tools via loop wiring | ✅ P1 done (wired in loop.go) |
 
 ---
 
@@ -295,9 +311,9 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | File I/O | Read-only raw sources injection | ✅ `read_file` + `write_file` tools | Same (P0) |
 | User interaction | Server push only (notifier) | ✅ `ask_user` + `notify` wired as LLM tools; blocking variant pending | Bidirectional `ask_user` (blocking), `notify` |
 | Host isolation | ✅ Enforced via sandbox | ✅ Maintained (no host commands) | Same (P0) |
-| MCP integration | Skill-bound, manual activation | 🔲 No runtime discovery | Discoverable at runtime |
+| MCP integration | Skill-bound, manual activation | ✅ `mcp_list_tools` + `mcp_call` exposed as always-available tools | Discoverable at runtime via `WithMCPClient()` |
 
-The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. The gap is in **tool exposure quality**: P0 has resolved the shell/file I/O problem (typed tools), but bidirectional user interaction and MCP discoverability remain as P1 priorities.
+The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved: P0 resolved typed shell/file I/O, and this session completed P1 (per-tool schemas + MCP discoverability). Remaining work is P2 (blocking `ask_user`, `request_permission`, `file_diff`).
 
 ---
 

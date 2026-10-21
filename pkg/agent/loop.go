@@ -18,6 +18,7 @@ import (
 	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
+	"github.com/norman/norman/pkg/mcp"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
@@ -54,6 +55,7 @@ type Loop struct {
 	budget      *budget.SessionState // token budget tracker (nil if disabled)
 	workspaceDef *env.WorkspaceDefinition // workspace identity for system prompt injection
 	openShellClient *env.Client        // concrete client for session creation (P3 sandbox dep install)
+	mcpClient   *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -178,6 +180,13 @@ func NewWithClient(cfg *config.Config, store *memory.Store, rawSources *memory.R
 // WithNotifier injects a notification notifier into the loop. Returns the modified Loop.
 func (l *Loop) WithNotifier(n *notify.Notifier) *Loop {
 	l.notifier = n
+	return l
+}
+
+// WithMCPClient injects an MCP client into the loop for remote tool discovery/invocation.
+// The client must be connected to an SSE endpoint before the loop starts processing.
+func (l *Loop) WithMCPClient(c *mcp.Client) *Loop {
+	l.mcpClient = c
 	return l
 }
 
@@ -943,6 +952,42 @@ func (l *Loop) buildTools() []llm.Tool {
 		})
 	}
 
+	// Remote MCP tools (discoverable at runtime).
+	if l.mcpClient != nil {
+		tools = append(tools, llm.Tool{
+			Name:        "mcp_list_tools",
+			Description: "List available tools from the connected MCP server. Returns a list of tool definitions with their names and schemas.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"endpoint": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional MCP endpoint URL to query (if nil, uses the default configured endpoint)",
+					},
+				},
+			},
+		})
+
+		tools = append(tools, llm.Tool{
+			Name:        "mcp_call",
+			Description: "Invoke a tool on the connected MCP server by name with typed arguments. Returns the tool's result.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "The name of the MCP tool to invoke (e.g., 'search_files')",
+					},
+					"arguments": map[string]interface{}{
+						"type":        "object",
+						"description": "Typed arguments to pass to the tool (schema depends on the target tool)",
+					},
+				},
+				"required": []string{"name"},
+			},
+		})
+	}
+
 	if l.activator == nil {
 		return tools
 	}
@@ -953,20 +998,53 @@ func (l *Loop) buildTools() []llm.Tool {
 			continue
 		}
 
-		tools = append(tools, llm.Tool{
-			Name:        entry.Name,
-			Description: entry.Description,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"args": map[string]interface{}{
-						"type":        "object",
-						"description": "Tool-specific arguments",
+		// If the skill defines typed tool schemas, use them; otherwise fall back to generic {args}.
+		if len(entry.Tools) > 0 {
+			for _, td := range entry.Tools {
+				params := map[string]interface{}{
+					"type": "object",
+				}
+				if td.Parameters != nil && len(td.Parameters) > 0 {
+					params["properties"] = td.Parameters
+				} else {
+					params["properties"] = map[string]interface{}{
+						"args": map[string]interface{}{
+							"type":        "object",
+							"description": "Tool-specific arguments",
+						},
+					}
+				}
+				if len(td.Parameters) > 0 {
+					// If parameters define a "required" field, propagate it
+					if req, ok := td.Parameters["required"]; ok {
+						if r, ok := req.([]interface{}); ok {
+							params["required"] = r
+						}
+					}
+				}
+				tools = append(tools, llm.Tool{
+					Name:        td.Name,
+					Description: td.Description,
+					Parameters:  params,
+				})
+			}
+		} else {
+			// Backward compatible: generic {args} for skills without explicit tool defs.
+			tools = append(tools, llm.Tool{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"args": map[string]interface{}{
+							"type":        "object",
+							"description": "Tool-specific arguments",
+						},
 					},
+					"required": []string{"args"},
 				},
-				"required": []string{"args"},
-			},
-		})
+			})
+		}
 	}
 
 	return tools
@@ -1440,6 +1518,10 @@ func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name st
 		return l.handleAskUser(sandboxName, argsRaw)
 	case "notify":
 		return l.handleNotify(argsRaw)
+	case "mcp_list_tools":
+		return l.handleMCPListTools(sandboxName, argsRaw)
+	case "mcp_call":
+		return l.handleMCPCall(sandboxName, argsRaw)
 	default:
 		// Fall back to raw RunCommand for activated skill tools
 		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, argsRaw)
@@ -1587,6 +1669,68 @@ func (l *Loop) handleFindFiles(sandboxName string, argsRaw string) (string, int,
 	cmd := "find . -name '" + pattern + "'"
 	output, exitCode, err := l.openShell.RunCommand(context.Background(), sandboxName, cmd)
 	return output, exitCode, err
+}
+
+// handleMCPListTools lists available tools from the connected MCP server.
+func (l *Loop) handleMCPListTools(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse mcp_list_tools args: %w", err)
+	}
+
+	if l.mcpClient == nil {
+		return "", 0, fmt.Errorf("mcp_list_tools: MCP client not configured")
+	}
+
+	// Optional endpoint override (for multi-endpoint scenarios).
+	// Currently unused in the MVP; kept for schema completeness.
+	if _, ok := args["endpoint"].(string); !ok {
+		// No endpoint specified — uses the default configured endpoint.
+	}
+
+	tools, err := l.mcpClient.ListTools(context.Background())
+	if err != nil {
+		return "", 0, fmt.Errorf("mcp_list_tools: %w", err)
+	}
+
+	// Format as JSON for structured return.
+	result, _ := json.Marshal(tools)
+	return string(result), 0, nil
+}
+
+// handleMCPCall invokes a tool on the connected MCP server by name with typed arguments.
+func (l *Loop) handleMCPCall(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse mcp_call args: %w", err)
+	}
+
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return "", 0, fmt.Errorf("mcp_call requires a 'name' field (string)")
+	}
+
+	if l.mcpClient == nil {
+		return "", 0, fmt.Errorf("mcp_call: MCP client not configured")
+	}
+
+	// Extract arguments (optional — some tools take no args).
+	var toolArgs map[string]any
+	if rawArgs, ok := args["arguments"].(map[string]interface{}); ok {
+		toolArgs = make(map[string]any, len(rawArgs))
+		for k, v := range rawArgs {
+			toolArgs[k] = v
+		}
+	}
+
+	result, err := l.mcpClient.CallTool(context.Background(), name, toolArgs)
+	if err != nil {
+		return "", 0, fmt.Errorf("mcp_call %q: %w", name, err)
+	}
+
+	// Format result as JSON.
+	output, _ := json.Marshal(result)
+	return string(output), 0, nil
 }
 
 // shellEscape wraps a string for safe inclusion in a single-quoted shell argument.
