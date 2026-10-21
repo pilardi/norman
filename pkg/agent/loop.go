@@ -92,9 +92,18 @@ func (l *Loop) GetWorkspaceDefinition() *env.WorkspaceDefinition {
 }
 
 // ActivateWithSession activates a skill with dependency install inside the given workspace's sandbox.
-// Falls back to local venv if session is nil.
+// Falls back to local venv if session is nil. Deploys skill files into the sandbox first.
 func (l *Loop) ActivateWithSession(name string, session *env.Session) error {
 	if l.activator != nil {
+		// Deploy skill files into sandbox before activation
+		if session != nil {
+			_, err := l.activator.DeployToSandbox(name, session)
+			if err != nil {
+				log.Printf("[loop] deploy to sandbox for '%s': %v", name, err)
+				// Non-fatal — continue with activation if files are already present
+			}
+		}
+
 		_, err := l.activator.Activate(name, session)
 		return err
 	}

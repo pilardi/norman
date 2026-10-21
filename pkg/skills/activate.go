@@ -1,8 +1,10 @@
 package skills
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 
 	"github.com/norman/norman/pkg/env"
@@ -58,6 +60,61 @@ func (a *Activator) Activate(name string, session *env.Session) (string, error) 
 
 	a.active = append(a.active, name)
 	return formatToolInjection(entry), nil
+}
+
+// DeployToSandbox ensures a skill's files are present inside the given OpenShell sandbox.
+// If the skill is already deployed in this sandbox, it is a no-op (idempotent).
+// Otherwise, it clones the repo into /workspace/<ws-id>/skills/<name>/ and runs
+// any platform-specific install steps (e.g., `graphify install --platform agents`).
+// Returns the deployed SkillEntry or an error.
+func (a *Activator) DeployToSandbox(name string, session *env.Session) (*SkillEntry, error) {
+	if session == nil {
+		return nil, fmt.Errorf("DeployToSandbox requires a non-nil session")
+	}
+
+	sandboxName := session.SandboxName()
+	skillDir := filepath.Join("/workspace", sandboxName, "skills", name)
+
+	// Check if skill is already deployed in this sandbox
+	ctx := context.Background()
+	checkCmd := fmt.Sprintf("test -d %s && echo 'exists'", skillDir)
+	output, err := session.Exec(ctx, []string{"bash", "-c", checkCmd})
+	if err == nil && strings.Contains(strings.TrimSpace(output), "exists") {
+		log.Printf("[skills] '%s' already deployed in sandbox '%s', skipping clone", name, sandboxName)
+		entry, err := readSkillMetadata(skillDir)
+		if err != nil {
+			return nil, fmt.Errorf("parse SKILL.md in sandbox '%s': %w", sandboxName, err)
+		}
+		return &entry, nil
+	}
+
+	// Get entry from registry to find source_url/version
+	entry, ok := a.registry[name]
+	if !ok {
+		return nil, fmt.Errorf("skill '%s' not found in registry", name)
+	}
+
+	// Clone into sandbox via session.Exec
+	cloneCmd := fmt.Sprintf("git clone --depth 1 %s %s && cd %s && git checkout %s 2>/dev/null || true",
+		entry.SourceURL, skillDir, skillDir, entry.Version)
+	output, err = session.Exec(ctx, []string{"bash", "-c", cloneCmd})
+	if err != nil {
+		return nil, fmt.Errorf("git clone into sandbox '%s': %w (output: %s)", sandboxName, err, output)
+	}
+
+	// Run platform-specific install if SKILL.md references it (e.g., graphify install --platform agents)
+	installCmd := fmt.Sprintf("cd %s && if [ -f install.sh ]; then bash install.sh; fi", skillDir)
+	output, err = session.Exec(ctx, []string{"bash", "-c", installCmd})
+	if err != nil {
+		log.Printf("[skills] platform install step for '%s' in sandbox '%s': %v", name, sandboxName, output)
+	}
+
+	// Parse and return the deployed entry
+	entry, err = readSkillMetadata(skillDir)
+	if err != nil {
+		return nil, fmt.Errorf("parse SKILL.md in sandbox '%s': %w", sandboxName, err)
+	}
+	return &entry, nil
 }
 
 // Deactivate removes a skill from active context.
