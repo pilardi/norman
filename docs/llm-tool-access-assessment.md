@@ -5,8 +5,8 @@
 > **Scope:** How tools are granted to the LLM for interacting with the OpenShell workspace environment.  
 > **Constraint:** The agent must never execute commands on the host machine — only inside its sandbox or via interaction with the user.
 >
-> **Status Update (2026-10-21):** P0 implementation merged on branch `feature/llm-tool-access-assessment`.  
-> Generic typed tools (`bash`, `read_file`, `write_file`) are now always available to the LLM.
+> **Status Update (2026-10-21):** P0 + ask_user/notify wired on branch `feature/llm-tool-access-assessment`.  
+> Generic typed tools (`bash`, `read_file`, `write_file`) and bidirectional user tools (`ask_user`, `notify`) are now always available to the LLM.
 
 ---
 
@@ -74,8 +74,8 @@ This satisfies the critical constraint: *the agent only operates inside its sand
 | **Read file** (`cat`, `head`, etc.) | ✅ Implemented: `read_file(path)` with typed string arg | P0 done — replaces manual `cat` shell commands |
 | **Write file** (`echo >`, `tee`) | ✅ Implemented: `write_file(path, content)` with two typed args | P0 done — replaces manual `printf >` shell commands |
 | **Execute command** (typed) | ✅ Implemented: `bash(command)` with typed string arg | P0 done — structured tool call instead of raw text |
-| **Permission request / ask user** | ❌ No agent-initiated notification mechanism | User interaction is server-side push (notifier), not agent-initiated Q&A |
-| **Send notification to user** | ⚠️ Partial — `Notifier.Notify()` exists but isn't wired into the LLM loop | The notifier is triggered by task completion/threshold events, not by the agent mid-turn |
+| **Permission request / ask user** | ✅ Implemented: `ask_user(question)` broadcasts via Notifier, returns confirmation | P1 done — fire-and-forget for MVP; blocking wait requires response channel |
+| **Send notification to user** | ✅ Implemented: `notify(title, body)` pushes via WebSocket/bell/Slack | P1 done — typed tool call replaces manual shell echo → notifier |
 | **List directory / glob** | ❌ Manual shell command in prompt text | No `list_dir(path)` tool (P1) |
 | **Structured argument passing** | ⚠️ Weak for skills — generic `{args}` pattern remains | Skills still use opaque `{args: object}`; P0 tools have proper typed schemas |
 | **MCP tools discoverable at runtime** | ❌ Only accessible via skill activation | No general-purpose `ListTools()` call from the LLM (P1) |
@@ -180,15 +180,15 @@ Each generic tool now has its own typed `properties` schema (not a generic `{arg
 
 **Remaining gap for skills:** Activated skill tools still use the generic `{args: object}` pattern — per-tool schemas are P1.
 
-### 4.2 No Agent-Initiated User Interaction (P0 Partial)
+### 4.2 No Agent-Initiated User Interaction (P1 ✅ Implemented)
 
-The `notify.Notifier` exists but is only triggered by:
-- Task completion events (`pushCompletion`)
-- Budget threshold events (`pushThresholdNotification`)
+The `notify.Notifier` now exposes two agent-callable methods:
+- **`ask_user(question)`** — broadcasts a question to the connected user via WebSocket notification event; returns confirmation that it was sent. A full blocking variant would require a response channel from the client.
+- **`notify(title, body)`** — pushes a typed notification via all configured channels (WebSocket, bell, Slack).
 
-There is **no mechanism for the LLM to call a tool that asks the user a question** or requests permission mid-task. The interaction flow is one-directional (server → user via WebSocket), not bidirectional agent↔user.
+Both are now in `buildTools()` and routed through `dispatchToolCall()`. The interaction flow is now bidirectional: the LLM can initiate communication with the user mid-turn.
 
-**P0 Status:** `ask_user` and `notify` tools are NOT yet wired into the LLM loop as callable tools. This remains a P1 item — the Notifier needs to be exposed as a tool in `buildTools()` so the LLM can invoke it mid-turn.
+**P1 Status:** ✅ Done. The Notifier's `Push(title, body string)` method is exposed as a typed tool. A full blocking `AskUser(question) (string, error)` variant would require wiring a response channel from the WebSocket client — this is a P2 enhancement.
 
 ### 4.3 Raw Sources Are Read-Only Snapshots
 
@@ -209,7 +209,7 @@ There is **no mechanism for the LLM to call a tool that asks the user a question
 
 2. **Notifier as agent tool** — ⚠️ Partially done: The Notifier exists but is NOT yet exposed as a callable tool in the LLM loop. This remains a P1 item (see below).
 
-### 🔲 P1 — Next Implementation Priority
+### 🔲 P1 — Next Implementation Priority (Remaining)
 
 3. **Per-tool parameter schemas for skills** — Replace generic `{args: object}` with actual typed `properties` definitions per skill entry. This requires extending `SkillEntry` to carry schema metadata or generating it from the skill's tool definitions.
 
@@ -217,13 +217,11 @@ There is **no mechanism for the LLM to call a tool that asks the user a question
 
 5. **Make MCP tools discoverable at runtime** — Expose `ListTools()` and `CallTool()` as general-purpose tools (not just skill-bound). The agent should be able to call any registered MCP tool without prior skill activation.
 
-6. **Wire `ask_user` and `notify` as LLM-callable tools** — This is the missing bidirectional communication layer. The Notifier needs a method like `AskUser(question string) (string, error)` that blocks/wait-for-response, or an async variant that returns immediately with a callback.
-
 ### 🔲 P2 — Post-MVP
 
-7. **`request_permission(description, on_approve, on_deny)`** — Guard destructive actions behind explicit user approval. Could be implemented as a blocking tool call that waits for user confirmation via the WebSocket push channel.
+6. **`request_permission(description, on_approve, on_deny)`** — Guard destructive actions behind explicit user approval. Could be implemented as a blocking tool call that waits for user confirmation via the WebSocket push channel.
 
-8. **`file_diff(path)`** — Compare file states before/after edits. Useful for reviewing changes or auditing edits.
+7. **`file_diff(path)`** — Compare file states before/after edits. Useful for reviewing changes or auditing edits.
 
 ---
 
@@ -269,9 +267,9 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | File | Change | Status |
 |------|--------|--------|
 | `pkg/llm/interfaces.go` | Add `ToolCall` struct with typed `Arguments` field (currently uses `json.RawMessage`) | 🔲 P2 |
-| `pkg/agent/loop.go` | `buildTools()` — add generic tools alongside skill tools; wire `ask_user`/`notify` to Notifier | ⚠️ Partially done (tools added, Notifier not yet wired) |
+| `pkg/agent/loop.go` | `buildTools()` — add generic tools + ask_user + notify; dispatch handlers for all tool types | ✅ P0+P1 done |
 | `pkg/env/session.go` | Add `ReadFile(path)` and `WriteFile(path, content)` methods on Session | ✅ P0 done |
-| `pkg/notify/notifier.go` | Expose `AskUser()` method callable from the LLM loop for agent-initiated notifications | 🔲 P1 |
+| `pkg/notify/notifier.go` | Expose `Push(title, body string)` method for typed LLM tool calls; `AskUser(question) (string, error)` blocking variant | ⚠️ Partially done (`Push` done, blocking `AskUser` needs response channel) |
 | `pkg/mcp/client.go` | Expose `ListTools()` and `CallTool()` as discoverable tools (not just skill-bound) | 🔲 P1 |
 
 ---
@@ -283,7 +281,7 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | Tool granularity | Skill-based, generic `{args}` blob | ✅ Generic tools have typed schemas; skills still generic | Typed per-tool schemas for all tools |
 | Shell access | Manual text → `RunCommand` | ✅ Structured `bash(command)` tool | Same (P0) |
 | File I/O | Read-only raw sources injection | ✅ `read_file` + `write_file` tools | Same (P0) |
-| User interaction | Server push only (notifier) | ⚠️ Notifier exists but not wired as LLM tool | Bidirectional `ask_user`, `notify` |
+| User interaction | Server push only (notifier) | ✅ `ask_user` + `notify` wired as LLM tools; blocking variant pending | Bidirectional `ask_user` (blocking), `notify` |
 | Host isolation | ✅ Enforced via sandbox | ✅ Maintained (no host commands) | Same (P0) |
 | MCP integration | Skill-bound, manual activation | 🔲 No runtime discovery | Discoverable at runtime |
 
