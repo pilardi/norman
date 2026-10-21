@@ -71,3 +71,37 @@ func (s *Session) WaitReady(ctx context.Context) (*v1.Sandbox, error) {
 func (s *Session) Delete(ctx context.Context) (*v1.DeletionResult, error) {
 	return s.client.DeleteSandbox(ctx, s.provider, s.sandbox)
 }
+
+// ReadFile reads the contents of a file inside the sandbox.
+func (s *Session) ReadFile(ctx context.Context, path string) (string, error) {
+	result, err := s.client.RunCommand(ctx, s.provider, s.sandbox, []string{"cat", path})
+	if err != nil {
+		return "", fmt.Errorf("read_file in sandbox %s: %w", s.sandbox, err)
+	}
+
+	var output strings.Builder
+	output.WriteString(string(result.Stdout))
+	if len(result.Stderr) > 0 {
+		output.WriteString("\n")
+		output.WriteString(string(result.Stderr))
+	}
+	return output.String(), nil
+}
+
+// WriteFile writes content to a file inside the sandbox.
+func (s *Session) WriteFile(ctx context.Context, path string, content string) error {
+	// Use printf to avoid issues with special characters in content.
+	cmd := []string{"sh", "-c", fmt.Sprintf("printf '%%s' '%s' > %q", escapeShellArg(content), path)}
+	_, err := s.client.RunCommand(ctx, s.provider, s.sandbox, cmd)
+	if err != nil {
+		return fmt.Errorf("write_file in sandbox %s: %w", s.sandbox, err)
+	}
+	return nil
+}
+
+// escapeShellArg wraps a string for safe inclusion in a single-quoted shell argument.
+func escapeShellArg(s string) string {
+	// Single-quote: everything inside is literal except single quotes themselves.
+	// Escape ' by closing the quote, inserting an escaped single quote, and reopening.
+	return strings.ReplaceAll(s, "'", "'\\''")
+}

@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -709,7 +710,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					Step:    intPtr(7 + turn),
 				})
 
-				output, exitCode, execErr := l.openShell.RunCommand(ctx, sandboxName, string(tc.Arguments))
+				output, exitCode, execErr := l.dispatchToolCall(ctx, sandboxName, tc.Name, string(tc.Arguments))
 				if execErr != nil {
 					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
 				} else if exitCode != 0 {
@@ -819,8 +820,60 @@ Rules:
 }
 
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
+// Generic in-sandbox tools (bash, read_file, write_file) are always included;
+// activated skills are appended as additional tools.
 func (l *Loop) buildTools() []llm.Tool {
 	var tools []llm.Tool
+
+	// Always-available generic tools (in-sandbox I/O and command execution).
+	tools = append(tools, llm.Tool{
+		Name:        "bash",
+		Description: "Execute a shell command inside the sandbox environment. Returns combined stdout/stderr output.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"command": map[string]interface{}{
+					"type":        "string",
+					"description": "The shell command to execute (e.g., 'ls -la /tmp')",
+				},
+			},
+			"required": []string{"command"},
+		},
+	})
+
+	tools = append(tools, llm.Tool{
+		Name:        "read_file",
+		Description: "Read the contents of a file inside the sandbox environment. Returns the file content as a string.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Absolute or relative path to the file to read (e.g., '/tmp/data.txt')",
+				},
+			},
+			"required": []string{"path"},
+		},
+	})
+
+	tools = append(tools, llm.Tool{
+		Name:        "write_file",
+		Description: "Write content to a file inside the sandbox environment. Creates parent directories if needed.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Absolute or relative path to the file to write (e.g., '/tmp/output.txt')",
+				},
+				"content": map[string]interface{}{
+					"type":        "string",
+					"description": "The content to write to the file",
+				},
+			},
+			"required": []string{"path", "content"},
+		},
+	})
 
 	if l.activator == nil {
 		return tools
@@ -1297,6 +1350,83 @@ func contains(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+// dispatchToolCall routes a parsed tool call to the appropriate handler.
+// Generic tools (bash, read_file, write_file) are handled with typed execution;
+// unknown tool names fall back to raw RunCommand (for activated skill tools).
+func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name string, argsRaw string) (string, int, error) {
+	switch name {
+	case "bash":
+		return l.handleBash(ctx, sandboxName, argsRaw)
+	case "read_file":
+		return l.handleReadFile(ctx, sandboxName, argsRaw)
+	case "write_file":
+		return l.handleWriteFile(ctx, sandboxName, argsRaw)
+	default:
+		// Fall back to raw RunCommand for activated skill tools
+		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, argsRaw)
+		return output, exitCode, err
+	}
+}
+
+// handleBash executes a shell command inside the sandbox.
+func (l *Loop) handleBash(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse bash args: %w", err)
+	}
+
+	cmd, ok := args["command"].(string)
+	if !ok || cmd == "" {
+		return "", 0, fmt.Errorf("bash requires a 'command' field (string)")
+	}
+
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, cmd)
+	return output, exitCode, err
+}
+
+// handleReadFile reads a file inside the sandbox and returns its content.
+func (l *Loop) handleReadFile(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse read_file args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("read_file requires a 'path' field (string)")
+	}
+
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, "cat "+shellEscape(path))
+	return output, exitCode, err
+}
+
+// handleWriteFile writes content to a file inside the sandbox.
+func (l *Loop) handleWriteFile(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse write_file args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("write_file requires a 'path' field (string)")
+	}
+
+	content, ok := args["content"].(string)
+	if !ok {
+		return "", 0, fmt.Errorf("write_file requires a 'content' field (string)")
+	}
+
+	cmd := "printf '%s' '" + shellEscape(content) + "' > " + shellEscape(path)
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, cmd)
+	return output, exitCode, err
+}
+
+// shellEscape wraps a string for safe inclusion in a single-quoted shell argument.
+func shellEscape(s string) string {
+	return strings.ReplaceAll(s, "'", "'\\''")
 }
 
 // --- Fake OpenShellClient for testing ---
