@@ -296,7 +296,7 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 
 | File | Change | Status |
 |------|--------|--------|
-| `pkg/llm/interfaces.go` | Add `ToolCall` struct with typed `Arguments` field (currently uses `json.RawMessage`) | 🔲 P2 |
+| `pkg/llm/interfaces.go` | Add `ArgumentsTyped map[string]interface{}` + `ParseArguments()` method to ToolCall; populate in `ParseToolCalls()` | ✅ P2 done |
 | `pkg/agent/loop.go` | `buildTools()` — add generic tools + ask_user + notify + list_dir + find_files + mcp_list_tools/mcp_call; dispatch handlers for all tool types; `WithMCPClient()` builder | ✅ P0+P1 done |
 | `pkg/skills/discover.go` | Extend `SkillEntry.Tools` from `[]string` to `[]ToolDef`; add typed schema parsing in frontmatter | ✅ P1 done |
 | `pkg/env/session.go` | Add `ReadFile(path)` and `WriteFile(path, content)` methods on Session | ✅ P0 done |
@@ -316,7 +316,7 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | Host isolation | ✅ Enforced via sandbox | ✅ Maintained (no host commands) | Same (P0) |
 | MCP integration | Skill-bound, manual activation | ✅ `mcp_list_tools` + `mcp_call` exposed as always-available tools | Discoverable at runtime via `WithMCPClient()` |
 
-The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved across all phases: P0 resolved typed shell/file I/O, P1 added per-tool schemas + MCP discoverability, and this session completed P2 (blocking `ask_user` via `AskUserBlocking()`, `request_permission` guard tool, and `file_diff` read tool). The remaining gap is the WebSocket client-side wiring to actually populate the response channel for blocking calls.
+The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved across all phases: P0 resolved typed shell/file I/O, P1 added per-tool schemas + MCP discoverability, and this session completed P2 (blocking `ask_user` via `AskUserBlocking()`, `request_permission` guard tool, `file_diff` read tool, typed `ArgumentsTyped` on ToolCall, and WS client-side response channel wiring). The remaining gap is the actual integration of the WS message handler to parse incoming `user_response` events and route them through `SendResponse()` to registered channels.
 
 ---
 

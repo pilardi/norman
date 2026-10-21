@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,10 +11,34 @@ import (
 // mockWSHub implements WSHubPublisher for testing.
 type mockWSHub struct {
 	events []protocol.WebSocketEvent
+	chans map[string]chan string
 }
 
 func (m *mockWSHub) BroadcastEvent(event protocol.WebSocketEvent) {
 	m.events = append(m.events, event)
+}
+
+func (m *mockWSHub) RegisterResponseChannel() (string, chan string) {
+	id := fmt.Sprintf("resp_%d", time.Now().UnixNano())
+	ch := make(chan string, 1)
+	if m.chans == nil {
+		m.chans = make(map[string]chan string)
+	}
+	m.chans[id] = ch
+	return id, ch
+}
+
+func (m *mockWSHub) SendResponse(id string, message string) bool {
+	ch, ok := m.chans[id]
+	if !ok {
+		return false
+	}
+	select {
+	case ch <- message:
+		return true
+	default:
+		return false
+	}
 }
 
 func TestNotifyBasic(t *testing.T) {

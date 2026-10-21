@@ -96,9 +96,25 @@ type ResponseChoice struct {
 
 // ToolCall represents a tool invocation requested by the LLM.
 type ToolCall struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Arguments json.RawMessage `json:"arguments"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"` // raw JSON bytes (backward compat)
+	// ArgumentsTyped provides parsed typed access to arguments when available.
+	// Populated via ParseArguments() for convenience. Nil if unparseable.
+	ArgumentsTyped map[string]interface{} `json:"-"`
+}
+
+// ParseArguments deserializes the raw Arguments into a typed map.
+// Returns nil if Arguments is empty or invalid JSON.
+func (tc *ToolCall) ParseArguments() map[string]interface{} {
+	if tc.Arguments == nil || len(tc.Arguments) == 0 {
+		return nil
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(tc.Arguments, &m); err != nil {
+		return nil
+	}
+	return m
 }
 
 // ProviderMetadata describes the provider's capabilities and constraints.

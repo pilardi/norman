@@ -41,9 +41,14 @@ type Notifier struct {
 	lastRefill time.Time
 }
 
-// WSHubPublisher interface for pushing WebSocket events.
+// WSHubPublisher interface for pushing WebSocket events and routing responses.
 type WSHubPublisher interface {
 	BroadcastEvent(event protocol.WebSocketEvent)
+	// RegisterResponseChannel creates a channel for blocking user-response calls.
+	// Returns a request ID string and the response channel.
+	RegisterResponseChannel() (string, chan string)
+	// SendResponse routes a message to a registered response channel.
+	SendResponse(id string, message string) bool
 }
 
 // New creates a Notifier with the given dependencies.
@@ -162,8 +167,21 @@ func (n *Notifier) AskUserBlocking(question string) (string, error) {
 
 	n.pushWS(notification)
 
-	// Wait for response via internal channel (populated by WebSocket client).
-	// In production, the WS hub routes incoming user responses into this channel.
+	// Register a response channel via the WS hub so incoming client messages
+	// can be routed here. The hub's SendResponse() populates this channel.
+	if n.wsHub != nil {
+		_, respCh := n.wsHub.RegisterResponseChannel()
+
+		select {
+		case resp := <-respCh:
+			return resp, nil
+		case <-time.After(60 * time.Second):
+			return "", fmt.Errorf("ask_user_blocking: no response within 60s")
+		}
+	}
+
+	// Fallback: if wsHub is nil (e.g., in tests), use a local channel that
+	// never receives a message, so the call will timeout as expected.
 	respCh := make(chan string, 1)
 	select {
 	case resp := <-respCh:
