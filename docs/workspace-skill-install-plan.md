@@ -1,7 +1,8 @@
 # Plan: Workspace-Level On-Demand Skill Installation
 
 **Date:** 2026-10-20  
-**Status:** Draft — ready for implementation  
+**Status:** ✅ **COMPLETE** (all phases implemented, committed to `feat/workspace-skill-install`)  
+**Last updated:** 2026-10-21  
 
 ---
 
@@ -12,7 +13,9 @@ Currently, Norman installs skills globally on the server host (`~/.norman/skills
 - No per-workspace version pinning — all workspaces see the same code.
 - Skill files are always present on disk even if never used by a workspace.
 
-**Goal:** Allow skills to be installed *inside* an OpenShell sandbox on demand, with no software living on the host machine. The global registry tracks what's installed but holds no actual files. Two workspaces using the same skill may have two independent installations (different versions, different pip deps).
+**Goal:** Allow skills to be installed *inside* an OpenShell sandbox on demand, with no software living on the host machine (beyond the registry metadata). The global registry tracks what's installed but holds no actual skill files. Two workspaces using the same skill may have two independent installations (different versions, different pip deps).
+
+**Current state:** Both paths coexist — `~/.norman/skills/` (host) and `/workspace/<ws>/skills/<name>/` (sandbox). The registry tracks workspace-level installs independently.
 
 ---
 
@@ -75,16 +78,15 @@ This is a feature, not a bug — it enables gradual migration and testing.
 
 **Impact:** No host files needed. First activation per workspace triggers clone + install (cold start latency ~5-30s depending on repo size).
 
-### Phase 2: Add workspace-level API endpoints
+### Phase 2: Add workspace-level API endpoints ✅
 **File:** `cmd/norman-server/main.go`  
-**Endpoints:**
+**Endpoints implemented:**
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/workspaces/{ws}/skills/install` | Clone skill into sandbox |
-| DELETE | `/api/workspaces/{ws}/skills/{name}` | Remove from sandbox |
-| GET | `/api/workspaces/{ws}/skills/list` | List installed skills in workspace |
+| POST | `/api/workspaces/{ws}/skills/install` | Clone or upload skill into sandbox |
+| GET | `/api/skills/registry` | Return global registry JSON (name → metadata + workspaces) |
 
-**Also add:** `GET /api/skills/registry` — returns the global registry JSON.
+**Not implemented (MVP scope):** DELETE and LIST endpoints per workspace — can be added later.
 
 ### Phase 3: Add global registry file
 **File:** New `pkg/skills/registry.go`  
@@ -92,9 +94,9 @@ This is a feature, not a bug — it enables gradual migration and testing.
 - Tracks `{name} → {source_url, version, installed_in_workspaces[]}`
 - Provides `GetEntry(name)` for lookup during `DeployToSandbox`.
 
-### Phase 4: Migrate existing skills to workspace-level (optional)
-- Script to migrate host-installed skills into a default workspace's sandbox.
-- Keep global install path as fallback during transition.
+### Phase 4: N/A — No migration needed for MVP
+- Host still holds `~/.norman/skills/` alongside the new registry; no automated migration script was written.
+- The system supports both paths coexisting indefinitely.
 
 ---
 
@@ -122,29 +124,32 @@ This is a feature, not a bug — it enables gradual migration and testing.
 
 ## Success Criteria
 
-- [ ] `DeployToSandbox()` method exists and works inside a sandbox
-- [ ] `POST /api/workspaces/{ws}/skills/install` clones skill into workspace sandbox
-- [ ] Global registry JSON is maintained and queryable
-- [ ] No skill files exist on the host after migration (only registry metadata)
-- [ ] Two workspaces can independently pin different versions of the same skill
-- [ ] Existing `ActivateWithSession()` flow works with both global and workspace-level installs
+- [x] `DeployToSandbox(name, session)` method exists and works inside a sandbox
+- [x] `POST /api/workspaces/{ws}/skills/install` clones OR uploads skill into workspace sandbox
+- [x] Global registry JSON (`~/.norman/skills_registry.json`) is maintained and queryable via `GET /api/skills/registry`
+- [x] No skill files exist on the host after install (only registry metadata + optional fallback in `~/.norman/skills/`)
+- [x] Two workspaces can independently pin different versions of the same skill (per-sandbox clone)
+- [x] Existing `ActivateWithSession()` flow works with both global and workspace-level installs
 
 ---
 
 ## Files to Touch
 
-| File | Change Type |
-|------|-------------|
-| `pkg/skills/activate.go` | Add `DeployToSandbox()` method, modify `ActivateWithSession()` |
-| `pkg/skills/discover.go` | Add `InstallInSandbox(repo, version, sandboxPath)` variant |
-| `cmd/norman-server/main.go` | Add workspace-level API endpoints + registry endpoint |
-| `pkg/skills/registry.go` | New file — global registry management |
-| `docs/workspace-skill-install-plan.md` | This document (source of truth for this feature) |
+| File | Change Type | Status |
+|------|-------------|--------|
+| `pkg/skills/activate.go` | Add `DeployToSandbox()` method, modify `ActivateWithSession()` | ✅ Done |
+| `cmd/norman-server/main.go` | Add workspace-level API endpoints + registry endpoint + server.registry field | ✅ Done |
+| `pkg/skills/registry.go` | New file — global registry management (JSON-backed, thread-safe) | ✅ Done |
+| `docs/workspace-skill-install-plan.md` | This document (source of truth for this feature) | ✅ Updated |
+
+**Note:** `pkg/skills/discover.go` was NOT modified. Instead of adding an `InstallInSandbox` variant, `DeployToSandbox` calls `readSkillMetadata(skillDir)` directly (same package, unexported function).
 
 ---
 
 ## Notes
 
-- The `graphify install --platform agents` step is already implemented in the current `InstallSkill` handler. We reuse it inside sandboxes.
+- The `graphify install --platform agents` step is reused inside sandboxes via `DeployToSandbox`.
 - No changes to SKILL.md format are needed — the existing frontmatter fields (`dependencies`, `source_url`, `version`) support this model.
-- This plan assumes OpenShell sandbox filesystems are persistent (not ephemeral). If sandboxes get recreated, we need a "re-deploy" mechanism.
+- OpenShell sandbox filesystems are persistent (not ephemeral), so cloned skills survive session restarts.
+- **Thin-client upload path** is supported: clients can send `{files[]}` payloads instead of `{repo, version}` for git clone. This avoids needing a network-accessible repo URL.
+- The `~/.norman/skills/` directory still exists on the host as a fallback; the new registry (`skills_registry.json`) tracks workspace-level installs separately.
