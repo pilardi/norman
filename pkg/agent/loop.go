@@ -803,7 +803,10 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 func (l *Loop) buildSystemPrompt(workspaceID string) string {
 	var parts []string
 
-	// 1. Workspace identity (if defined) — injected first so agent grounds its reasoning
+	// 0. Agent identity & origin (preloaded, immutable facts — always present)
+	parts = append(parts, ParseFacts().AsSystemPrompt())
+
+	// 1. Workspace identity (if defined) — injected second so agent grounds its reasoning
 	if l.workspaceDef != nil {
 		parts = append(parts, l.workspaceDef.AsSystemPrompt())
 	}
