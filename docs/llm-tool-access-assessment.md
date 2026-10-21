@@ -316,7 +316,7 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | Host isolation | ✅ Enforced via sandbox | ✅ Maintained (no host commands) | Same (P0) |
 | MCP integration | Skill-bound, manual activation | ✅ `mcp_list_tools` + `mcp_call` exposed as always-available tools | Discoverable at runtime via `WithMCPClient()` |
 
-The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved across all phases: P0 resolved typed shell/file I/O, P1 added per-tool schemas + MCP discoverability, and this session completed P2 (blocking `ask_user` via `AskUserBlocking()`, `request_permission` guard tool, `file_diff` read tool, typed `ArgumentsTyped` on ToolCall, and WS client-side response channel wiring). The remaining gap is the actual integration of the WS message handler to parse incoming `user_response` events and route them through `SendResponse()` to registered channels.
+The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved across all phases: P0 resolved typed shell/file I/O, P1 added per-tool schemas + MCP discoverability, and this session completed P2 (blocking `ask_user` via `AskUserBlocking()`, `request_permission` guard tool, `file_diff` read tool, typed `ArgumentsTyped` on ToolCall, and WS client-side response channel wiring). The WS message handler now correctly parses incoming `user_response` events and routes them through `BroadcastMessage()` to all registered response channels.
 
 ---
 

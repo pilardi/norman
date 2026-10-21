@@ -1406,8 +1406,8 @@ func (s *server) ConnectWebSocket(c echo.Context) error {
 		// Route user_response events to registered response channels.
 		var event protocol.WebSocketEvent
 		if err := json.Unmarshal(data, &event); err == nil {
-			if event.Event == protocol.UserResponse {
-				s.wsHub.SendResponse("", string(data))
+			if event.Event == protocol.UserResponse && event.Message != nil {
+				s.wsHub.BroadcastMessage(*event.Message)
 			}
 		}
 	}
@@ -1687,6 +1687,21 @@ func (h *WSHub) Remove(c *websocket.Conn) {
 	delete(h.clients, c)
 	for _, subs := range h.sessionClients {
 		delete(subs, c)
+	}
+}
+
+// BroadcastMessage routes a plain text message to all registered response channels.
+// This is used by the WS client-side handler to deliver user_response messages
+// to blocking callers like AskUserBlocking.
+func (h *WSHub) BroadcastMessage(msg string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, ch := range h.responseChannels {
+		select {
+		case ch <- msg:
+		default:
+			// channel full or closed — skip
+		}
 	}
 }
 
