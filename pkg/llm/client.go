@@ -340,11 +340,18 @@ func ParseToolCalls(msg Message) []ToolCall {
 				name, _ := fnRaw["name"].(string)
 				argsRaw, _ := fnRaw["arguments"].(string)
 
-				calls = append(calls, ToolCall{
+				tc := ToolCall{
 					ID:        id,
 					Name:      name,
 					Arguments: []byte(argsRaw),
-				})
+				}
+				if argsRaw != "" {
+					var m map[string]interface{}
+					if err := json.Unmarshal([]byte(argsRaw), &m); err == nil {
+						tc.ArgumentsTyped = m
+					}
+				}
+				calls = append(calls, tc)
 			}
 			return calls // Structured format found — no need for fallback
 		}
@@ -354,11 +361,13 @@ func ParseToolCalls(msg Message) []ToolCall {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(msg.Content), &raw); err == nil {
 		if name, ok := raw["name"].(string); ok {
-			calls = append(calls, ToolCall{
+			tc := ToolCall{
 				ID:        fmt.Sprintf("call_%d", time.Now().UnixNano()),
 				Name:      name,
 				Arguments: []byte(fmt.Sprintf("%v", raw)),
-			})
+			}
+			tc.ArgumentsTyped = raw
+			calls = append(calls, tc)
 		}
 	}
 

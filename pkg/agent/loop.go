@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
+	"github.com/norman/norman/pkg/mcp"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
@@ -53,6 +55,7 @@ type Loop struct {
 	budget      *budget.SessionState // token budget tracker (nil if disabled)
 	workspaceDef *env.WorkspaceDefinition // workspace identity for system prompt injection
 	openShellClient *env.Client        // concrete client for session creation (P3 sandbox dep install)
+	mcpClient   *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -177,6 +180,13 @@ func NewWithClient(cfg *config.Config, store *memory.Store, rawSources *memory.R
 // WithNotifier injects a notification notifier into the loop. Returns the modified Loop.
 func (l *Loop) WithNotifier(n *notify.Notifier) *Loop {
 	l.notifier = n
+	return l
+}
+
+// WithMCPClient injects an MCP client into the loop for remote tool discovery/invocation.
+// The client must be connected to an SSE endpoint before the loop starts processing.
+func (l *Loop) WithMCPClient(c *mcp.Client) *Loop {
+	l.mcpClient = c
 	return l
 }
 
@@ -709,7 +719,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					Step:    intPtr(7 + turn),
 				})
 
-				output, exitCode, execErr := l.openShell.RunCommand(ctx, sandboxName, string(tc.Arguments))
+				output, exitCode, execErr := l.dispatchToolCall(ctx, sandboxName, tc.Name, string(tc.Arguments))
 				if execErr != nil {
 					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
 				} else if exitCode != 0 {
@@ -819,8 +829,186 @@ Rules:
 }
 
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
+// Generic in-sandbox tools (bash, read_file, write_file) and host-interaction
+// tools (ask_user, notify) are always included; activated skills are appended.
 func (l *Loop) buildTools() []llm.Tool {
 	var tools []llm.Tool
+
+	// Always-available generic tools (in-sandbox I/O and command execution).
+	tools = append(tools, llm.Tool{
+		Name:        "bash",
+		Description: "Execute a shell command inside the sandbox environment. Returns combined stdout/stderr output.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"command": map[string]interface{}{
+					"type":        "string",
+					"description": "The shell command to execute (e.g., 'ls -la /tmp')",
+				},
+			},
+			"required": []string{"command"},
+		},
+	})
+
+	tools = append(tools, llm.Tool{
+		Name:        "read_file",
+		Description: "Read the contents of a file inside the sandbox environment. Returns the file content as a string.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Absolute or relative path to the file to read (e.g., '/tmp/data.txt')",
+				},
+			},
+			"required": []string{"path"},
+		},
+	})
+
+	tools = append(tools, llm.Tool{
+		Name:        "write_file",
+		Description: "Write content to a file inside the sandbox environment. Creates parent directories if needed.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Absolute or relative path to the file to write (e.g., '/tmp/output.txt')",
+				},
+				"content": map[string]interface{}{
+					"type":        "string",
+					"description": "The content to write to the file",
+				},
+			},
+			"required": []string{"path", "content"},
+		},
+	})
+
+	// Read-only in-sandbox filesystem tools.
+	tools = append(tools, llm.Tool{
+		Name:        "list_dir",
+		Description: "List the contents of a directory inside the sandbox environment. Returns a detailed listing (equivalent to 'ls -la').",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Absolute or relative path to the directory to list (e.g., '/tmp/data')",
+				},
+			},
+			"required": []string{"path"},
+		},
+	})
+
+	tools = append(tools, llm.Tool{
+		Name:        "find_files",
+		Description: "Search for files matching a pattern inside the sandbox environment. Returns matched file paths.",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"pattern": map[string]interface{}{
+					"type":        "string",
+					"description": "Glob or filename pattern to search for (e.g., '*.log', 'config.*')",
+				},
+			},
+			"required": []string{"pattern"},
+		},
+	})
+
+	// Always-available host-interaction tools (bidirectional user communication).
+	if l.notifier != nil {
+		tools = append(tools, llm.Tool{
+			Name:        "ask_user",
+			Description: "Ask the connected user a question and wait for their typed response. Returns the user's answer as a string.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"question": map[string]interface{}{
+						"type":        "string",
+						"description": "The question to ask the user (e.g., 'Should I proceed with deletion?')",
+					},
+				},
+				"required": []string{"question"},
+			},
+		})
+
+		tools = append(tools, llm.Tool{
+			Name:        "notify",
+			Description: "Send a notification to the connected user via WebSocket/bell/Slack. Returns immediately.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"title": map[string]interface{}{
+						"type":        "string",
+						"description": "Notification title (e.g., 'Build complete')",
+					},
+					"body": map[string]interface{}{
+						"type":        "string",
+						"description": "Notification body text",
+					},
+				},
+				"required": []string{"title", "body"},
+			},
+		})
+	}
+
+	// Permission guard tool for destructive actions.
+	if l.notifier != nil {
+		tools = append(tools, llm.Tool{
+			Name:        "request_permission",
+			Description: "Ask the connected user to approve or deny a potentially destructive action. Returns 'approved' or 'denied'.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"description": map[string]interface{}{
+						"type":        "string",
+						"description": "Description of the action to be performed (e.g., 'Delete all files in /tmp/cache')",
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional scope/context for the action (e.g., 'sandbox', 'host')",
+					},
+				},
+				"required": []string{"description"},
+			},
+		})
+	}
+
+	// Remote MCP tools (discoverable at runtime).
+	if l.mcpClient != nil {
+		tools = append(tools, llm.Tool{
+			Name:        "mcp_list_tools",
+			Description: "List available tools from the connected MCP server. Returns a list of tool definitions with their names and schemas.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"endpoint": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional MCP endpoint URL to query (if nil, uses the default configured endpoint)",
+					},
+				},
+			},
+		})
+
+		tools = append(tools, llm.Tool{
+			Name:        "mcp_call",
+			Description: "Invoke a tool on the connected MCP server by name with typed arguments. Returns the tool's result.",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "The name of the MCP tool to invoke (e.g., 'search_files')",
+					},
+					"arguments": map[string]interface{}{
+						"type":        "object",
+						"description": "Typed arguments to pass to the tool (schema depends on the target tool)",
+					},
+				},
+				"required": []string{"name"},
+			},
+		})
+	}
 
 	if l.activator == nil {
 		return tools
@@ -832,20 +1020,53 @@ func (l *Loop) buildTools() []llm.Tool {
 			continue
 		}
 
-		tools = append(tools, llm.Tool{
-			Name:        entry.Name,
-			Description: entry.Description,
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"args": map[string]interface{}{
-						"type":        "object",
-						"description": "Tool-specific arguments",
+		// If the skill defines typed tool schemas, use them; otherwise fall back to generic {args}.
+		if len(entry.Tools) > 0 {
+			for _, td := range entry.Tools {
+				params := map[string]interface{}{
+					"type": "object",
+				}
+				if td.Parameters != nil && len(td.Parameters) > 0 {
+					params["properties"] = td.Parameters
+				} else {
+					params["properties"] = map[string]interface{}{
+						"args": map[string]interface{}{
+							"type":        "object",
+							"description": "Tool-specific arguments",
+						},
+					}
+				}
+				if len(td.Parameters) > 0 {
+					// If parameters define a "required" field, propagate it
+					if req, ok := td.Parameters["required"]; ok {
+						if r, ok := req.([]interface{}); ok {
+							params["required"] = r
+						}
+					}
+				}
+				tools = append(tools, llm.Tool{
+					Name:        td.Name,
+					Description: td.Description,
+					Parameters:  params,
+				})
+			}
+		} else {
+			// Backward compatible: generic {args} for skills without explicit tool defs.
+			tools = append(tools, llm.Tool{
+				Name:        entry.Name,
+				Description: entry.Description,
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"args": map[string]interface{}{
+							"type":        "object",
+							"description": "Tool-specific arguments",
+						},
 					},
+					"required": []string{"args"},
 				},
-				"required": []string{"args"},
-			},
-		})
+			})
+		}
 	}
 
 	return tools
@@ -1297,6 +1518,308 @@ func contains(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+// dispatchToolCall routes a parsed tool call to the appropriate handler.
+// Generic tools (bash, read_file, write_file) and host-interaction tools
+// (ask_user, notify) are handled with typed execution; unknown tool names
+// fall back to raw RunCommand (for activated skill tools).
+func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name string, argsRaw string) (string, int, error) {
+	switch name {
+	case "bash":
+		return l.handleBash(ctx, sandboxName, argsRaw)
+	case "read_file":
+		return l.handleReadFile(ctx, sandboxName, argsRaw)
+	case "write_file":
+		return l.handleWriteFile(ctx, sandboxName, argsRaw)
+	case "list_dir":
+		return l.handleListDir(sandboxName, argsRaw)
+	case "find_files":
+		return l.handleFindFiles(sandboxName, argsRaw)
+	case "ask_user":
+		return l.handleAskUser(sandboxName, argsRaw)
+	case "notify":
+		return l.handleNotify(argsRaw)
+	case "request_permission":
+		return l.handleRequestPermission(sandboxName, argsRaw)
+	case "file_diff":
+		return l.handleFileDiff(ctx, sandboxName, argsRaw)
+	case "mcp_list_tools":
+		return l.handleMCPListTools(sandboxName, argsRaw)
+	case "mcp_call":
+		return l.handleMCPCall(sandboxName, argsRaw)
+	default:
+		// Fall back to raw RunCommand for activated skill tools
+		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, argsRaw)
+		return output, exitCode, err
+	}
+}
+
+// handleBash executes a shell command inside the sandbox.
+func (l *Loop) handleBash(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse bash args: %w", err)
+	}
+
+	cmd, ok := args["command"].(string)
+	if !ok || cmd == "" {
+		return "", 0, fmt.Errorf("bash requires a 'command' field (string)")
+	}
+
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, cmd)
+	return output, exitCode, err
+}
+
+// handleReadFile reads a file inside the sandbox and returns its content.
+func (l *Loop) handleReadFile(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse read_file args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("read_file requires a 'path' field (string)")
+	}
+
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, "cat "+shellEscape(path))
+	return output, exitCode, err
+}
+
+// handleWriteFile writes content to a file inside the sandbox.
+func (l *Loop) handleWriteFile(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse write_file args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("write_file requires a 'path' field (string)")
+	}
+
+	content, ok := args["content"].(string)
+	if !ok {
+		return "", 0, fmt.Errorf("write_file requires a 'content' field (string)")
+	}
+
+	cmd := "printf '%s' '" + shellEscape(content) + "' > " + shellEscape(path)
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, cmd)
+	return output, exitCode, err
+}
+
+// handleAskUser asks the connected user a question and waits for their response.
+// Returns the user's answer as a string (or an error if no response within timeout).
+func (l *Loop) handleAskUser(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse ask_user args: %w", err)
+	}
+
+	question, ok := args["question"].(string)
+	if !ok || question == "" {
+		return "", 0, fmt.Errorf("ask_user requires a 'question' field (string)")
+	}
+
+	if l.notifier == nil {
+		return "", 0, fmt.Errorf("ask_user: notifier not configured")
+	}
+
+	// Use the blocking variant that waits for a user response via WebSocket.
+	resp, err := l.notifier.AskUserBlocking(question)
+	if err != nil {
+		return "", 0, err
+	}
+	return resp, 0, nil
+}
+
+// handleNotify sends a notification to the connected user via all channels.
+func (l *Loop) handleNotify(argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse notify args: %w", err)
+	}
+
+	title, ok := args["title"].(string)
+	if !ok || title == "" {
+		return "", 0, fmt.Errorf("notify requires a 'title' field (string)")
+	}
+
+	body, ok := args["body"].(string)
+	if !ok {
+		return "", 0, fmt.Errorf("notify requires a 'body' field (string)")
+	}
+
+	if l.notifier == nil {
+		return "", 0, fmt.Errorf("notify: notifier not configured")
+	}
+
+	if err := l.notifier.Push(title, body); err != nil {
+		return "", 0, err
+	}
+
+	return fmt.Sprintf("Notification sent: %s", title), 0, nil
+}
+
+// handleRequestPermission asks the user to approve or deny a destructive action.
+// Returns "approved" or "denied" as a string response.
+func (l *Loop) handleRequestPermission(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse request_permission args: %w", err)
+	}
+
+	description, ok := args["description"].(string)
+	if !ok || description == "" {
+		return "", 0, fmt.Errorf("request_permission requires a 'description' field (string)")
+	}
+
+	scope, _ := args["scope"].(string) // optional
+
+	if l.notifier == nil {
+		return "", 0, fmt.Errorf("request_permission: notifier not configured")
+	}
+
+	// Use AskUserBlocking to wait for the user's approval decision.
+	resp, err := l.notifier.AskUserBlocking(fmt.Sprintf(
+		"Approve or deny this action?\nAction: %s\nScope: %s", description, scope))
+	if err != nil {
+		return "", 0, err
+	}
+
+	// Normalize the response to "approved" or "denied".
+	resp = strings.ToLower(strings.TrimSpace(resp))
+	switch resp {
+	case "approve", "approved", "yes", "y":
+		return fmt.Sprintf("Permission granted for: %s", description), 0, nil
+	case "deny", "denied", "no", "n":
+		return fmt.Sprintf("Permission denied for: %s", description), 0, nil
+	default:
+		return fmt.Sprintf("Unclear response '%s' — treating as denied", resp), 0, nil
+	}
+}
+
+// handleFileDiff reads a file and returns its current content for comparison.
+func (l *Loop) handleFileDiff(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse file_diff args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("file_diff requires a 'path' field (string)")
+	}
+
+	// Read the file via cat command in the sandbox.
+	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, "cat "+shellEscape(path))
+	if err != nil {
+		return "", exitCode, fmt.Errorf("file_diff read error: %w", err)
+	}
+
+	return fmt.Sprintf("# File: %s\n%s", path, output), 0, nil
+}
+
+// handleListDir lists the contents of a directory inside the sandbox.
+func (l *Loop) handleListDir(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse list_dir args: %w", err)
+	}
+
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", 0, fmt.Errorf("list_dir requires a 'path' field (string)")
+	}
+
+	cmd := "ls -la " + shellEscape(path)
+	output, exitCode, err := l.openShell.RunCommand(context.Background(), sandboxName, cmd)
+	return output, exitCode, err
+}
+
+// handleFindFiles searches for files matching a glob pattern inside the sandbox.
+func (l *Loop) handleFindFiles(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse find_files args: %w", err)
+	}
+
+	pattern, ok := args["pattern"].(string)
+	if !ok || pattern == "" {
+		return "", 0, fmt.Errorf("find_files requires a 'pattern' field (string)")
+	}
+
+	cmd := "find . -name '" + pattern + "'"
+	output, exitCode, err := l.openShell.RunCommand(context.Background(), sandboxName, cmd)
+	return output, exitCode, err
+}
+
+// handleMCPListTools lists available tools from the connected MCP server.
+func (l *Loop) handleMCPListTools(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse mcp_list_tools args: %w", err)
+	}
+
+	if l.mcpClient == nil {
+		return "", 0, fmt.Errorf("mcp_list_tools: MCP client not configured")
+	}
+
+	// Optional endpoint override (for multi-endpoint scenarios).
+	// Currently unused in the MVP; kept for schema completeness.
+	if _, ok := args["endpoint"].(string); !ok {
+		// No endpoint specified — uses the default configured endpoint.
+	}
+
+	tools, err := l.mcpClient.ListTools(context.Background())
+	if err != nil {
+		return "", 0, fmt.Errorf("mcp_list_tools: %w", err)
+	}
+
+	// Format as JSON for structured return.
+	result, _ := json.Marshal(tools)
+	return string(result), 0, nil
+}
+
+// handleMCPCall invokes a tool on the connected MCP server by name with typed arguments.
+func (l *Loop) handleMCPCall(sandboxName string, argsRaw string) (string, int, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
+		return "", 0, fmt.Errorf("parse mcp_call args: %w", err)
+	}
+
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return "", 0, fmt.Errorf("mcp_call requires a 'name' field (string)")
+	}
+
+	if l.mcpClient == nil {
+		return "", 0, fmt.Errorf("mcp_call: MCP client not configured")
+	}
+
+	// Extract arguments (optional — some tools take no args).
+	var toolArgs map[string]any
+	if rawArgs, ok := args["arguments"].(map[string]interface{}); ok {
+		toolArgs = make(map[string]any, len(rawArgs))
+		for k, v := range rawArgs {
+			toolArgs[k] = v
+		}
+	}
+
+	result, err := l.mcpClient.CallTool(context.Background(), name, toolArgs)
+	if err != nil {
+		return "", 0, fmt.Errorf("mcp_call %q: %w", name, err)
+	}
+
+	// Format result as JSON.
+	output, _ := json.Marshal(result)
+	return string(output), 0, nil
+}
+
+// shellEscape wraps a string for safe inclusion in a single-quoted shell argument.
+func shellEscape(s string) string {
+	return strings.ReplaceAll(s, "'", "'\\''")
 }
 
 // --- Fake OpenShellClient for testing ---

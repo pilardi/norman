@@ -352,6 +352,17 @@ func (f *FakeWSHub) BroadcastSession(sessionID string, event protocol.WebSocketE
 	f.events = append(f.events, eventCopy)
 }
 
+func (f *FakeWSHub) RegisterResponseChannel() (string, chan string) {
+	id := fmt.Sprintf("resp_%d", time.Now().UnixNano())
+	ch := make(chan string, 1)
+	return id, ch
+}
+
+func (f *FakeWSHub) SendResponse(id string, message string) bool {
+	// No-op for tests — fake hub doesn't route responses
+	return false
+}
+
 // --- AddDiscoveryPaths tests (Step 14i) ---
 
 func TestAddDiscoveryPaths(t *testing.T) {

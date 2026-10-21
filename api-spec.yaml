@@ -1144,6 +1144,7 @@ components:
             - session_event
             - session_compressed
             - context_budget_warning
+            - user_response
         task_id:
           type: string
           nullable: true

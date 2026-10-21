@@ -1395,9 +1395,20 @@ func (s *server) ConnectWebSocket(c echo.Context) error {
 	defer s.wsHub.Remove(conn)
 
 	for {
-		_, _, err := conn.ReadMessage()
+		msgType, data, err := conn.ReadMessage()
 		if err != nil {
 			return nil // client disconnected
+		}
+		if msgType != websocket.TextMessage {
+			continue
+		}
+
+		// Route user_response events to registered response channels.
+		var event protocol.WebSocketEvent
+		if err := json.Unmarshal(data, &event); err == nil {
+			if event.Event == protocol.UserResponse && event.Message != nil {
+				s.wsHub.BroadcastMessage(*event.Message)
+			}
 		}
 	}
 }
@@ -1589,17 +1600,21 @@ func resolveGatewayAddress() string {
 // --- WSHub (moved from stub to real implementation) ---
 
 type WSHub struct {
-	mu            sync.RWMutex
-	clients       map[*websocket.Conn]struct{}          // global clients (no session filter)
+	mu             sync.RWMutex
+	clients        map[*websocket.Conn]struct{}              // global clients (no session filter)
 	sessionClients map[string]map[*websocket.Conn]struct{} // per-session client maps
-	broadcast     chan []byte
+	broadcast      chan []byte
+	// responseChannels stores registered channels keyed by request ID.
+	// Used for blocking AskUser/request_permission calls waiting on user input.
+	responseChannels map[string]chan string
 }
 
 func NewWSHub() *WSHub {
 	return &WSHub{
-		clients:        make(map[*websocket.Conn]struct{}),
-		sessionClients: make(map[string]map[*websocket.Conn]struct{}),
-		broadcast:      make(chan []byte, 256),
+		clients:          make(map[*websocket.Conn]struct{}),
+		sessionClients:   make(map[string]map[*websocket.Conn]struct{}),
+		broadcast:        make(chan []byte, 256),
+		responseChannels: make(map[string]chan string),
 	}
 }
 
@@ -1672,6 +1687,50 @@ func (h *WSHub) Remove(c *websocket.Conn) {
 	delete(h.clients, c)
 	for _, subs := range h.sessionClients {
 		delete(subs, c)
+	}
+}
+
+// BroadcastMessage routes a plain text message to all registered response channels.
+// This is used by the WS client-side handler to deliver user_response messages
+// to blocking callers like AskUserBlocking.
+func (h *WSHub) BroadcastMessage(msg string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, ch := range h.responseChannels {
+		select {
+		case ch <- msg:
+		default:
+			// channel full or closed — skip
+		}
+	}
+}
+
+// RegisterResponseChannel creates a response channel for blocking calls (e.g. AskUser).
+// Returns the channel and a unique request ID. The caller should close the channel
+// when done to avoid goroutine leaks.
+func (h *WSHub) RegisterResponseChannel() (string, chan string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	id := fmt.Sprintf("resp_%d", time.Now().UnixNano())
+	ch := make(chan string, 1)
+	h.responseChannels[id] = ch
+	return id, ch
+}
+
+// SendResponse routes a typed message to the registered response channel.
+// Returns true if the channel was found and message sent.
+func (h *WSHub) SendResponse(id string, message string) bool {
+	h.mu.Lock()
+	ch, ok := h.responseChannels[id]
+	h.mu.Unlock()
+	if !ok {
+		return false
+	}
+	select {
+	case ch <- message:
+		return true
+	default:
+		return false // channel full or closed
 	}
 }
 

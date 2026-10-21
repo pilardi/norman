@@ -41,9 +41,14 @@ type Notifier struct {
 	lastRefill time.Time
 }
 
-// WSHubPublisher interface for pushing WebSocket events.
+// WSHubPublisher interface for pushing WebSocket events and routing responses.
 type WSHubPublisher interface {
 	BroadcastEvent(event protocol.WebSocketEvent)
+	// RegisterResponseChannel creates a channel for blocking user-response calls.
+	// Returns a request ID string and the response channel.
+	RegisterResponseChannel() (string, chan string)
+	// SendResponse routes a message to a registered response channel.
+	SendResponse(id string, message string) bool
 }
 
 // New creates a Notifier with the given dependencies.
@@ -121,6 +126,91 @@ func (n *Notifier) pushWS(notification Notification) {
 	}
 
 	n.wsHub.BroadcastEvent(event)
+}
+
+// AskUser sends a question to the connected user and waits for their response.
+// It broadcasts a notification event via WebSocket and blocks until a response
+// is received on the provided response channel (populated by the client).
+// Returns an error if no response arrives within the timeout (default 60s).
+func (n *Notifier) AskUser(question string, taskID string, respCh chan string) (string, error) {
+	notification := Notification{
+		TaskID:    taskID,
+		Title:     "Question for you",
+		Body:      question,
+		Severity:  "info",
+		Timestamp: time.Now(),
+	}
+
+	n.pushWS(notification)
+
+	// Wait for response (non-rate-limited for ask_user to avoid blocking user)
+	select {
+	case resp := <-respCh:
+		return resp, nil
+	case <-time.After(60 * time.Second):
+		return "", fmt.Errorf("ask_user: no response within 60s")
+	}
+}
+
+// AskUserBlocking asks the connected user a question and blocks until their
+// response is received via a WebSocket response channel. This is a simplified
+// single-argument variant of AskUser that manages the response channel internally.
+// Returns an error if no response arrives within the timeout (default 60s).
+func (n *Notifier) AskUserBlocking(question string) (string, error) {
+	notification := Notification{
+		TaskID:    "", // No taskID needed for blocking variant
+		Title:     "Question for you",
+		Body:      question,
+		Severity:  "info",
+		Timestamp: time.Now(),
+	}
+
+	n.pushWS(notification)
+
+	// Register a response channel via the WS hub so incoming client messages
+	// can be routed here. The hub's SendResponse() populates this channel.
+	if n.wsHub != nil {
+		_, respCh := n.wsHub.RegisterResponseChannel()
+
+		select {
+		case resp := <-respCh:
+			return resp, nil
+		case <-time.After(60 * time.Second):
+			return "", fmt.Errorf("ask_user_blocking: no response within 60s")
+		}
+	}
+
+	// Fallback: if wsHub is nil (e.g., in tests), use a local channel that
+	// never receives a message, so the call will timeout as expected.
+	respCh := make(chan string, 1)
+	select {
+	case resp := <-respCh:
+		return resp, nil
+	case <-time.After(60 * time.Second):
+		return "", fmt.Errorf("ask_user_blocking: no response within 60s")
+	}
+}
+
+// Push sends a notification via all configured channels (WebSocket, bell, Slack).
+// This is the agent-initiated notification tool — equivalent to Notify(Notification)
+// but accepts typed string arguments for direct LLM tool calls.
+func (n *Notifier) Push(title string, body string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if !n.consumeToken() {
+		return fmt.Errorf("rate limit exceeded: max %d notifications/minute", n.rateLimit)
+	}
+
+	notification := Notification{
+		Title:     title,
+		Body:      body,
+		Severity:  "info",
+		Timestamp: time.Now(),
+	}
+
+	n.pushWS(notification)
+	return nil
 }
 
 // ringBell prints a bell character and brief text to stdout.
