@@ -61,6 +61,7 @@ test-short:
 
 clean:
 	rm -rf $(DIST)
+	rm -f pkg/protocol/types.go pkg/protocol/client.go internal/api/handlers.go
 
 generate-docs:
 	npx @redocly/cli build-docs api-spec.yaml -o docs/api-reference.html --title "Norman API Reference"
