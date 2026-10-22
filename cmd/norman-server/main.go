@@ -48,9 +48,10 @@ type server struct {
 	registry   *skills.Registry
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
-	mu         sync.Mutex
-	workspaces map[string]*protocol.Workspace
-	startTime  time.Time
+	mu               sync.Mutex
+	taskCancellations sync.Map // taskID -> struct{}{} for cancellation signaling
+	workspaces       map[string]*protocol.Workspace
+	startTime        time.Time
 }
 
 func main() {
@@ -996,6 +997,43 @@ func (s *server) CreateTask(c echo.Context) error {
 	})
 }
 
+// ScheduleTask registers a recurring scheduled task.
+func (s *server) ScheduleTask(c echo.Context) error {
+	var req struct {
+		Name    string `json:"name"`
+		Schedule string `json:"schedule"` // cron expression
+		Command  string `json:"command"`  // shell command to execute
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	id := uuid.New().String()[:8] + "-scheduled"
+	entry := scheduler.TaskEntry{
+		ID:        id,
+		Name:      req.Name,
+		Schedule:  req.Schedule,
+		Command:   req.Command,
+		OutputHandler: func(result string, err error) {
+			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+				Event:   protocol.TaskComplete,
+				TaskId:  &id,
+				Message: strPtr(fmt.Sprintf("Scheduled task '%s' completed: %s", req.Name, result)),
+			})
+		},
+	}
+
+	if err := s.scheduler.Add(entry); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"id":       id,
+		"name":     req.Name,
+		"schedule": req.Schedule,
+	})
+}
+
 // createSessionInternal creates a new session bound to a workspace.
 func (s *server) createSessionInternal(workspaceID string, clientType string) (*protocol.Session, error) {
 	id := uuid.New()
@@ -1064,6 +1102,18 @@ func (s *server) idleCleanupLoop(timeout time.Duration) {
 	}
 }
 
+// UnscheduleTask removes a scheduled task by ID.
+func (s *server) UnscheduleTask(c echo.Context, id string) error {
+	if err := s.scheduler.Remove(id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"unscheduled": true,
+		"id":        id,
+	})
+}
+
 func (s *server) ListScheduledTasks(c echo.Context) error {
 	entries := s.scheduler.List()
 	result := make([]protocol.ScheduledTask, 0, len(entries))
@@ -1114,6 +1164,22 @@ func (s *server) GetTask(c echo.Context, id string) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+// CancelTask cancels a running task by sending a cancellation signal.
+func (s *server) CancelTask(c echo.Context, id string) error {
+	uuidVal, parseErr := uuid.Parse(id)
+	if parseErr != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid task ID: %v", parseErr)})
+	}
+
+	taskID := uuidVal.String()
+	s.taskCancellations.Store(taskID, struct{}{})
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"cancelled": true,
+		"task_id":   taskID,
+	})
 }
 
 func (s *server) ReportTaskComplete(c echo.Context, id string) error {
