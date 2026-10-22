@@ -215,26 +215,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`Norman CLI — Session-centric chat agent
-
-Usage: norman [-v|--verbose] [-p|--provider NAME] <command> [args...]
-
-Flags:
-  -p, --provider NAME  Select a configured LLM provider (overrides default)
-  -v, --verbose        Enable verbose/debug output (request details)
-
-Commands:
-  config                     Show or edit current configuration
-  workspaces create <name>   Create a new workspace directory
-  workspaces list            List available workspaces and their sessions
-  skills list                List installed skills
-  skills install <id>        Install a skill from registry
-  skills remove <id>         Remove an installed skill
-  sessions list              List active chat sessions
-  sessions archive <session_id>   Archive a session's transcript via POST /api/sessions/{id}
-  sessions open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-
-Use "norman help <command>" for detailed help on a specific command.`)
+	fmt.Println(config.ClientHelpText())
 }
 
 // handleConfig shows or edits the current config.

@@ -147,7 +147,7 @@ const defaultPort = 8080  // in config_defaults.yaml + embedded.go
 
 | File | Change |
 |------|--------|
-| `config_defaults.yaml` (new) | Canonical defaults YAML, compiled into binary |
+| `pkg/config/config_defaults.yaml` (new) | Canonical defaults YAML, compiled into binary via go:embed |
 | `pkg/config/embedded.go` (new) | `go:embed` directive + `EmbeddedDefaults()` function |
 | `pkg/config/config.go` (modify) | `LoadDefault()` falls back to embedded; remove hardcoded constants |
 | `pkg/config/help.go` (new) | Shared help text templates driven by embedded defaults |

@@ -57,49 +57,7 @@ func main() {
 	// --help / -h: print usage and exit.
 	for _, arg := range os.Args[1:] {
 		if arg == "--help" || arg == "-h" {
-			fmt.Fprintf(os.Stderr, `Usage: norman-server [OPTIONS]
-
-Options:
-  -p, --provider NAME   Select a configured provider (overrides default_provider)
-  -v, --verbose         Enable server-side debug logging (Echo middleware)
-  -h, --help            Show this help text and exit
-
-Environment variables:
-  NORMAN_STORE_DIR       Path to the memory store directory (default: $HOME/.norman/store)
-  NORMAN_RAW_SOURCES_DIR Path to the raw sources store directory (default: $HOME/.norman/raw_sources)
-  NORMAN_HOST            Server bind address (default: "127.0.0.1")
-  NORMAN_PORT            Server port number (default: 8080)
-
-Config file: ~/.norman/config.yaml
-
-System defaults (overridable in config.yaml):
-  default_model      gpt-4o
-  server_port        8080
-  host               127.0.0.1
-  temperature        0.7
-  max_tokens         32000
-  skills.discovery   ~/.norman/skills/, /usr/share/norman/skills/
-  skills.max_active  3
-  notify.bell_enabled true
-  notify.rate_limit_per_min 10
-
-OpenShell: auto-resolved from OPENSHELL_GATEWAY_ADDRESS env var or
-           metadata.json gateway_endpoint (falls back to localhost:8090).
-
-Workspace-level overrides (per-workspace in config.yaml):
-  base_dir       ~/.norman/workspaces/
-  model          (empty = use system default)
-  max_tokens     (0 = use system default)
-  temperature    (0 = use system default)
-  skill_overrides []
-  system_prompt  (empty = use system default)
-
-`+
-				"  -p, --provider NAME   Select a configured provider (overrides default_provider)\n\n" +
-				"Providers are defined in config.yaml under `llm_providers:`.\n" +
-				"Example: norman-server -p local --verbose\n" +
-				"\n" +
-				"Norman agent server — Session-centric chat engine with task scheduling.\n")
+			fmt.Fprint(os.Stderr, config.ServerHelpText())
 			os.Exit(0)
 		}
 	}
