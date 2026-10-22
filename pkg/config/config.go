@@ -17,6 +17,7 @@ type SystemConfig struct {
 	DefaultModel string            `yaml:"default_model"`
 	ServerPort   int               `yaml:"server_port"`
 	Host         string            `yaml:"host"` // bind address for server (default 127.0.0.1)
+	BaseDir      string            `yaml:"base_dir"`
 	Skills       SkillsConfig      `yaml:"skills"`
 	Notify       NotifyConfig      `yaml:"notify"`
 	Logging      LoggingConfig     `yaml:"logging"`
@@ -90,56 +91,15 @@ type OpenShellConfig struct {
 	Address string `yaml:"address"` // explicit gateway address (e.g., "127.0.0.1:8090")
 }
 
-const (
-	DefaultModel       = "gpt-4o"
-	DefaultServerPort  = 8080
-	DefaultHost        = "127.0.0.1"
-	DefaultBaseDir     = "~/.norman/workspaces"
-	DefaultMaxTokens   = 32000
-	DefaultTemperature = 0.7
-	DefaultMaxActive   = 3
-	DefaultBellEnabled = true
-	DefaultRateLimit   = 10
-)
-
-var (
-	defaultTemperature float64 = 0.7
-	defaultMaxTokens   int     = 32000
-)
-
-// DefaultSystemConfig returns a SystemConfig with sensible defaults applied.
+// DefaultSystemConfig returns a SystemConfig with embedded defaults applied.
 func DefaultSystemConfig() *SystemConfig {
-	return &SystemConfig{
-		DefaultModel:  DefaultModel,
-		ServerPort:    DefaultServerPort,
-		Host:          DefaultHost,
-		Temperature:     defaultTemperature,
-		MaxTokens:     defaultMaxTokens,
-		OpenShell: OpenShellConfig{
-			Address: "", // empty = auto-resolve from env var or metadata.json
-		},
-		Skills: SkillsConfig{
-			DiscoveryPaths: []string{
-				"~/.norman/skills/",
-				"/usr/share/norman/skills/",
-			},
-			MaxActive: DefaultMaxActive,
-			Path:      "~/.norman/skills/",
-		},
-		Notify: NotifyConfig{
-			BellEnabled:     DefaultBellEnabled,
-			RateLimitPerMin: DefaultRateLimit,
-		},
-		Logging: LoggingConfig{
-			Verbose: false, // disabled by default; use --verbose flag or config
-		},
-	}
+	return EmbeddedDefaults().System
 }
 
-// DefaultWorkspaceConfig returns a WorkspaceConfig with defaults applied.
+// DefaultWorkspaceConfig returns a WorkspaceConfig with embedded defaults applied.
 func DefaultWorkspaceConfig() *WorkspaceConfig {
 	return &WorkspaceConfig{
-		BaseDir:        DefaultBaseDir,
+		BaseDir:        EmbeddedDefaults().System.BaseDir,
 		Model:          "",             // empty = use system default
 		MaxTokens:      0,              // zero = use system default
 		Temperature:    0,              // zero = use system default
@@ -171,13 +131,13 @@ func Load(path string) (*Config, error) {
 
 	// Apply defaults for zero-valued fields in SystemConfig
 	if c.System.DefaultModel == "" {
-		c.System.DefaultModel = DefaultModel
+		c.System.DefaultModel = EmbeddedDefaults().System.DefaultModel
 	}
 	if c.System.ServerPort == 0 {
-		c.System.ServerPort = DefaultServerPort
+		c.System.ServerPort = EmbeddedDefaults().System.ServerPort
 	}
 	if c.System.Skills.MaxActive == 0 {
-		c.System.Skills.MaxActive = DefaultMaxActive
+		c.System.Skills.MaxActive = EmbeddedDefaults().System.Skills.MaxActive
 	}
 
 	return c, nil
@@ -204,7 +164,7 @@ func LoadDefault() (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			c := DefaultConfig()
+			c := EmbeddedDefaults()
 			overrideEnvVars(c.System)
 			return c, nil
 		}
@@ -218,13 +178,13 @@ func LoadDefault() (*Config, error) {
 
 	// Apply defaults for zero-valued fields
 	if c.System.DefaultModel == "" {
-		c.System.DefaultModel = DefaultModel
+		c.System.DefaultModel = EmbeddedDefaults().System.DefaultModel
 	}
 	if c.System.ServerPort == 0 {
-		c.System.ServerPort = DefaultServerPort
+		c.System.ServerPort = EmbeddedDefaults().System.ServerPort
 	}
 	if c.System.Skills.MaxActive == 0 {
-		c.System.Skills.MaxActive = DefaultMaxActive
+		c.System.Skills.MaxActive = EmbeddedDefaults().System.Skills.MaxActive
 	}
 
 	overrideEnvVars(c.System)
@@ -232,7 +192,7 @@ func LoadDefault() (*Config, error) {
 }
 
 // overrideEnvVars applies environment variable overrides to the system config.
-// Priority: env vars > YAML file > defaults.
+// Priority: env vars > user config.yaml > embedded defaults.
 func overrideEnvVars(sc *SystemConfig) {
 	if port := os.Getenv("PORT"); port != "" {
 		n, err := fmt.Sscanf(port, "%d", &sc.ServerPort)

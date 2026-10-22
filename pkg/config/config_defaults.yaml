@@ -1,0 +1,28 @@
+# Embedded default configuration for Norman.
+# This file is compiled into the binary via go:embed and serves as the
+# fallback when no ~/.norman/config.yaml exists.
+# It is NOT user-modifiable — edits here require recompilation.
+
+system:
+  default_model: "gpt-4o"
+  server_port: 8080
+  host: "127.0.0.1"
+  base_dir: "~/.norman/workspaces"
+  temperature: 0.7
+  max_tokens: 32000
+  open_shell:
+    address: ""
+  skills:
+    discovery_paths:
+      - "~/.norman/skills/"
+      - "/usr/share/norman/skills/"
+    max_active: 3
+    path: "~/.norman/skills/"
+  notify:
+    bell_enabled: true
+    slack_webhook: ""
+    rate_limit_per_minute: 10
+  logging:
+    verbose: false
+  llm_providers: []
+  default_provider: ""
