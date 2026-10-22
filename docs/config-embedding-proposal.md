@@ -116,10 +116,14 @@ The text templates would reference constants/defaults rather than hardcoding val
 
 ## Design Decisions & Trade-offs
 
-### Why not just `go:embed` the YAML directly in main.go?
+### Why not just hardcode Go constants in `main.go`?
 
-- Keeps the config definition as a *data file* (YAML), not Go code — easier for non-developers to edit if needed.
-- Separates concerns: config data vs. config loading logic.
+Hardcoded literals (`const DefaultModel = "gpt-4o"`) are also compiled into the binary and read-only at runtime — so both approaches achieve immutability. The difference is *where* the definition lives:
+
+- **Go constants** are scattered across `.go` files as source code, mixed with logic. A non-developer can't easily audit what's baked in without reading Go syntax.
+- **Embedded YAML** is a standalone data file referenced by `embed.FS`. It's plain text, readable by anyone, and clearly separated from loading logic.
+
+This matters because your goal is to *remove defaults from the code* while keeping them post-compilation immutable. `go:embed` achieves both: no Go literals remain in `main.go`, and the YAML is baked into the binary at build time (not a user-editable file on disk).
 
 ### What about "not user modifiable"?
 
