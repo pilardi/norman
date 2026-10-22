@@ -8,7 +8,7 @@ func ServerHelpText() string {
 	return fmt.Sprintf(`Usage: norman-server [OPTIONS]
 
 Options:
-  -p, --provider NAME   Select a configured provider (overrides default_provider)
+  -p, --provider NAME   Select a configured provider (overrides default)
   -v, --verbose         Enable server-side debug logging (Echo middleware)
   -h, --help            Show this help text and exit
 
@@ -21,40 +21,33 @@ Environment variables:
 Config file: ~/.norman/config.yaml
 
 System defaults (overridable in config.yaml):
-  default_model      %s
-  server_port        %d
+  server_port        %s
   host               %s
-  base_dir           %s
-  temperature        %.1f
-  max_tokens         %d
+  base_dir           %d
   skills.discovery   ~/.norman/skills/, /usr/share/norman/skills/
   skills.max_active  %d
   notify.bell_enabled true
-  notify.rate_limit_per_min %d
+  notify.rate_limit_per_min %s
 
 OpenShell: auto-resolved from OPENSHELL_GATEWAY_ADDRESS env var or
            metadata.json gateway_endpoint (falls back to localhost:8090).
 
 Workspace-level overrides (per-workspace in config.yaml):
-  base_dir       %s
-  model          (empty = use system default)
-  max_tokens     (0 = use system default)
-  temperature    (0 = use system default)
+  model          (empty = use provider default)
+  max_tokens     (0 = use provider default)
+  temperature    (0 = use provider default)
   skill_overrides []
   system_prompt  (empty = use system default)
 
 `+
-		"  -p, --provider NAME   Select a configured provider (overrides default_provider)\n\n" +
+		"  -p, --provider NAME   Select a configured provider (overrides default)\n\n" +
 		"Providers are defined in config.yaml under `llm_providers:`.\n" +
+		"Each provider defines its own model, temperature, and max_tokens.\n" +
 		"Example: norman-server -p local --verbose\n",
 		ed.System.Host,
 		ed.System.ServerPort,
-		ed.System.DefaultModel,
-		ed.System.ServerPort,
 		ed.System.Host,
 		ed.System.BaseDir,
-		ed.System.Temperature,
-		ed.System.MaxTokens,
 		ed.System.Skills.MaxActive,
 		ed.System.Notify.RateLimitPerMin,
 		ed.System.BaseDir,

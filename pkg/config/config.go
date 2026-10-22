@@ -14,29 +14,27 @@ import (
 
 // SystemConfig holds global defaults shared across all workspaces.
 type SystemConfig struct {
-	DefaultModel string            `yaml:"default_model"`
-	ServerPort   int               `yaml:"server_port"`
-	Host         string            `yaml:"host"` // bind address for server (default 127.0.0.1)
-	BaseDir      string            `yaml:"base_dir"`
-	Skills       SkillsConfig      `yaml:"skills"`
-	Notify       NotifyConfig      `yaml:"notify"`
-	Logging      LoggingConfig     `yaml:"logging"`
-	Temperature    float64           `yaml:"temperature"` // global default temperature (0 = use default)
-	MaxTokens    int               `yaml:"max_tokens"`  // global default max tokens (0 = use system default)
-	OpenShell    OpenShellConfig   `yaml:"openshell"`   // OpenShell gateway connection config
+	ServerPort int               `yaml:"server_port"`
+	Host       string            `yaml:"host"` // bind address for server (default 127.0.0.1)
+	BaseDir    string            `yaml:"base_dir"`
+	Skills     SkillsConfig      `yaml:"skills"`
+	Notify     NotifyConfig      `yaml:"notify"`
+	Logging    LoggingConfig     `yaml:"logging"`
+	OpenShell  OpenShellConfig   `yaml:"openshell"` // OpenShell gateway connection config
 
 	// LLM provider configuration.
 	LlmProviders []ProviderConfig `yaml:"llm_providers"`
-	DefaultProvider string       `yaml:"default_provider"` // which provider is active by default
 }
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.
 type ProviderConfig struct {
-	Name     string         `yaml:"name"`      // identifier, e.g. "default", "local"
-	Type     string         `yaml:"type"`      // "openai", "llamacpp", etc.
-	Endpoint string         `yaml:"endpoint"`  // base API URL
-	Model    string         `yaml:"model"`     // model name/identifier
-	Extra    map[string]any `yaml:",inline"`   // type-specific fields (api_key_ref, cache_size, etc.)
+	Name      string         `yaml:"name"`       // identifier, e.g. "default", "local"
+	Type      string         `yaml:"type"`       // "openai", "llamacpp", etc.
+	Endpoint  string         `yaml:"endpoint"`   // base API URL
+	Model     string         `yaml:"model"`      // model name/identifier
+	Temperature float64        `yaml:"temperature"` // provider default temperature
+	MaxTokens int            `yaml:"max_tokens"`  // provider default max tokens
+	Extra     map[string]any `yaml:",inline"`    // type-specific fields (api_key_ref, cache_size, etc.)
 }
 
 // ResolveProvider returns the provider config matching the given name.
@@ -130,9 +128,6 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Apply defaults for zero-valued fields in SystemConfig
-	if c.System.DefaultModel == "" {
-		c.System.DefaultModel = EmbeddedDefaults().System.DefaultModel
-	}
 	if c.System.ServerPort == 0 {
 		c.System.ServerPort = EmbeddedDefaults().System.ServerPort
 	}
@@ -177,9 +172,6 @@ func LoadDefault() (*Config, error) {
 	}
 
 	// Apply defaults for zero-valued fields
-	if c.System.DefaultModel == "" {
-		c.System.DefaultModel = EmbeddedDefaults().System.DefaultModel
-	}
 	if c.System.ServerPort == 0 {
 		c.System.ServerPort = EmbeddedDefaults().System.ServerPort
 	}
@@ -225,9 +217,6 @@ func (c *Config) Save(path string) error {
 
 // Validate checks required fields and returns errors.
 func (c *Config) Validate() error {
-	if c.System.DefaultModel == "" {
-		return fmt.Errorf("system.default_model is required")
-	}
 	if c.System.ServerPort < 1 || c.System.ServerPort > 65535 {
 		return fmt.Errorf("system.server_port must be between 1 and 65535, got %d", c.System.ServerPort)
 	}
@@ -236,6 +225,25 @@ func (c *Config) Validate() error {
 	}
 	if c.System.Notify.RateLimitPerMin < 1 {
 		return fmt.Errorf("system.notify.rate_limit_per_minute must be >= 1, got %d", c.System.Notify.RateLimitPerMin)
+	}
+
+	// Validate providers
+	for i, p := range c.System.LlmProviders {
+		if p.Name == "" {
+			return fmt.Errorf("llm_providers[%d]: name is required", i)
+		}
+		if p.Type == "" {
+			return fmt.Errorf("llm_providers[%d].%s: type is required", i, p.Name)
+		}
+		if p.Model == "" {
+			return fmt.Errorf("llm_providers[%d].%s: model is required", i, p.Name)
+		}
+		if p.Temperature < 0 || p.Temperature > 2 {
+			return fmt.Errorf("llm_providers[%d].%s: temperature must be between 0 and 2, got %.2f", i, p.Name, p.Temperature)
+		}
+		if p.MaxTokens < 1 {
+			return fmt.Errorf("llm_providers[%d].%s: max_tokens must be >= 1, got %d", i, p.Name, p.MaxTokens)
+		}
 	}
 
 	// Validate per-workspace configs
@@ -252,19 +260,22 @@ func (c *Config) Validate() error {
 }
 
 // MergeWorkspaceConfig merges a workspace config into the system defaults.
-// Returns a resolved WorkspaceConfig with all zero-values filled from system defaults.
+// Returns a resolved WorkspaceConfig with all zero-values filled from the first provider's defaults.
 func (c *Config) MergeWorkspaceConfig(workspaceID string, ws *WorkspaceConfig) *WorkspaceConfig {
 	result := DefaultWorkspaceConfig()
 
-	// System-level overrides (these are the global defaults)
-	if c.System.DefaultModel != "" && ws.Model == "" {
-		result.Model = c.System.DefaultModel
-	}
-	if ws.MaxTokens == 0 {
-		result.MaxTokens = c.System.MaxTokens
-	}
-	if ws.Temperature == 0 {
-		result.Temperature = c.System.Temperature
+	// Use the first configured provider as the system-level default source.
+	if len(c.System.LlmProviders) > 0 {
+		first := c.System.LlmProviders[0]
+		if ws.Model == "" {
+			result.Model = first.Model
+		}
+		if ws.Temperature == 0 && first.Temperature > 0 {
+			result.Temperature = first.Temperature
+		}
+		if ws.MaxTokens == 0 && first.MaxTokens > 0 {
+			result.MaxTokens = first.MaxTokens
+		}
 	}
 
 	// Workspace-level overrides take precedence

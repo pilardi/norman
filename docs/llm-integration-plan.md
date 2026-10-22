@@ -126,31 +126,31 @@ This means **zero breaking changes** for `pkg/agent/loop.go` or `cmd/norman-serv
 
 ### 0.5 Configuration Changes
 
-Add a `providers` section to `~/.config/norman/config.yaml`:
+Add a `llm_providers` section to `~/.config/norman/config.yaml`:
 
 ```yaml
-llm:
-  providers:
-    - name: "default"
-      type: "openai"
-      endpoint: "https://api.openai.com/v1"
-      model: "gpt-4o"
-      api_key_ref: "${secret:openai-key}"
+llm_providers:
+  - name: "default"
+    type: "openai"
+    endpoint: "https://api.openai.com/v1"
+    model: "gpt-4o"
+    api_key_ref: "${secret:openai-key}"
+    temperature: 0.7
+    max_tokens: 8192
 
-    - name: "local"
-      type: "ollama"
-      endpoint: "http://localhost:11434"
-      model: "llama3.1:8b"
+  - name: "local"
+    type: "ollama"
+    endpoint: "http://localhost:11434"
+    model: "llama3.1:8b"
+    temperature: 0.5
+    max_tokens: 4096
 
-    - name: "embed"
-      type: "openai"
-      endpoint: "https://api.openai.com/v1"
-      model: "text-embedding-3-small"
-      api_key_ref: "${secret:openai-key}"
-      is_embedder: true
-
-  default_provider: "default"
-  embedder_provider: "embed"
+  - name: "embed"
+    type: "openai"
+    endpoint: "https://api.openai.com/v1"
+    model: "text-embedding-3-small"
+    api_key_ref: "${secret:openai-key}"
+    is_embedder: true
 ```
 
 ### 0.6 Runtime Configuration (Implemented)
@@ -159,14 +159,16 @@ The provider selection is controlled at two levels:
 
 | Flag | Purpose |
 |------|---------|
-| `-p NAME`, `--provider NAME` | Select a configured provider by name (overrides `default_provider`) |
+| `-p NAME`, `--provider NAME` | Select a configured provider by name (overrides positional default) |
 | `-v`, `--verbose` | Enable server-side debug logging |
 
 ### Resolution Priority
 
 ```
-CLI flag (-p) > config.yaml `default_provider` > first configured provider
+CLI flag (-p) > first provider in list (positional default)
 ```
+
+> **Note:** Temperature and max_tokens are now per-provider (not system-level). The workspace-level `model`, `max_tokens`, and `temperature` fields override the *provider's* defaults when set to non-zero/non-empty values.
 
 ---
 
@@ -357,7 +359,7 @@ The current flow is:
 | OpenAI-compatible client with streaming | ✓ | `pkg/llm/client.go` |
 | ClientAdapter wrapper | ✓ | `pkg/llm/adapter.go` |
 | Agent loop streaming integration | ✓ | `pkg/agent/loop.go` |
-| Provider config in `SystemConfig` | ✓ | `pkg/config/config.go` |
+| Per-provider config (model, temp, max_tokens) | ✓ | `pkg/config/config.go`, `config_defaults.yaml` |
 | `-p/--provider` CLI flag | ✓ | `cmd/norman-server/main.go`, `cmd/norman/main.go` |
 | llamacpp provider with KV cache optimization | ✓ | `pkg/llm/llamacpp/` |
 

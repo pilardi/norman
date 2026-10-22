@@ -82,12 +82,10 @@ func main() {
 		}
 	}
 
-	// Resolve selected provider: CLI flag > config default > first configured provider.
+	// Resolve selected provider: CLI flag > first configured provider (positional default).
 	var providerName string
 	if selectedProvider != "" && selectedProvider != "unknown" {
 		providerName = selectedProvider
-	} else if cfg.System.DefaultProvider != "" {
-		providerName = cfg.System.DefaultProvider
 	} else if len(cfg.System.LlmProviders) > 0 {
 		providerName = cfg.System.LlmProviders[0].Name
 	}
@@ -101,7 +99,7 @@ func main() {
 
 		switch provCfg.Type {
 		case "openai":
-			llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
+			llmClient = llm.NewClientAdapter(llm.NewClientWithProvider(provCfg))
 		case "llamacpp":
 			// Build type-specific config from Extra map.
 			llmCfg := llamacpp.DefaultConfig()
@@ -115,16 +113,14 @@ func main() {
 				llmCfg.CacheEnabled = v
 			}
 
-			// Use workspace-level overrides for model/temp/tokens if not set on provider.
+			// Use provider-level defaults for model/temp/tokens.
 			wsCfg := config.DefaultWorkspaceConfig()
-			if cfg.System.DefaultModel != "" {
-				wsCfg.Model = cfg.System.DefaultModel
+			wsCfg.Model = provCfg.Model
+			if provCfg.Temperature > 0 {
+				wsCfg.Temperature = provCfg.Temperature
 			}
-			if cfg.System.Temperature > 0 {
-				wsCfg.Temperature = cfg.System.Temperature
-			}
-			if cfg.System.MaxTokens > 0 {
-				wsCfg.MaxTokens = cfg.System.MaxTokens
+			if provCfg.MaxTokens > 0 {
+				wsCfg.MaxTokens = provCfg.MaxTokens
 			}
 
 			llmClient = llamacpp.NewProvider(wsCfg, llmCfg)
@@ -132,7 +128,7 @@ func main() {
 			log.Fatalf("unsupported provider type %q", provCfg.Type)
 		}
 	} else {
-		// Fallback: no providers configured, use OpenAI-compatible client.
+		// Fallback: no providers configured, use OpenAI-compatible client with defaults.
 		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
 	}
 
@@ -1485,12 +1481,6 @@ func (s *server) PutConfig(c echo.Context) error {
 func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interface{}) error {
 	for k, v := range updates {
 		switch k {
-		case "default_model":
-			if s, ok := v.(string); ok {
-				cfg.DefaultModel = s
-			} else {
-				return fmt.Errorf("default_model must be a string")
-			}
 		case "server_port":
 			if f, ok := v.(float64); ok {
 				cfg.ServerPort = int(f)
@@ -1520,18 +1510,6 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				cfg.Notify.RateLimitPerMin = int(f)
 			} else {
 				return fmt.Errorf("rate_limit_per_min must be a number")
-			}
-		case "temperature":
-			if f, ok := v.(float64); ok {
-				cfg.Temperature = f
-			} else {
-				return fmt.Errorf("temperature must be a number")
-			}
-		case "max_tokens":
-			if f, ok := v.(float64); ok {
-				cfg.MaxTokens = int(f)
-			} else {
-				return fmt.Errorf("max_tokens must be a number")
 			}
 		case "openshell_address":
 			if s, ok := v.(string); ok {

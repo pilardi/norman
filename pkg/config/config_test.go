@@ -183,9 +183,9 @@ func TestWorkspaceConfigDefaults(t *testing.T) {
 	merged := cfg.MergeWorkspaceConfig("empty-ws", ws)
 
 	if merged.Model != "gpt-4o" {
-		t.Errorf("expected model to fall back to system default 'gpt-4o', got %q", merged.Model)
+		t.Errorf("expected model to fall back to provider default 'gpt-4o', got %q", merged.Model)
 	}
-	if merged.Temperature != EmbeddedDefaults().System.Temperature {
-		t.Errorf("expected temperature to fall back to %.2f, got %.2f", EmbeddedDefaults().System.Temperature, merged.Temperature)
+	if merged.Temperature != 0.7 {
+		t.Errorf("expected temperature to fall back to 0.7, got %.2f", merged.Temperature)
 	}
 }
