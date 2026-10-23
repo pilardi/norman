@@ -113,6 +113,26 @@ func (l *Loop) ActivateWithSession(name string, session *env.Session) error {
 	return nil
 }
 
+// Activator returns the agent's skills activator (for scheduler callback wiring).
+func (l *Loop) Activator() *skills.Activator {
+	return l.activator
+}
+
+// ActivateSkill directly activates a skill by name. This is used by scheduled/deferred tasks
+// to activate their associated skill before execution (P4: task→skill mapping).
+func (l *Loop) ActivateSkill(name string, session *env.Session) error {
+	if l.activator == nil {
+		return fmt.Errorf("activator not initialized")
+	}
+	_, err := l.activator.Activate(name, session) // nil = local venv fallback
+	if err != nil {
+		log.Printf("[loop] activate skill '%s': %v", name, err)
+		return err
+	}
+	log.Printf("[loop] activated skill '%s' for task execution", name)
+	return nil
+}
+
 // GetSession returns an OpenShell session for the given workspace ID.
 // Creates a new sandbox if one doesn't already exist for this workspace.
 func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {

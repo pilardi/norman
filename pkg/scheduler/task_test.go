@@ -70,6 +70,39 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestDefer(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results)
+
+	// Defer a task to run in ~5 seconds (use a short delay for testing)
+	future := time.Now().Add(2 * time.Second)
+	entry := TaskEntry{ID: "defer-1", Name: "deferred-task", Command: "echo deferred"}
+
+	if err := s.Defer(entry, future); err != nil {
+		t.Fatalf("Defer failed: %v", err)
+	}
+
+	got, err := s.Get("defer-1")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if !got.DeferUntil.Equal(future) {
+		t.Errorf("expected DeferUntil=%v, got %v", future, got.DeferUntil)
+	}
+	if !got.Active {
+		t.Error("expected task to be active after Defer")
+	}
+
+	// Verify it's in the list
+	list := s.List()
+	if len(list) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(list))
+	}
+	if list[0].ID != "defer-1" {
+		t.Errorf("expected ID defer-1, got %s", list[0].ID)
+	}
+}
+
 func TestList(t *testing.T) {
 	results := make(chan TaskResult, 10)
 	s := NewScheduler(results)

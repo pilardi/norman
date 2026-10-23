@@ -11,6 +11,7 @@ system:
     address: ""
   skills:
     discovery_paths:
+      - "builtin://task-management"
       - "~/.norman/skills/"
       - "/usr/share/norman/skills/"
     max_active: 3

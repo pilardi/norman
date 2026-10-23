@@ -572,6 +572,25 @@ paths:
                 items:
                   $ref: "#/components/schemas/ScheduledTask"
 
+  /api/tasks/defer:
+    post:
+      tags: [task]
+      summary: Defer a task to run at an absolute time (one-shot)
+      operationId: deferTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeferTaskRequest"
+      responses:
+        "201":
+          description: Task deferred successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
   /api/tasks/{id}/complete:
     post:
       tags: [task]
@@ -1093,6 +1112,9 @@ components:
           example: "*/5 * * * *"
         skill:
           type: string
+        activation_command:
+          type: string
+          description: "Optional command to run before task execution (e.g., skill activation script)"
         config:
           type: object
           additionalProperties: true
@@ -1115,9 +1137,29 @@ components:
           type: string
         skill:
           type: string
+        activation_command:
+          type: string
+          description: "Optional command to run before task execution (e.g., skill activation script)"
         status:
           type: string
           enum: [active, paused, failed]
+
+    DeferTaskRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Task name
+        command:
+          type: string
+          description: Shell command to execute when the task fires
+        defer_until:
+          type: string
+          format: date-time
+          description: Absolute time at which the task should run (RFC3339)
+        workspace_id:
+          type: string
+          description: Target workspace for this task
 
     NotificationConfig:
       type: object

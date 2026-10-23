@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -75,9 +76,12 @@ func (s *server) CreateTask(c echo.Context) error {
 // ScheduleTask registers a recurring scheduled task.
 func (s *server) ScheduleTask(c echo.Context) error {
 	var req struct {
-		Name     string `json:"name"`
-		Schedule string `json:"schedule"` // cron expression
-		Command  string `json:"command"`  // shell command to execute
+		Name            string `json:"name"`
+		Schedule        string `json:"schedule"` // cron expression
+		Command         string `json:"command"`  // shell command to execute
+		WorkspaceId     string `json:"workspace_id"`
+		Skill           string `json:"skill"`
+		ActivationCommand string `json:"activation_command"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -85,10 +89,12 @@ func (s *server) ScheduleTask(c echo.Context) error {
 
 	id := uuid.New().String()[:8] + "-scheduled"
 	entry := scheduler.TaskEntry{
-		ID:        id,
-		Name:      req.Name,
-		Schedule:  req.Schedule,
-		Command:   req.Command,
+		ID:                id,
+		Name:              req.Name,
+		Schedule:          req.Schedule,
+		Command:           req.Command,
+		Skill:             req.Skill,
+		ActivationCommand: req.ActivationCommand,
 		OutputHandler: func(result string, err error) {
 			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 				Event:   protocol.TaskComplete,
@@ -98,14 +104,25 @@ func (s *server) ScheduleTask(c echo.Context) error {
 		},
 	}
 
+	// Wire activation callback if a skill is associated.
+	if req.Skill != "" && s.loop != nil && s.loop.Activator() != nil {
+		skillName := req.Skill
+		entry.ActivationCallback = func() error {
+			return s.loop.ActivateSkill(skillName, nil) // nil = local venv fallback
+		}
+	}
+
 	if err := s.scheduler.Add(entry); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"id":       id,
-		"name":     req.Name,
-		"schedule": req.Schedule,
+		"id":                id,
+		"name":              req.Name,
+		"schedule":          req.Schedule,
+		"workspace_id":      req.WorkspaceId,
+		"skill":             req.Skill,
+		"activation_command": req.ActivationCommand,
 	})
 }
 
@@ -136,11 +153,13 @@ func (s *server) ListScheduledTasks(c echo.Context) error {
 			continue
 		}
 		result = append(result, protocol.ScheduledTask{
-			Id:          &id,
-			Name:        &entry.Name,
-			Schedule:    &entry.Schedule,
-			Status:      &status,
-			WorkspaceId: nil,
+			Id:              &id,
+			Name:            &entry.Name,
+			Schedule:        &entry.Schedule,
+			Status:          &status,
+			WorkspaceId:       nil,
+			Skill:             strPtr(entry.Skill),
+			ActivationCommand: strPtr(entry.ActivationCommand),
 		})
 	}
 	return c.JSON(http.StatusOK, result)
@@ -241,5 +260,42 @@ func (s *server) TailTaskLog(c echo.Context, id string, params protocol.TailTask
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"lines": lines,
 		"data":  logs[start:],
+	})
+}
+
+// DeferTask registers a one-shot task to run at an absolute time.
+func (s *server) DeferTask(c echo.Context) error {
+	var req protocol.DeferTaskRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	id := uuid.New().String()[:8] + "-deferred"
+
+	// Parse defer_until from RFC3339 string (pointer type from generated code)
+	deferTime := *req.DeferUntil
+
+	entry := scheduler.TaskEntry{
+		ID:         id,
+		Name:       *req.Name,
+		Command:    *req.Command,
+		DeferUntil: deferTime,
+		OutputHandler: func(result string, err error) {
+			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+				Event:   protocol.TaskComplete,
+				TaskId:  &id,
+				Message: strPtr(fmt.Sprintf("Deferred task '%s' completed: %s", *req.Name, result)),
+			})
+		},
+	}
+
+	if err := s.scheduler.Defer(entry, deferTime); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"id":          id,
+		"name":        *req.Name,
+		"defer_until": req.DeferUntil.Format(time.RFC3339),
 	})
 }
