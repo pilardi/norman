@@ -250,25 +250,29 @@ Per project rules, generated code (`pkg/protocol/types.go`) is **not** stored in
 
 ---
 
-## 10. Implementation Status (as of 2026-10-22)
+## 10. Implementation Status (as of 2026-10-23)
 
 | # | Recommendation | Status | Notes |
 |---|----------------|--------|-------|
 | P1 — Close OpenShell wiring gap | ✅ DONE | `runCommand()` replaced with proper `os/exec` local exec; scheduler's `executeTask` still passes empty sandbox (acceptable for global scheduler) |
 | P2 — Add deferred task support | ✅ DONE | `DeferUntil` field added to `TaskEntry`; `Defer(entry, time.Time)` method implemented; tickLoop handles one-shot execution |
-| P3 — Expose Task Management as a skill | 🔲 Pending | No `TaskManagement` skill yet; would need SKILL.md + tool definitions in `pkg/skills/` |
-| P4 — Task-to-skill mapping | 🔲 Pending | `ScheduledTask.skill` field exists in spec but scheduler's `TaskEntry` has no `Skill` field |
-| P5 — Regenerate types from spec | ✅ DONE | Added `/api/tasks/defer` endpoint; `DeferTaskRequest` schema added; generated code regenerated via `make generate` |
+| P3 — Expose Task Management as a skill | ✅ DONE | `builtin/task_management/SKILL.md` created with typed tools (list_tasks, cancel_task, schedule_task, defer_task, task_log); wired into `discover.go` via `builtin://` prefix; exposed to LLM via `buildTools()` + `ActivateSkill()` |
+| P4 — Task-to-skill mapping | ✅ DONE | `Skill` and `ActivationCallback` fields added to `TaskEntry`; activation callback wired in `executeTask()`; `activation_command` field added to `ScheduledTask` API schema; `ScheduleTask` handler wires skill→activation mapping |
+| P5 — Regenerate types from spec | ✅ DONE | Added `/api/tasks/defer` endpoint; `DeferTaskRequest` schema added; generated code regenerated via `make generate`; `ScheduledTask.activation_command` field in generated types |
 
 ### Files Modified (this branch)
 
 | File | Change |
 |------|--------|
-| `pkg/scheduler/scheduler.go` | Added `DeferUntil` field, `Defer()` method, fixed fallback `runCommand()`, updated tickLoop for one-shot execution |
+| `pkg/scheduler/scheduler.go` | Added `DeferUntil`, `Skill`, `ActivationCommand`, `ActivationCallback` fields; `Defer()` method; fixed fallback `runCommand()`; tickLoop handles one-shot execution; pre-execution activation callback |
 | `pkg/scheduler/task_test.go` | Added `TestDefer` test |
-| `api-spec.yaml` | Added `/api/tasks/defer` POST endpoint and `DeferTaskRequest` schema |
-| `cmd/norman-server/tasks.go` | Added `DeferTask()` handler; added `"time"` import |
-| `docs/task-management-assessment.md` | Comprehensive assessment document (new) |
+| `api-spec.yaml` | Added `/api/tasks/defer` POST endpoint, `DeferTaskRequest` schema; `ScheduledTask` and `ScheduledTaskRequest` include `activation_command` field |
+| `cmd/norman-server/tasks.go` | Added `DeferTask()` handler; `ScheduleTask` now wires skill→activation callback; `ListScheduledTasks` includes Skill/ActivationCommand fields |
+| `pkg/agent/loop.go` | Added `Activator()` getter and `ActivateSkill(name, session)` method for P4 task→skill mapping |
+| `pkg/skills/discover.go` | Added `builtin://` prefix handling for built-in skills |
+| `pkg/config/config_defaults.yaml` | Added `"builtin://task-management"` to discovery_paths |
+| `pkg/skills/builtin/task_management/SKILL.md` | New: TaskManagement skill with typed tools (list_tasks, cancel_task, schedule_task, defer_task, task_log) |
+| `docs/task-management-assessment.md` | Comprehensive assessment document (updated with implementation status) |
 
 ---
 
@@ -285,4 +289,4 @@ Per project rules, generated code (`pkg/protocol/types.go`) is **not** stored in
 ---
 
 *Assessment complete. See `requirements.md` §4.8 and §9.2 for design constraints.*
-*Status: Implementation in progress on branch `feature/task-management-assessment`. P1, P2, P5 done. P3 (task-as-skill) and P4 (task→skill mapping) remain pending.*
+*Status: P1–P5 all DONE on branch `feature/task-management-assessment`. Remaining work: verify CLI REPL gets scheduler wiring (cmd/norman/main.go) — this is a separate verification task, not a new recommendation.*
