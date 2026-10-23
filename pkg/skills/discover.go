@@ -51,10 +51,33 @@ type DiscoverResult struct {
 }
 
 // Discover scans configured paths for skill definitions and returns metadata only.
+// Supports "builtin://" prefix for built-in skills bundled with the binary (e.g., builtin://task-management).
 func Discover(paths []string) (*DiscoverResult, error) {
 	result := &DiscoverResult{}
 
 	for _, baseDir := range paths {
+		// Handle builtin:// prefix — load from embedded SKILL.md files in pkg/skills/builtin/
+		if strings.HasPrefix(baseDir, "builtin://") {
+			skillName := strings.TrimPrefix(baseDir, "builtin://")
+			if skillName == "" {
+				continue // skip empty builtin entries
+			}
+
+			skillPath := filepath.Join("pkg", "skills", "builtin", skillName)
+			metadata, err := readSkillMetadata(skillPath)
+			if err != nil {
+				log.Printf("[skills] builtin skill '%s': %v (skipping)", skillName, err)
+				result.Scanned++
+				continue
+			}
+
+			metadata.Path = skillPath
+			result.Skills = append(result.Skills, metadata)
+			result.Valid++
+			result.Scanned++
+			continue
+		}
+
 		// Expand ~ to user home directory
 		baseDir = filepath.Clean(os.ExpandEnv(baseDir))
 		if strings.HasPrefix(baseDir, "~/") {

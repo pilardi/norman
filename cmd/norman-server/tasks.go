@@ -76,9 +76,12 @@ func (s *server) CreateTask(c echo.Context) error {
 // ScheduleTask registers a recurring scheduled task.
 func (s *server) ScheduleTask(c echo.Context) error {
 	var req struct {
-		Name     string `json:"name"`
-		Schedule string `json:"schedule"` // cron expression
-		Command  string `json:"command"`  // shell command to execute
+		Name            string `json:"name"`
+		Schedule        string `json:"schedule"` // cron expression
+		Command         string `json:"command"`  // shell command to execute
+		WorkspaceId     string `json:"workspace_id"`
+		Skill           string `json:"skill"`
+		ActivationCommand string `json:"activation_command"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -86,10 +89,12 @@ func (s *server) ScheduleTask(c echo.Context) error {
 
 	id := uuid.New().String()[:8] + "-scheduled"
 	entry := scheduler.TaskEntry{
-		ID:        id,
-		Name:      req.Name,
-		Schedule:  req.Schedule,
-		Command:   req.Command,
+		ID:                id,
+		Name:              req.Name,
+		Schedule:          req.Schedule,
+		Command:           req.Command,
+		Skill:             req.Skill,
+		ActivationCommand: req.ActivationCommand,
 		OutputHandler: func(result string, err error) {
 			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 				Event:   protocol.TaskComplete,
@@ -99,14 +104,25 @@ func (s *server) ScheduleTask(c echo.Context) error {
 		},
 	}
 
+	// Wire activation callback if a skill is associated.
+	if req.Skill != "" && s.loop != nil && s.loop.Activator() != nil {
+		skillName := req.Skill
+		entry.ActivationCallback = func() error {
+			return s.loop.ActivateSkill(skillName, nil) // nil = local venv fallback
+		}
+	}
+
 	if err := s.scheduler.Add(entry); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"id":       id,
-		"name":     req.Name,
-		"schedule": req.Schedule,
+		"id":                id,
+		"name":              req.Name,
+		"schedule":          req.Schedule,
+		"workspace_id":      req.WorkspaceId,
+		"skill":             req.Skill,
+		"activation_command": req.ActivationCommand,
 	})
 }
 
@@ -137,11 +153,13 @@ func (s *server) ListScheduledTasks(c echo.Context) error {
 			continue
 		}
 		result = append(result, protocol.ScheduledTask{
-			Id:          &id,
-			Name:        &entry.Name,
-			Schedule:    &entry.Schedule,
-			Status:      &status,
-			WorkspaceId: nil,
+			Id:              &id,
+			Name:            &entry.Name,
+			Schedule:        &entry.Schedule,
+			Status:          &status,
+			WorkspaceId:       nil,
+			Skill:             strPtr(entry.Skill),
+			ActivationCommand: strPtr(entry.ActivationCommand),
 		})
 	}
 	return c.JSON(http.StatusOK, result)

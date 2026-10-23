@@ -4,6 +4,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ type TaskEntry struct {
 	Name        string    `json:"name"`
 	Schedule    string    `json:"schedule"` // cron expression (5 or 6 field); empty if deferring by absolute time
 	Command     string    `json:"command"`  // shell command to execute
+	ActivationCommand string `json:"activation_command,omitempty"` // optional command to run before task execution (e.g., skill activation)
 	OutputHandler func(result string, err error) `json:"-"` // callback for results
 	NextRun     time.Time `json:"next_run"`
 	LastRun     time.Time `json:"last_run,omitempty"`
@@ -26,6 +28,10 @@ type TaskEntry struct {
 	// DeferUntil is an absolute time at which the task should run (overrides Schedule).
 	// If non-zero, NextRun is set to this value and the task runs once.
 	DeferUntil  time.Time `json:"defer_until,omitempty"`
+	// Skill is the associated skill name that should be activated before execution.
+	Skill string `json:"skill,omitempty"`
+	// ActivationCallback is called before task execution to activate associated skills.
+	ActivationCallback func() error `json:"-"`
 }
 
 // TaskResult holds the outcome of a task execution.
@@ -117,11 +123,13 @@ func (s *Scheduler) ToInterfaceSlice() []interface{} {
 	result := make([]interface{}, 0, len(s.tasks))
 	for _, entry := range s.tasks {
 		m := map[string]interface{}{
-			"id":       entry.ID,
-			"name":     entry.Name,
-			"schedule": entry.Schedule,
-			"command":  entry.Command,
-			"active":   entry.Active,
+			"id":                  entry.ID,
+			"name":                entry.Name,
+			"schedule":            entry.Schedule,
+			"command":             entry.Command,
+			"active":              entry.Active,
+			"activation_command":  entry.ActivationCommand,
+			"skill":               entry.Skill,
 		}
 		if !entry.DeferUntil.IsZero() {
 			m["defer_until"] = entry.DeferUntil.Format(time.RFC3339)
@@ -241,11 +249,30 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 	}
 }
 
-// executeTask runs a task's command and returns the result.
+// executeTask runs a task's activation callback (skill activation), then activation command, and finally the main command.
 func (s *Scheduler) executeTask(entry *TaskEntry) TaskResult {
 	start := time.Now()
 	output := ""
 	var err error
+
+	// 1. Run activation callback (e.g., skill activation via agent loop)
+	if entry.ActivationCallback != nil {
+		if actErr := entry.ActivationCallback(); actErr != nil {
+			log.Printf("[scheduler] activation callback for task %s: %v", entry.ID, actErr)
+		} else {
+			log.Printf("[scheduler] activation callback completed for task %s (skill: %s)", entry.ID, entry.Skill)
+		}
+	}
+
+	// 2. Run activation command (e.g., skill activation script)
+	if entry.ActivationCommand != "" {
+		actOutput, actErr := runCommand([]string{"bash", "-c", entry.ActivationCommand})
+		if actErr != nil {
+			log.Printf("[scheduler] activation command for task %s: %v (output: %s)", entry.ID, actErr, actOutput)
+		} else {
+			log.Printf("[scheduler] activation command completed for task %s", entry.ID)
+		}
+	}
 
 	cmd := []string{"bash", "-c", entry.Command}
 
