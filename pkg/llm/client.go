@@ -48,6 +48,7 @@ func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
 		Model:      provCfg.Model,
 		Temperature:  provCfg.Temperature,
 		MaxTokens:  provCfg.MaxTokens,
+		APIKey:     provCfg.ApiKey,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},

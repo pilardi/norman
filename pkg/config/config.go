@@ -34,7 +34,8 @@ type ProviderConfig struct {
 	Model     string         `yaml:"model"`      // model name/identifier
 	Temperature float64        `yaml:"temperature"` // provider default temperature
 	MaxTokens int            `yaml:"max_tokens"`  // provider default max tokens
-	Extra     map[string]any `yaml:",inline"`    // type-specific fields (api_key_ref, cache_size, etc.)
+	ApiKey    string         `yaml:"api_key"`     // provider API key (e.g. OpenAI key)
+	Extra     map[string]any `yaml:",inline"`    // type-specific fields (cache_size, etc.)
 }
 
 // ResolveProvider returns the provider config matching the given name.
@@ -237,6 +238,9 @@ func (c *Config) Validate() error {
 		}
 		if p.Model == "" {
 			return fmt.Errorf("llm_providers[%d].%s: model is required", i, p.Name)
+		}
+		if p.Type == "openai" && p.ApiKey == "" {
+			return fmt.Errorf("llm_providers[%d].%s: api_key is required for openai providers", i, p.Name)
 		}
 		if p.Temperature < 0 || p.Temperature > 2 {
 			return fmt.Errorf("llm_providers[%d].%s: temperature must be between 0 and 2, got %.2f", i, p.Name, p.Temperature)

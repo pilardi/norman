@@ -30,6 +30,10 @@ func TestNotifyConfigSlackUrl(t *testing.T) {
 func TestNotifyConfigValidationGood(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.System.Notify.RateLimitPerMin = 5
+	// Set api_key on the openai provider so validation passes
+	if len(cfg.System.LlmProviders) > 0 && cfg.System.LlmProviders[0].Type == "openai" {
+		cfg.System.LlmProviders[0].ApiKey = "sk-test-key-123"
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
@@ -89,6 +93,10 @@ func TestNotifyConfigYAMLUnmarshal(t *testing.T) {
 		t.Errorf("expected RateLimitPerMin=20 from YAML, got %d", cfg.System.Notify.RateLimitPerMin)
 	}
 
+	// Set api_key on the openai provider so validation passes
+	if len(cfg.System.LlmProviders) > 0 && cfg.System.LlmProviders[0].Type == "openai" {
+		cfg.System.LlmProviders[0].ApiKey = "sk-test-key-123"
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate failed: %v", err)
 	}
