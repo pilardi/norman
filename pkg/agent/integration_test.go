@@ -416,7 +416,10 @@ func TestIntegrationWSBroadcastIncludesToolDetail(t *testing.T) {
 
 	// Collect all TaskProgress events that mention tools
 	var toolEvents []protocol.WebSocketEvent
-	for _, e := range fakeWSHub.events {
+	fakeWSHub.mu.RLock()
+	events := append([]protocol.WebSocketEvent(nil), fakeWSHub.events...)
+	fakeWSHub.mu.RUnlock()
+	for _, e := range events {
 		if e.Event == protocol.TaskProgress && e.Message != nil {
 			msg := *e.Message
 			if strings.Contains(msg, "tool") || strings.Contains(msg, "Tool") {
@@ -508,7 +511,10 @@ func TestIntegrationFullLoopWithLLM(t *testing.T) {
 
 	// 4. WS events include progress steps
 	var progressCount int
-	for _, e := range fakeWSHub.events {
+	fakeWSHub.mu.RLock()
+	events := append([]protocol.WebSocketEvent(nil), fakeWSHub.events...)
+	fakeWSHub.mu.RUnlock()
+	for _, e := range events {
 		if e.Event == protocol.TaskProgress {
 			progressCount++
 		}

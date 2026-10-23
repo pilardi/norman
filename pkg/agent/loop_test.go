@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -335,11 +336,14 @@ func TestSourceContainsStartCheck(t *testing.T) {
 // --- Fake helpers for testing ---
 
 type FakeWSHub struct {
+	mu        sync.RWMutex
 	lastEvent protocol.WebSocketEvent
 	events      []protocol.WebSocketEvent
 }
 
 func (f *FakeWSHub) BroadcastEvent(event protocol.WebSocketEvent) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.lastEvent = event
 	f.events = append(f.events, event)
 }
@@ -348,6 +352,8 @@ func (f *FakeWSHub) BroadcastSession(sessionID string, event protocol.WebSocketE
 	// For tests: store session-aware events with prefix to distinguish from global broadcasts
 	eventCopy := event
 	eventCopy.SessionId = strPtr(sessionID)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.lastEvent = eventCopy
 	f.events = append(f.events, eventCopy)
 }
