@@ -4,6 +4,8 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,12 +17,15 @@ import (
 type TaskEntry struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
-	Schedule    string    `json:"schedule"` // cron expression (5 or 6 field)
+	Schedule    string    `json:"schedule"` // cron expression (5 or 6 field); empty if deferring by absolute time
 	Command     string    `json:"command"`  // shell command to execute
 	OutputHandler func(result string, err error) `json:"-"` // callback for results
 	NextRun     time.Time `json:"next_run"`
 	LastRun     time.Time `json:"last_run,omitempty"`
 	Active      bool      `json:"active"`
+	// DeferUntil is an absolute time at which the task should run (overrides Schedule).
+	// If non-zero, NextRun is set to this value and the task runs once.
+	DeferUntil  time.Time `json:"defer_until,omitempty"`
 }
 
 // TaskResult holds the outcome of a task execution.
@@ -71,6 +76,24 @@ func (s *Scheduler) WithOutputHandler(fn func(result string, err error)) *Schedu
 	return s
 }
 
+// Defer registers a task to run once at an absolute time.
+// The task's NextRun is set to deferUntil; after execution it is marked inactive.
+func (s *Scheduler) Defer(entry TaskEntry, deferUntil time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.tasks[entry.ID]; exists {
+		return fmt.Errorf("task %q already registered", entry.ID)
+	}
+
+	entry.Active = true
+	entry.NextRun = deferUntil
+	entry.DeferUntil = deferUntil
+
+	s.tasks[entry.ID] = &entry
+	return nil
+}
+
 // Status returns scheduler health metrics: registered task count and last tick time.
 func (s *Scheduler) Status() (int, time.Time) {
 	s.mu.RLock()
@@ -93,13 +116,17 @@ func (s *Scheduler) ToInterfaceSlice() []interface{} {
 
 	result := make([]interface{}, 0, len(s.tasks))
 	for _, entry := range s.tasks {
-		result = append(result, map[string]interface{}{
+		m := map[string]interface{}{
 			"id":       entry.ID,
 			"name":     entry.Name,
 			"schedule": entry.Schedule,
 			"command":  entry.Command,
 			"active":   entry.Active,
-		})
+		}
+		if !entry.DeferUntil.IsZero() {
+			m["defer_until"] = entry.DeferUntil.Format(time.RFC3339)
+		}
+		result = append(result, m)
 	}
 	return result
 }
@@ -192,7 +219,9 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 				}
 
 				entry.LastRun = now
-				entry.NextRun = now.Add(1 * time.Minute) // approximate; cron handles precise scheduling
+
+				// Deferred tasks run once and are marked inactive after execution.
+				isDeferred := !entry.DeferUntil.IsZero() && entry.NextRun.Equal(entry.DeferUntil)
 
 				s.mu.RUnlock()
 
@@ -200,6 +229,12 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 				s.results <- result
 
 				s.mu.Lock()
+
+				if isDeferred {
+					entry.Active = false // run once, then deactivate
+				} else {
+					entry.NextRun = now.Add(1 * time.Minute) // approximate; cron handles precise scheduling
+				}
 			}
 			s.mu.RUnlock()
 		}
@@ -226,7 +261,7 @@ func (s *Scheduler) executeTask(entry *TaskEntry) TaskResult {
 			}
 		}
 	} else {
-		// Fallback: local shell exec
+		// Fallback: local shell exec via os/exec
 		resultChan := make(chan string, 1)
 		errChan := make(chan error, 1)
 
@@ -264,6 +299,10 @@ func (s *Scheduler) executeTask(entry *TaskEntry) TaskResult {
 
 // runCommand executes a shell command locally and returns combined output.
 func runCommand(cmd []string) (string, error) {
-	// Fallback local exec for MVP; will be replaced with OpenShell Exec()
-	return "", fmt.Errorf("exec not yet connected to OpenShell")
+	cmdStr := strings.Join(cmd, " ")
+	out, err := exec.Command("bash", "-c", cmdStr).CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("exit code %d: %s", 1, string(out))
+	}
+	return string(out), nil
 }
