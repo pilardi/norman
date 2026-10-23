@@ -289,4 +289,4 @@ Per project rules, generated code (`pkg/protocol/types.go`) is **not** stored in
 ---
 
 *Assessment complete. See `requirements.md` §4.8 and §9.2 for design constraints.*
-*Status: P1–P5 all DONE on branch `feature/task-management-assessment`. Remaining work: verify CLI REPL gets scheduler wiring (cmd/norman/main.go) — this is a separate verification task, not a new recommendation.*
+*Status: P1–P5 all DONE on branch `feature/task-management-assessment`. The CLI REPL (`cmd/norman/main.go`) is intentionally a thin HTTP client — it delegates task management to the server via REST/WebSocket and has no direct scheduler or OpenShell access. No further verification needed.*
