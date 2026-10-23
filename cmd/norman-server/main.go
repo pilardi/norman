@@ -48,9 +48,10 @@ type server struct {
 	registry   *skills.Registry
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
-	mu         sync.Mutex
-	workspaces map[string]*protocol.Workspace
-	startTime  time.Time
+	mu               sync.Mutex
+	taskCancellations sync.Map // taskID -> struct{}{} for cancellation signaling
+	workspaces       map[string]*protocol.Workspace
+	startTime        time.Time
 }
 
 func main() {
@@ -82,12 +83,10 @@ func main() {
 		}
 	}
 
-	// Resolve selected provider: CLI flag > config default > first configured provider.
+	// Resolve selected provider: CLI flag > first configured provider (positional default).
 	var providerName string
 	if selectedProvider != "" && selectedProvider != "unknown" {
 		providerName = selectedProvider
-	} else if cfg.System.DefaultProvider != "" {
-		providerName = cfg.System.DefaultProvider
 	} else if len(cfg.System.LlmProviders) > 0 {
 		providerName = cfg.System.LlmProviders[0].Name
 	}
@@ -101,7 +100,7 @@ func main() {
 
 		switch provCfg.Type {
 		case "openai":
-			llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
+			llmClient = llm.NewClientAdapter(llm.NewClientWithProvider(provCfg))
 		case "llamacpp":
 			// Build type-specific config from Extra map.
 			llmCfg := llamacpp.DefaultConfig()
@@ -115,16 +114,14 @@ func main() {
 				llmCfg.CacheEnabled = v
 			}
 
-			// Use workspace-level overrides for model/temp/tokens if not set on provider.
+			// Use provider-level defaults for model/temp/tokens.
 			wsCfg := config.DefaultWorkspaceConfig()
-			if cfg.System.DefaultModel != "" {
-				wsCfg.Model = cfg.System.DefaultModel
+			wsCfg.Model = provCfg.Model
+			if provCfg.Temperature > 0 {
+				wsCfg.Temperature = provCfg.Temperature
 			}
-			if cfg.System.Temperature > 0 {
-				wsCfg.Temperature = cfg.System.Temperature
-			}
-			if cfg.System.MaxTokens > 0 {
-				wsCfg.MaxTokens = cfg.System.MaxTokens
+			if provCfg.MaxTokens > 0 {
+				wsCfg.MaxTokens = provCfg.MaxTokens
 			}
 
 			llmClient = llamacpp.NewProvider(wsCfg, llmCfg)
@@ -132,7 +129,7 @@ func main() {
 			log.Fatalf("unsupported provider type %q", provCfg.Type)
 		}
 	} else {
-		// Fallback: no providers configured, use OpenAI-compatible client.
+		// Fallback: no providers configured, use OpenAI-compatible client with defaults.
 		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
 	}
 
@@ -1000,6 +997,43 @@ func (s *server) CreateTask(c echo.Context) error {
 	})
 }
 
+// ScheduleTask registers a recurring scheduled task.
+func (s *server) ScheduleTask(c echo.Context) error {
+	var req struct {
+		Name    string `json:"name"`
+		Schedule string `json:"schedule"` // cron expression
+		Command  string `json:"command"`  // shell command to execute
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	id := uuid.New().String()[:8] + "-scheduled"
+	entry := scheduler.TaskEntry{
+		ID:        id,
+		Name:      req.Name,
+		Schedule:  req.Schedule,
+		Command:   req.Command,
+		OutputHandler: func(result string, err error) {
+			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+				Event:   protocol.TaskComplete,
+				TaskId:  &id,
+				Message: strPtr(fmt.Sprintf("Scheduled task '%s' completed: %s", req.Name, result)),
+			})
+		},
+	}
+
+	if err := s.scheduler.Add(entry); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"id":       id,
+		"name":     req.Name,
+		"schedule": req.Schedule,
+	})
+}
+
 // createSessionInternal creates a new session bound to a workspace.
 func (s *server) createSessionInternal(workspaceID string, clientType string) (*protocol.Session, error) {
 	id := uuid.New()
@@ -1068,6 +1102,18 @@ func (s *server) idleCleanupLoop(timeout time.Duration) {
 	}
 }
 
+// UnscheduleTask removes a scheduled task by ID.
+func (s *server) UnscheduleTask(c echo.Context, id string) error {
+	if err := s.scheduler.Remove(id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"unscheduled": true,
+		"id":        id,
+	})
+}
+
 func (s *server) ListScheduledTasks(c echo.Context) error {
 	entries := s.scheduler.List()
 	result := make([]protocol.ScheduledTask, 0, len(entries))
@@ -1118,6 +1164,22 @@ func (s *server) GetTask(c echo.Context, id string) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+// CancelTask cancels a running task by sending a cancellation signal.
+func (s *server) CancelTask(c echo.Context, id string) error {
+	uuidVal, parseErr := uuid.Parse(id)
+	if parseErr != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid task ID: %v", parseErr)})
+	}
+
+	taskID := uuidVal.String()
+	s.taskCancellations.Store(taskID, struct{}{})
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"cancelled": true,
+		"task_id":   taskID,
+	})
 }
 
 func (s *server) ReportTaskComplete(c echo.Context, id string) error {
@@ -1485,12 +1547,6 @@ func (s *server) PutConfig(c echo.Context) error {
 func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interface{}) error {
 	for k, v := range updates {
 		switch k {
-		case "default_model":
-			if s, ok := v.(string); ok {
-				cfg.DefaultModel = s
-			} else {
-				return fmt.Errorf("default_model must be a string")
-			}
 		case "server_port":
 			if f, ok := v.(float64); ok {
 				cfg.ServerPort = int(f)
@@ -1520,18 +1576,6 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				cfg.Notify.RateLimitPerMin = int(f)
 			} else {
 				return fmt.Errorf("rate_limit_per_min must be a number")
-			}
-		case "temperature":
-			if f, ok := v.(float64); ok {
-				cfg.Temperature = f
-			} else {
-				return fmt.Errorf("temperature must be a number")
-			}
-		case "max_tokens":
-			if f, ok := v.(float64); ok {
-				cfg.MaxTokens = int(f)
-			} else {
-				return fmt.Errorf("max_tokens must be a number")
 			}
 		case "openshell_address":
 			if s, ok := v.(string); ok {

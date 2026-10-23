@@ -30,6 +30,10 @@ func TestNotifyConfigSlackUrl(t *testing.T) {
 func TestNotifyConfigValidationGood(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.System.Notify.RateLimitPerMin = 5
+	// Set api_key on the openai provider so validation passes
+	if len(cfg.System.LlmProviders) > 0 && cfg.System.LlmProviders[0].Type == "openai" {
+		cfg.System.LlmProviders[0].ApiKey = "sk-test-key-123"
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
@@ -89,6 +93,10 @@ func TestNotifyConfigYAMLUnmarshal(t *testing.T) {
 		t.Errorf("expected RateLimitPerMin=20 from YAML, got %d", cfg.System.Notify.RateLimitPerMin)
 	}
 
+	// Set api_key on the openai provider so validation passes
+	if len(cfg.System.LlmProviders) > 0 && cfg.System.LlmProviders[0].Type == "openai" {
+		cfg.System.LlmProviders[0].ApiKey = "sk-test-key-123"
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate failed: %v", err)
 	}
@@ -183,9 +191,9 @@ func TestWorkspaceConfigDefaults(t *testing.T) {
 	merged := cfg.MergeWorkspaceConfig("empty-ws", ws)
 
 	if merged.Model != "gpt-4o" {
-		t.Errorf("expected model to fall back to system default 'gpt-4o', got %q", merged.Model)
+		t.Errorf("expected model to fall back to provider default 'gpt-4o', got %q", merged.Model)
 	}
-	if merged.Temperature != EmbeddedDefaults().System.Temperature {
-		t.Errorf("expected temperature to fall back to %.2f, got %.2f", EmbeddedDefaults().System.Temperature, merged.Temperature)
+	if merged.Temperature != 0.7 {
+		t.Errorf("expected temperature to fall back to 0.7, got %.2f", merged.Temperature)
 	}
 }

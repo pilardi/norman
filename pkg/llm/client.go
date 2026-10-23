@@ -27,12 +27,28 @@ type Client struct {
 }
 
 // NewClient creates a client configured from the system config.
+// Deprecated: use NewClientWithProvider for provider-specific configuration.
 func NewClient(cfg *config.SystemConfig) *Client {
 	return &Client{
 		BaseURL:   cfg.OpenShell.Address, // resolved gateway; for MVP, this is the endpoint base
-		Model:     cfg.DefaultModel,
-		Temperature: cfg.Temperature,
-		MaxTokens: cfg.MaxTokens,
+		Model:     "",                    // empty = no default model (use provider config instead)
+		Temperature: 0,                   // zero = use provider default
+		MaxTokens: 0,                    // zero = use provider default
+		HTTPClient: &http.Client{
+			Timeout: 120 * time.Second,
+		},
+		Timeout: 120 * time.Second,
+	}
+}
+
+// NewClientWithProvider creates a client configured from a specific provider config.
+func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
+	return &Client{
+		BaseURL:    provCfg.Endpoint,
+		Model:      provCfg.Model,
+		Temperature:  provCfg.Temperature,
+		MaxTokens:  provCfg.MaxTokens,
+		APIKey:     provCfg.ApiKey,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},

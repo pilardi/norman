@@ -301,7 +301,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 
 		// Output snake_case for consistency with CLI display.
 		output := map[string]interface{}{
-			"default_model":      cfg.DefaultModel,
 			"server_port":        cfg.ServerPort,
 			"host":               cfg.Host,
 			"max_active_skills":  cfg.Skills.MaxActive,
@@ -322,7 +321,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	}
 
 	fmt.Println("# Current Configuration (System)")
-	fmt.Printf("  default_model:    %s\n", cfg.DefaultModel)
 	fmt.Printf("  server_port:      %d\n", cfg.ServerPort)
 	fmt.Printf("  host:             %s\n", cfg.Host)
 	fmt.Printf("  max_active_skills: %d\n", cfg.Skills.MaxActive)
