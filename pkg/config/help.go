@@ -64,6 +64,10 @@ Flags:
   -p, --provider NAME  Select a configured LLM provider (overrides default)
   -v, --verbose        Enable verbose/debug output (request details)
 
+Environment variables:
+  NORMAN_HOST          Server host address (default: "127.0.0.1")
+  NORMAN_PORT          Server port number (default: 8080)
+
 Commands:
   config                     Show or edit current configuration
   workspaces create <name>   Create a new workspace directory
