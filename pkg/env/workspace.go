@@ -95,16 +95,11 @@ func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 }
 
 // CreateWorkspace creates a persistent OpenShell sandbox for the given workspace name.
-// The mTLS paths are injected into the context file; server URL comes from
-// the NORMAN_SERVER_URL environment variable available inside the sandbox.
 // No session is created — sessions are created when a user opens a new session.
 func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string, sessionId string) (*v1.Sandbox, error) {
-	certPath, keyPath := m.client.GetMTLSPaths()
 	ctxFile := &ContextFile{
-		WorkspaceID:    workspace,
-		WorkspaceName:  workspace,
-		MTLSCertPath:   certPath,
-		MTLSKeyPath:    keyPath,
+		WorkspaceID:   workspace,
+		WorkspaceName: workspace,
 	}
 	sb, err := m.client.CreateSandbox(ctx, defaultProvider, workspace, ctxFile, sessionId)
 	if err != nil {

@@ -6,7 +6,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,10 +17,8 @@ import (
 
 // ContextFile is the workspace context file injected at sandbox creation.
 type ContextFile struct {
-	WorkspaceID    string `json:"workspace_id"`
-	WorkspaceName  string `json:"workspace_name"`
-	MTLSCertPath   string `json:"mtls_cert_path,omitempty"`
-	MTLSKeyPath    string `json:"mtls_key_path,omitempty"`
+	WorkspaceID   string `json:"workspace_id"`
+	WorkspaceName string `json:"workspace_name"`
 }
 
 // NotificationRequest mirrors the API schema for creating a notification.
@@ -118,22 +115,7 @@ func ensureEnv() (*ContextFile, error) {
 
 // buildClient creates an HTTP client with optional mTLS config.
 func buildClient(ctx *ContextFile) *http.Client {
-	client := &http.Client{}
-
-	if ctx.MTLSCertPath != "" && ctx.MTLSKeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(ctx.MTLSCertPath, ctx.MTLSKeyPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "roger: warning: failed to load mTLS cert: %v\n", err)
-		} else {
-			client.Transport = &http.Transport{
-				TLSClientConfig: &tls.Config{
-					Certificates: []tls.Certificate{cert},
-				},
-			}
-		}
-	}
-
-	return client
+	return &http.Client{}
 }
 
 // apiURL constructs the full API URL for a given path.
