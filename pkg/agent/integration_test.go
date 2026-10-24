@@ -302,7 +302,7 @@ func TestIntegrationKeepAlive(t *testing.T) {
 
 	// Simulate the flow: create sandbox → keepalive → execute
 	sandboxName := "norman-task-test001"
-	_, err = fakeClient.CreateSandbox(ctx, "", sandboxName)
+	_, err = fakeClient.CreateSandbox(ctx, "", sandboxName, nil)
 	if err != nil {
 		t.Fatalf("create sandbox: %v", err)
 	}

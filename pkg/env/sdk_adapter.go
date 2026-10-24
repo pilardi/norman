@@ -24,8 +24,8 @@ func NewSDKAdapter(c *Client) *SDKAdapter {
 }
 
 // CreateSandbox adapts env.Client.CreateSandbox to return a sandbox ID string.
-func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string) (string, error) {
-	sb, err := a.client.CreateSandbox(ctx, workspace, name)
+func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile) (string, error) {
+	sb, err := a.client.CreateSandbox(ctx, workspace, name, ctxFile)
 	if err != nil {
 		return "", fmt.Errorf("create sandbox: %w", err)
 	}
@@ -108,4 +108,9 @@ func (a *SDKAdapter) KeepAlive(ctx context.Context, sandboxName string) error {
 		return fmt.Errorf("keepalive: %w", err)
 	}
 	return nil
+}
+
+// GetMTLSPaths delegates to the underlying client's mTLS configuration.
+func (a *SDKAdapter) GetMTLSPaths() (certPath, keyPath string) {
+	return a.client.GetMTLSPaths()
 }

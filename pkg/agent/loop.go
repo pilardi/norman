@@ -146,9 +146,10 @@ func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {
 		return env.NewSession(client, "default", sb.Name), nil
 	}
 
-	// Create a new sandbox
+	// Create a new sandbox with context file (server URL + mTLS paths)
 	sandboxName := fmt.Sprintf("ws-%s", workspaceID)
-	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName)
+	ctxFile := l.buildContextFile(workspaceID)
+	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName, ctxFile)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox for workspace %s: %w", workspaceID, err)
 	}
@@ -157,9 +158,33 @@ func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {
 	return env.NewSession(client, "default", sandboxName), nil
 }
 
+// buildContextFile constructs a ContextFile with the server URL and mTLS paths
+// derived from the loop's config and client TLS settings.
+func (l *Loop) buildContextFile(workspaceID string) *env.ContextFile {
+	// Build server URL from config (use defaults if config is nil)
+	var serverURL string
+	if l.config != nil && l.config.System != nil {
+		serverURL = fmt.Sprintf("http://%s:%d", l.config.System.Host, l.config.System.ServerPort)
+	}
+
+	// Get mTLS paths from the openShell client (interface method)
+	certPath, keyPath := "", ""
+	if l.openShell != nil {
+		certPath, keyPath = l.openShell.GetMTLSPaths()
+	}
+
+	return &env.ContextFile{
+		WorkspaceID:    workspaceID,
+		WorkspaceName:  workspaceID, // uses ID as name until a proper name is resolved
+		ServerURL:      serverURL,
+		MTLSCertPath:   certPath,
+		MTLSKeyPath:    keyPath,
+	}
+}
+
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
-	CreateSandbox(ctx context.Context, workspace, name string) (string, error)
+	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile) (string, error)
 	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
 	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
 	RunCommand(ctx context.Context, sandboxName string, command string) (string, int, error)
@@ -167,6 +192,7 @@ type OpenShellClient interface {
 	DeleteSandbox(ctx context.Context, workspace, name string) error
 	ListSandboxes(ctx context.Context, workspace string) ([]string, error)
 	KeepAlive(ctx context.Context, sandboxName string) error
+	GetMTLSPaths() (certPath, keyPath string)
 }
 
 // WSHubPublisher sends WebSocket push events.
@@ -504,7 +530,8 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	})
 
 	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:7])
-	_, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName)
+	ctxFile := l.buildContextFile(task.Workspace)
+	_, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName, ctxFile)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("sandbox creation failed: %v", err)
@@ -1871,7 +1898,7 @@ func (f *FakeOpenShellClient) CapturedPrompt() string {
 	return f.capturedPrompt
 }
 
-func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string) (string, error) {
+func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))
@@ -1941,4 +1968,9 @@ func (f *FakeOpenShellClient) KeepAlive(ctx context.Context, sandboxName string)
 		return fmt.Errorf("sandbox %s not found", sandboxName)
 	}
 	return nil
+}
+
+func (f *FakeOpenShellClient) GetMTLSPaths() (certPath, keyPath string) {
+	// Fake client has no mTLS config
+	return "", ""
 }

@@ -76,23 +76,40 @@ func WorkspaceDefinitionFromMap(m map[string]interface{}) *WorkspaceDefinition {
 
 // WorkspaceManager handles mapping workspace names to persistent OpenShell sessions.
 type WorkspaceManager struct {
-	client   *Client
-	sessions map[string]*Session // workspace name -> session
+	client      *Client
+	serverURL   string
+	sessions    map[string]*Session // workspace name -> session
 	definitions map[string]*WorkspaceDefinition // workspace name -> definition (lazy-loaded)
 }
 
 // NewWorkspaceManager creates a new workspace manager bound to an OpenShell client.
-func NewWorkspaceManager(client *Client) *WorkspaceManager {
+func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 	return &WorkspaceManager{
 		client:      client,
+		serverURL:   serverURL,
 		sessions:    make(map[string]*Session),
 		definitions: make(map[string]*WorkspaceDefinition),
 	}
 }
 
+// SetServerURL updates the server URL used for context file injection.
+func (m *WorkspaceManager) SetServerURL(url string) {
+	m.serverURL = url
+}
+
 // CreateWorkspace creates a persistent sandbox for the given workspace name.
-func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string) (*Session, error) {
-	sandbox, err := m.client.CreateSandbox(ctx, defaultProvider, workspace)
+// The serverURL and mTLS paths are injected into the context file so that
+// tools like `roger` can reach the Norman server from inside the sandbox.
+func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace, serverURL string) (*Session, error) {
+	certPath, keyPath := m.client.GetMTLSPaths()
+	ctxFile := &ContextFile{
+		WorkspaceID:    workspace,
+		WorkspaceName:  workspace,
+		ServerURL:      serverURL,
+		MTLSCertPath:   certPath,
+		MTLSKeyPath:    keyPath,
+	}
+	sandbox, err := m.client.CreateSandbox(ctx, defaultProvider, workspace, ctxFile)
 	if err != nil {
 		return nil, fmt.Errorf("create workspace %s: %w", workspace, err)
 	}
@@ -161,12 +178,12 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 
 		// All retries exhausted — create a new sandbox
 		log.Printf("[env] All recovery attempts failed for '%s', creating new sandbox", workspace)
-		return m.CreateWorkspace(ctx, workspace)
+		return m.CreateWorkspace(ctx, workspace, m.serverURL)
 	}
 
 	// No existing sandbox found — create a new one
 	log.Printf("[env] No existing sandbox for '%s', creating new one", workspace)
-	return m.CreateWorkspace(ctx, workspace)
+	return m.CreateWorkspace(ctx, workspace, m.serverURL)
 }
 
 // CloseAll shuts down all active sessions.
