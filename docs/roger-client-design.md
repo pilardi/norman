@@ -41,7 +41,7 @@ Scripts and scheduled tasks running inside a Norman sandbox need to communicate 
 │  OpenShell Sandbox                                    │
 │                                                     │
 │  ~/.config/norman/context.json  ← auto-injected     │
-│    server_url = http://{Host}:{ServerPort}          │
+│    workspace_id, workspace_name                     │
 │    mtls_cert_path, mtls_key_path                    │
 │  roger                          ← CLI binary        │
 │  (script) ──► roger notify ...                       │
@@ -60,15 +60,15 @@ Scripts and scheduled tasks running inside a Norman sandbox need to communicate 
 
 **Key data flow:**
 
-1. `NewWithClient(cfg, ...)` receives the Norman config
-2. `Loop.buildContextFile()` extracts `Host` + `ServerPort` → builds `server_url`
-3. `CreateSandbox(ctx, workspace, name, ctxFile)` injects context.json into sandbox
-4. `roger` reads context.json on startup → resolves server URL + mTLS paths
+1. `NewWithClient(cfg, ...)` receives the Norman config; `NORMAN_SERVER_URL` env var is set at sandbox creation
+2. `Loop.buildContextFile()` extracts `Host` + `ServerPort` → injects `NORMAN_SERVER_URL` into sandbox env (not context.json)
+3. `CreateSandbox(ctx, workspace, name, ctxFile)` injects context.json **without** `server_url` into sandbox
+4. `roger` reads `$NORMAN_SERVER_URL` env var on startup → resolves target server + mTLS paths from context.json
 5. `roger` makes authenticated HTTP calls directly to Norman's API
 
 **Key design decisions:**
 
-1. **Auto-detection, no `--workspace` flag** — reads `~/.config/norman/context.json` injected at sandbox creation. Contains `workspace_id`, `server_url`, and optional auth config.
+1. **Auto-detection, no `--workspace` flag** — reads `~/.config/norman/context.json` injected at sandbox creation. Contains `workspace_id`, `workspace_name`, and optional auth config.
 2. **General-purpose CLI** — not just a notify tool; covers multiple API interactions via subcommands (`notify`, `ping`, `status`, `log`).
 3. **Structured output** — JSON on stdout (machine-parseable), human-readable summary on stderr (user-facing).
 4. **Auth encapsulated** — uses mTLS certs or session token from context file; no CLI flags for credentials.
@@ -84,17 +84,16 @@ Injected at sandbox creation time by Norman's bootstrap:
 {
   "workspace_id": "a1b2c3d4-e5f6-...",
   "workspace_name": "api-migration",
-  "server_url": "http://127.0.0.1:8080",
   "mtls_cert_path": "/path/to/cert.pem",
   "mtls_key_path": "/path/to/key.pem"
 }
 ```
 
-**How `server_url` is populated:** The agent loop extracts `Host` and `ServerPort` from the Norman config (`cfg.System.Host`, `cfg.System.ServerPort`) and constructs `http://{Host}:{ServerPort}`. This ensures `roger` inside a sandbox can reach the actual Norman server (not `localhost`).
+> **Note:** `server_url` is no longer stored in the context file. The server address is provided via the `$NORMAN_SERVER_URL` environment variable at sandbox creation time. This avoids coupling the context file to a specific deployment URL and makes it portable across environments (dev, staging, prod).
 
 **How mTLS paths are populated:** The `env.Client` stores its TLS config at construction time. `GetMTLSPaths()` returns the cert/key file paths, which are injected into the context file. If no mTLS is configured, these fields are empty strings.
 
-The `roger` binary reads this file on startup to resolve the target server and auth credentials. If absent, it falls back to reading `$NORMAN_SERVER_URL` env var or querying a well-known endpoint.
+The `roger` binary reads `$NORMAN_SERVER_URL` env var on startup to resolve the target server address and auth credentials from the context file. If the env var is absent, it falls back to `http://localhost:8080`.
 
 ---
 
@@ -130,7 +129,7 @@ roger --version
 | Component | Change | Status |
 |-----------|--------|--------|
 | **Sandbox creation** (`pkg/env/client.go`) | Write `~/.config/norman/context.json` into new sandboxes at creation time | ✅ Done |
-| **Context file injection** (`pkg/env/workspace.go`) | `CreateWorkspace` now accepts `serverURL` and populates all context fields (workspace_id, workspace_name, server_url, mtls_cert_path, mtls_key_path) | ✅ Done |
+| **Context file injection** (`pkg/env/workspace.go`) | `CreateWorkspace` injects context.json without `server_url`; server address provided via `$NORMAN_SERVER_URL` env var at sandbox creation | ✅ Done |
 | **Agent loop** (`pkg/agent/loop.go`) | `buildContextFile()` extracts Host+ServerPort from config; `GetSession` and task sandbox creation pass proper ContextFile | ✅ Done |
 | **mTLS support** (`pkg/env/client.go`) | Added `GetMTLSPaths()` method on `Client`; stored TLS config in Client struct | ✅ Done |
 | **Interface update** (`pkg/agent/loop.go`) | `OpenShellClient` interface includes `GetMTLSPaths()` | ✅ Done |
@@ -254,4 +253,4 @@ The skill approach means `roger` stays in the same update cycle as Norman itself
 
 ---
 
-*Draft — v0.2 · 2026-10-24*
+*Draft — v0.3 · 2026-10-24*
