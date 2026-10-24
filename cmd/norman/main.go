@@ -20,8 +20,16 @@ import (
 )
 
 // serverURL returns the configured server base URL.
-// Priority: NORMAN_HOST/NORMAN_PORT env vars > config.yaml defaults > hardcoded fallback.
+// Priority: NORMAN_SERVER_URL > NORMAN_HOST/NORMAN_PORT env vars > config.yaml defaults > hardcoded fallback.
+// If NORMAN_SERVER_URL is set, it takes full precedence (no HOST/PORT needed).
 func serverURL() string {
+	// Primary: use explicit server URL if provided
+	serverURL := os.Getenv("NORMAN_SERVER_URL")
+	if serverURL != "" {
+		return serverURL
+	}
+
+	// Fallback: derive from HOST + PORT env vars or config.yaml
 	host := os.Getenv("NORMAN_HOST")
 	portStr := os.Getenv("NORMAN_PORT")
 
@@ -303,6 +311,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 		output := map[string]interface{}{
 			"server_port":        cfg.ServerPort,
 			"host":               cfg.Host,
+			"server_url":         cfg.ServerURL,
 			"max_active_skills":  cfg.Skills.MaxActive,
 			"bell_enabled":       cfg.Notify.BellEnabled,
 			"rate_limit_per_min": cfg.Notify.RateLimitPerMin,
@@ -321,6 +330,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	}
 
 	fmt.Println("# Current Configuration (System)")
+	fmt.Printf("  server_url:       %s\n", cfg.ServerURL)
 	fmt.Printf("  server_port:      %d\n", cfg.ServerPort)
 	fmt.Printf("  host:             %s\n", cfg.Host)
 	fmt.Printf("  max_active_skills: %d\n", cfg.Skills.MaxActive)

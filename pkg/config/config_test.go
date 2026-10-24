@@ -408,3 +408,62 @@ func TestWorkspaceConfigDefaults(t *testing.T) {
 		t.Errorf("expected temperature to fall back to 0.7, got %.2f", merged.Temperature)
 	}
 }
+
+func TestClientEnvVarsSubset(t *testing.T) {
+	clientVars := ClientEnvVars()
+	names := make([]string, len(clientVars))
+	for i, v := range clientVars {
+		names[i] = v.Name
+	}
+
+	expected := []string{"NORMAN_SERVER_URL", "NORMAN_HOST", "NORMAN_PORT", "NORMAN_VERBOSE"}
+	if len(clientVars) != 4 {
+		t.Errorf("expected 4 client env vars, got %d", len(clientVars))
+	}
+	for i, exp := range expected {
+		if names[i] != exp {
+			t.Errorf("client var[%d]: expected %q, got %q", i, exp, names[i])
+		}
+	}
+
+	// Verify server vars include all 7
+	serverVars := ServerEnvVars()
+	if len(serverVars) != 7 {
+		t.Errorf("expected 7 server env vars, got %d", len(serverVars))
+	}
+}
+
+func TestClientEnvVarHelpText(t *testing.T) {
+	help := ClientEnvVarHelpText()
+	if help == "" {
+		t.Error("expected non-empty client help text")
+	}
+	if !strings.Contains(help, "NORMAN_SERVER_URL") {
+		t.Error("client help should mention NORMAN_SERVER_URL")
+	}
+	if !strings.Contains(help, "NORMAN_VERBOSE") {
+		t.Error("client help should mention NORMAN_VERBOSE")
+	}
+	// Client help should NOT mention directory-specific vars
+	if strings.Contains(help, "STORE_DIR") || strings.Contains(help, "RAW_SOURCES_DIR") {
+		t.Error("client help should NOT mention STORE_DIR or RAW_SOURCES_DIR")
+	}
+}
+
+func TestServerEnvVarsAll(t *testing.T) {
+	serverVars := ServerEnvVars()
+	names := make([]string, len(serverVars))
+	for i, v := range serverVars {
+		names[i] = v.Name
+	}
+
+	expected := []string{
+		"NORMAN_HOST", "NORMAN_PORT", "NORMAN_SERVER_URL",
+		"NORMAN_BASE_DIR", "NORMAN_VERBOSE", "NORMAN_STORE_DIR", "NORMAN_RAW_SOURCES_DIR",
+	}
+	for i, exp := range expected {
+		if names[i] != exp {
+			t.Errorf("server var[%d]: expected %q, got %q", i, exp, names[i])
+		}
+	}
+}

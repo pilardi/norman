@@ -190,3 +190,70 @@ func BuildEnvVarHelpText() string {
 func isNORMANPrefix(s string) bool {
 	return strings.HasPrefix(s, "NORMAN_")
 }
+
+// ServerEnvVars returns the subset of env vars relevant to the server binary.
+// These are the variables that control server behavior (bind address, port, directories, etc.).
+func ServerEnvVars() []EnvVar {
+	return allEnvVars // Server gets all 7
+}
+
+// ClientEnvVars returns the subset of env vars relevant to the thin client CLI.
+// The client primarily connects via NORMAN_SERVER_URL; HOST/PORT are fallbacks.
+// Directory management (STORE_DIR, RAW_SOURCES_DIR) is a server concern.
+func ClientEnvVars() []EnvVar {
+	return []EnvVar{
+		{
+			Name: "NORMAN_SERVER_URL",
+			Type: "string",
+			Default: "",
+			HelpText: "Server URL to connect to (e.g., https://norman.example.com). Primary client connection target.",
+			Apply: func(sc *SystemConfig, raw string) error {
+				sc.ServerURL = raw
+				return nil
+			},
+		},
+		{
+			Name: "NORMAN_HOST",
+			Type: "string",
+			Default: "127.0.0.1",
+			HelpText: "Fallback server bind address (used only when NORMAN_SERVER_URL is not set)",
+			Apply: func(sc *SystemConfig, raw string) error {
+				sc.Host = raw
+				return nil
+			},
+		},
+		{
+			Name: "NORMAN_PORT",
+			Type: "int",
+			Default: "8080",
+			HelpText: "Fallback server port (used only when NORMAN_SERVER_URL is not set)",
+			Apply: func(sc *SystemConfig, raw string) error {
+				n, err := strconv.Atoi(raw)
+				if err != nil {
+					return fmt.Errorf("invalid NORMAN_PORT value %q: %w", raw, err)
+				}
+				sc.ServerPort = n
+				return nil
+			},
+		},
+		{
+			Name: "NORMAN_VERBOSE",
+			Type: "bool",
+			Default: "false",
+			HelpText: "Enable verbose/debug logging (true/false or 1/0)",
+			Apply: func(sc *SystemConfig, raw string) error {
+				sc.Logging.Verbose = (raw == "true" || raw == "1")
+				return nil
+			},
+		},
+	}
+}
+
+// ClientEnvVarHelpText returns a formatted help string for client-relevant NORMAN_* env vars.
+func ClientEnvVarHelpText() string {
+	var lines []string
+	for _, ev := range ClientEnvVars() {
+		lines = append(lines, fmt.Sprintf("  %-24s %s", ev.Name, ev.HelpText))
+	}
+	return strings.Join(lines, "\n")
+}

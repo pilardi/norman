@@ -62,7 +62,7 @@ Flags:
   -v, --verbose        Enable verbose/debug output (request details)
 
 Environment variables (take priority over .env files and config.yaml):
-` + BuildEnvVarHelpText() + `
+` + ClientEnvVarHelpText() + `
 
 Commands:
   config                     Show or edit current configuration
