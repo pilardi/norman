@@ -130,13 +130,13 @@ func buildClient(ctx *ContextFile) *http.Client {
 }
 
 // apiURL constructs the full API URL for a given path.
-// Server URL is read from NORMAN_SERVER_URL env var (not from context).
-func apiURL(ctx *ContextFile, path string) string {
+// Aborts with a descriptive message if no server URL is available.
+func apiURL(ctx *ContextFile, path string) (string, error) {
 	base := strings.TrimRight(os.Getenv("NORMAN_SERVER_URL"), "/")
 	if base == "" {
-		base = "http://localhost:8080" // fallback for local dev
+		return "", fmt.Errorf("you can only run roger within a workspace")
 	}
-	return base + path
+	return base + path, nil
 }
 
 // outputJSON prints structured JSON to stdout.
@@ -203,7 +203,12 @@ func handleNotify(args []string) {
 	client := buildClient(ctx)
 	jsonData, _ := json.Marshal(req)
 
-	resp, err := client.Post(apiURL(ctx, "/api/notifications"), "application/json", strings.NewReader(string(jsonData)))
+	url, err := apiURL(ctx, "/api/notifications")
+	if err != nil {
+		outputText("error: %v", err)
+		os.Exit(2)
+	}
+	resp, err := client.Post(url, "application/json", strings.NewReader(string(jsonData)))
 	if err != nil {
 		outputText("API error: %v", err)
 		os.Exit(1)
@@ -240,8 +245,13 @@ func handlePing(args []string) {
 	}
 	jsonData, _ := json.Marshal(event)
 
+	url, err := apiURL(ctx, "/api/sessions/"+url.PathEscape(sessionID)+"/events")
+	if err != nil {
+		outputText("error: %v", err)
+		os.Exit(2)
+	}
 	resp, err := client.Post(
-		apiURL(ctx, "/api/sessions/"+url.PathEscape(sessionID)+"/events"),
+		url,
 		"application/json",
 		strings.NewReader(string(jsonData)),
 	)
@@ -264,7 +274,12 @@ func handleStatus(args []string) {
 
 	client := buildClient(ctx)
 
-	resp, err := client.Get(apiURL(ctx, "/api/workspaces/"+url.PathEscape(ctx.WorkspaceID)))
+	url, err := apiURL(ctx, "/api/workspaces/"+url.PathEscape(ctx.WorkspaceID))
+	if err != nil {
+		outputText("error: %v", err)
+		os.Exit(2)
+	}
+	resp, err := client.Get(url)
 	if err != nil {
 		outputText("API error: %v", err)
 		os.Exit(1)
@@ -302,9 +317,12 @@ func handleLog(args []string) {
 
 	client := buildClient(ctx)
 
-	resp, err := client.Get(
-		apiURL(ctx, "/api/sessions/"+url.PathEscape(sessionID)+"/events?lines="+fmt.Sprintf("%d", lines)),
-	)
+	url, err := apiURL(ctx, "/api/sessions/"+url.PathEscape(sessionID)+"/events?lines="+fmt.Sprintf("%d", lines))
+	if err != nil {
+		outputText("error: %v", err)
+		os.Exit(2)
+	}
+	resp, err := client.Get(url)
 	if err != nil {
 		outputText("API error: %v", err)
 		os.Exit(1)

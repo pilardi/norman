@@ -48,4 +48,4 @@ roger log --lines 10
 ## Context File
 
 Reads `~/.config/norman/context.json` for workspace ID, workspace name, and mTLS credentials.
-Server URL is resolved internally at runtime.
+The server URL must be available (via `$NORMAN_SERVER_URL` env var) — roger aborts if not found.
