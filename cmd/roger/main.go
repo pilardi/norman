@@ -81,7 +81,6 @@ Commands:
 
 Environment variables:
   SESSION_ID        Target session ID (default: "*" broadcasts to all sessions)
-  NORMAN_SERVER_URL Server base URL (fallback if context.json is absent)
 
 Flags:
   --help, -h   Show this help message
