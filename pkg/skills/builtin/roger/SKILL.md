@@ -10,7 +10,7 @@ binary_path: "roger"
 
 # Roger — Norman Workspace Client
 
-A compiled binary skill that provides direct API access for scripts and scheduled tasks running inside OpenShell sandboxes. Installed automatically at sandbox creation time.
+A compiled binary skill that provides direct API access for scripts and scheduled tasks. Installed automatically at sandbox creation time.
 
 ## Usage Notes
 
@@ -24,12 +24,10 @@ A compiled binary skill that provides direct API access for scripts and schedule
 Copied from the host installation into `~/.local/bin/roger` at sandbox creation.
 No git clone or build step required — it is a pre-built artifact.
 
-## Session Targeting
+## Environment variables
 
-The agent injects `SESSION_ID=<uuid>` into every command it runs inside the sandbox.
-Commands that target a specific session use this env var; if not set, they fall back
-to `"*"` (broadcast to all sessions in the workspace). This allows multiple agent
-sessions per workspace to address each other independently.
+The agent injects `SESSION_ID=<uuid>` into every command it runs. Commands that target
+a specific session use this env var; if not set, they fall back to `"*"` (broadcast).
 
 ## Example Workflow
 

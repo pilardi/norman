@@ -79,11 +79,9 @@ Commands:
   status    Query workspace state (JSON on stdout)
   log       Tail recent events for the current session
 
-Session targeting:
-  roger is invoked inside an OpenShell sandbox where the agent injects
-  SESSION_ID=<uuid> into the command environment. Commands that target
-  a specific session use this value; if not set, they fall back to "*"
-  (broadcast to all sessions in the workspace).
+Environment variables:
+  SESSION_ID        Target session ID (default: "*" broadcasts to all sessions)
+  NORMAN_SERVER_URL Server base URL (fallback if context.json is absent)
 
 Flags:
   --help, -h   Show this help message

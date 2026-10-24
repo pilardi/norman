@@ -157,7 +157,7 @@ roger --version
 | Risk | Mitigation |
 |------|-----------|
 | Context file not present at sandbox start | Fallback to `$NORMAN_SERVER_URL` env var + well-known endpoint discovery |
-| Multiple sessions share one sandbox | `roger ping` targets current session via `$SESSION_ID` env var (injected by the agent at command execution time; falls back to `"*"` if unset) |
+| Multiple sessions share one sandbox | `roger ping` targets current session via `$SESSION_ID` env var (falls back to `"*"` if unset) |
 | API auth changes (mTLS rotation) | Context file can be updated; binary re-reads on each invocation |
 | Binary distribution overhead | ~2-3 MB Go static binary; acceptable for sandbox images |
 
