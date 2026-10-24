@@ -28,16 +28,6 @@ func NewSession(client *Client, provider, sandbox string) *Session {
 	}
 }
 
-// NewSessionWithClient creates a session bound to a specific sandbox.
-func NewSessionWithClient(client *Client, provider, sandbox string) *Session {
-	return &Session{
-		client:    client,
-		provider:  provider,
-		sandbox:   sandbox,
-		namespace: "default",
-	}
-}
-
 // SessionID returns the session identifier (sandbox name) for this session.
 func (s *Session) SessionID() string {
 	return s.sandbox

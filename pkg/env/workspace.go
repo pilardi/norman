@@ -117,7 +117,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		return nil, fmt.Errorf("wait ready workspace %s: %w", workspace, err)
 	}
 
-	session := NewSessionWithClient(m.client, defaultProvider, sb.Name)
+	session := NewSession(m.client, defaultProvider, sb.Name)
 	m.sessions[workspace] = session
 	log.Printf("[env] Created workspace '%s' → sandbox '%s'", workspace, sb.Name)
 
@@ -147,7 +147,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, workspace)
 	if err == nil && sb != nil {
 		log.Printf("[env] Found existing sandbox '%s' for workspace", workspace)
-		session := NewSessionWithClient(m.client, defaultProvider, sb.Name)
+		session := NewSession(m.client, defaultProvider, sb.Name)
 
 		// Attempt recovery with retries
 		for attempt := 0; attempt < maxRetries; attempt++ {
