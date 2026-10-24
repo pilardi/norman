@@ -72,7 +72,7 @@ func (a *Activator) DeployToSandbox(name string, session *env.Session) (*SkillEn
 		return nil, fmt.Errorf("DeployToSandbox requires a non-nil session")
 	}
 
-	sandboxName := session.SandboxName()
+	sandboxName := session.SessionID()
 	ctx := context.Background()
 
 	// Get entry from registry to find source_url/version/binary_path
@@ -126,7 +126,7 @@ func (a *Activator) DeployToSandbox(name string, session *env.Session) (*SkillEn
 
 // deployBinary copies a pre-built host binary into the sandbox at ~/.local/bin/<name>.
 func (a *Activator) deployBinary(name string, session *env.Session, entry *SkillEntry, ctx context.Context) (*SkillEntry, error) {
-	sandboxName := session.SandboxName()
+	sandboxName := session.SessionID()
 	targetPath := filepath.Join("~", ".local", "bin", name)
 
 	// Check if already deployed (idempotent)

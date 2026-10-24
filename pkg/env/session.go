@@ -33,11 +33,6 @@ func (s *Session) SessionID() string {
 	return s.sandbox
 }
 
-// SandboxName returns the name of the underlying OpenShell sandbox.
-func (s *Session) SandboxName() string {
-	return s.sandbox
-}
-
 // Exec runs a command inside the sandbox and returns combined output.
 // SESSION_ID is automatically injected into the command's environment.
 func (s *Session) Exec(ctx context.Context, cmd []string) (string, error) {

@@ -211,9 +211,9 @@ func InstallDependencies(entry SkillEntry, session *env.Session) error {
 		cmdStr := "pip install -r .requirements.txt"
 		output, err := session.Exec(ctx, []string{"bash", "-c", cmdStr})
 		if err != nil {
-			return fmt.Errorf("pip install in sandbox '%s': %w (output: %s)", session.SandboxName(), err, output)
+			return fmt.Errorf("pip install in sandbox '%s': %w (output: %s)", session.SessionID(), err, output)
 		}
-		log.Printf("[skills] installed dependencies for '%s' in sandbox '%s'", entry.Name, session.SandboxName())
+		log.Printf("[skills] installed dependencies for '%s' in sandbox '%s'", entry.Name, session.SessionID())
 		return nil
 	}
 

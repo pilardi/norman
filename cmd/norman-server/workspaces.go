@@ -94,7 +94,7 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
-		Message: strPtr("Workspace created: " + req.Name + " (sandbox: " + session.SandboxName() + ")"),
+		Message: strPtr("Workspace created: " + req.Name + " (sandbox: " + session.SessionID() + ")"),
 	})
 
 	return c.JSON(http.StatusCreated, ws)
