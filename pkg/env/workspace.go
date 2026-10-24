@@ -128,6 +128,10 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, sessionUUID string) (*Session, error) {
 	// Check cache first
 	if session, ok := m.sessions[workspace]; ok {
+		// If the cached session has no UUID yet, update it with the provided one.
+		if sessionUUID != "" && session.SessionID() == "" {
+			session.SetNormanSessionID(sessionUUID)
+		}
 		return session, nil
 	}
 

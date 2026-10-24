@@ -36,6 +36,11 @@ func (s *Session) SessionID() string {
 	return s.normanSessionID
 }
 
+// SetNormanSessionID updates the session's Norman API session UUID.
+func (s *Session) SetNormanSessionID(id string) {
+	s.normanSessionID = id
+}
+
 // SandboxName returns the underlying OpenShell sandbox name.
 func (s *Session) SandboxName() string {
 	return s.sandbox
