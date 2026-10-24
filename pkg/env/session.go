@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	v1types "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
@@ -17,18 +16,15 @@ type Session struct {
 	provider  string
 	sandbox   string
 	namespace string
-	sessionID string // unique per-session ID, injected as SESSION_ID env var
 }
 
 // NewSession creates a new session bound to a specific sandbox.
-// The sessionID is generated as a UUID and will be injected into every command execution.
 func NewSession(client *Client, provider, sandbox string) *Session {
 	return &Session{
 		client:    client,
 		provider:  provider,
 		sandbox:   sandbox,
 		namespace: "default",
-		sessionID: uuid.New().String(),
 	}
 }
 
@@ -39,13 +35,12 @@ func NewSessionWithClient(client *Client, provider, sandbox string) *Session {
 		provider:  provider,
 		sandbox:   sandbox,
 		namespace: "default",
-		sessionID: uuid.New().String(),
 	}
 }
 
-// SessionID returns the unique session identifier for this session.
+// SessionID returns the session identifier (sandbox name) for this session.
 func (s *Session) SessionID() string {
-	return s.sessionID
+	return s.sandbox
 }
 
 // SandboxName returns the name of the underlying OpenShell sandbox.
@@ -57,7 +52,7 @@ func (s *Session) SandboxName() string {
 // SESSION_ID is automatically injected into the command's environment.
 func (s *Session) Exec(ctx context.Context, cmd []string) (string, error) {
 	opts := v1types.ExecOptions{
-		Env: map[string]string{"SESSION_ID": s.sessionID},
+		Env: map[string]string{"SESSION_ID": s.SessionID()},
 	}
 	result, err := s.client.RunCommandWithOptions(ctx, s.provider, s.sandbox, cmd, opts)
 	if err != nil {
