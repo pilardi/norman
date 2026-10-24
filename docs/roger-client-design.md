@@ -137,7 +137,7 @@ roger --version
 | **API spec** (`api-spec.yaml`) | No changes needed — `/api/notifications`, `/api/workspaces/{name}`, `/api/sessions/{id}/events` already exist | ✅ N/A |
 | **WSHub** (`pkg/protocol/types.go`) | Already supports `WebSocketEvent` with `SessionId` field for per-session targeting | ✅ N/A |
 | **Notifier** (`pkg/notify/notifier.go`) | Already has `Notify()` method — `roger` calls HTTP API which routes through same notifier path | ✅ N/A |
-| **Deployment** | `roger` binary must be distributed into sandboxes — baked into OpenShell template image or installable via a workspace skill | ⏳ Pending |
+| **Deployment** | `roger` installed as a builtin skill (`pkg/skills/builtin/roger/SKILL.md`) copied to `~/.local/bin/roger` at sandbox creation | ⏳ Pending |
 
 ---
 
@@ -165,3 +165,93 @@ roger --version
 ---
 
 *Draft — v0.1 · 2026-10-23*
+
+---
+
+## 10. Distribution Model: roger as a Skill (not custom image)
+
+Instead of baking `roger` into an OpenShell template image, it is installed as a **binary skill** that Norman deploys into each sandbox at creation time. This keeps the binary in sync with the host installation and avoids a separate image rebuild step.
+
+### 10.1 Skill entry (`pkg/skills/builtin/roger/SKILL.md`)
+
+```yaml
+---
+name: roger
+description: "General-purpose Norman API client for notifications, status checks, and log tailing."
+activation: on-demand
+---
+```
+
+The skill is registered as a **builtin** entry (bundled with the Norman binary) rather than cloned from a git repo.
+
+### 10.2 Deployment target: `~/.local/bin/roger`
+
+| Property | Value | Rationale |
+|----------|-------|-----------|
+| Target path | `~/.local/bin/roger` | XDG-standard, user-scoped (each sandbox gets its own copy) |
+| Permissions | `chmod +x` by deploy script | Executable without root access |
+| PATH injection | `export PATH="$HOME/.local/bin:$PATH"` appended to `~/.bashrc` | Discoverable as `roger` without full path |
+
+The deploy script (`deploy.sh`) runs at sandbox creation:
+```bash
+cp /path/to/host/roger "$HOME/.local/bin/roger"
+chmod +x "$HOME/.local/bin/roger"
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+```
+
+The sandbox already has write access to `~`, so no special sandbox config is needed.
+
+### 10.3 Deployment flow
+
+```
+NewWithClient(cfg, ...)
+    │
+    ▼
+Loop.GetSession(workspaceID) ──► CreateSandbox(ctx, workspace, name, ctxFile)
+    │                               │
+    │                               ├─ WriteContextFile() → ~/.config/norman/context.json
+    │                               └─ DeployToSandbox("roger", session)
+    │                                       │
+    │                                       ▼
+    │                               copy host roger → ~/.local/bin/roger
+    │                                       chmod +x
+    │                                       append PATH to ~/.bashrc
+    │
+    ▼
+  Sandbox ready: context.json + roger executable available
+```
+
+### 10.4 Why not a custom image?
+
+| | Custom Image | Skill-based (this design) |
+|---|---|---|
+| Update cadence | Rebuild image for every change | Copy new binary on next sandbox creation |
+| Binary size | Baked into image layers | One copy per sandbox (~2–3 MB) |
+| Version pinning | Image tag = version | Host binary path = version |
+| Complexity | Dockerfile + CI pipeline | SKILL.md + deploy.sh (no build step) |
+
+The skill approach means `roger` stays in the same update cycle as Norman itself — when you `go build -o roger`, the next sandbox creation picks up the new binary automatically. No separate image rebuild or registry push.
+
+### 10.5 Integration points
+
+| Component | Change |
+|-----------|--------|
+| `pkg/skills/builtin/roger/SKILL.md` | New skill metadata entry |
+| `pkg/skills/activate.go` | Extend `DeployToSandbox` to handle binary skills (file copy instead of git clone) |
+| `pkg/env/workspace.go` | Call `Activator.DeployToSandbox("roger", session)` during sandbox creation |
+
+---
+
+## 11. Implementation Plan (updated)
+
+| Phase | Deliverable | Files Changed |
+|-------|-------------|---------------|
+| P1 | Design doc (this file) | `docs/roger-client-design.md` (new) |
+| P2 | `roger` CLI binary (Go) | `cmd/roger/` (new), `go.mod` update |
+| P3 | Sandbox context injection | `pkg/env/client.go`, `pkg/env/workspace.go` (`CreateSandbox`) |
+| P4 | Skill-based deployment | `pkg/skills/builtin/roger/SKILL.md` (new), `pkg/skills/activate.go` (extend) |
+| P5 | Integration test for context file + roger call | `pkg/env/workspace_test.go` additions |
+
+---
+
+*Draft — v0.2 · 2026-10-24*
