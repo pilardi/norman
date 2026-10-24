@@ -87,18 +87,25 @@ Flags:
 `)
 }
 
-// readContext loads and validates the context file.
-func readContext() (*ContextFile, error) {
+// ensureEnv checks that roger has a valid environment (context.json or NORMAN_SERVER_URL).
+// Returns the parsed context file and an error if neither is available.
+func ensureEnv() (*ContextFile, error) {
+	// If NORMAN_SERVER_URL is set, we're in a workspace — return empty context for mTLS paths.
+	if os.Getenv("NORMAN_SERVER_URL") != "" {
+		return &ContextFile{}, nil
+	}
+
+	// Try to read context.json for workspace ID and mTLS paths.
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("cannot determine home directory: %w", err)
+		return nil, fmt.Errorf("you can only run roger within a workspace")
 	}
 
 	ctxPath := filepath.Join(home, ".config", "norman", "context.json")
 
 	data, err := os.ReadFile(ctxPath)
 	if err != nil {
-		return nil, fmt.Errorf("context file not found at %s", ctxPath)
+		return nil, fmt.Errorf("you can only run roger within a workspace")
 	}
 
 	var ctx ContextFile
@@ -130,7 +137,7 @@ func buildClient(ctx *ContextFile) *http.Client {
 }
 
 // apiURL constructs the full API URL for a given path.
-// Aborts with a descriptive message if no server URL is available.
+// Assumes NORMAN_SERVER_URL is already validated by ensureEnv().
 func apiURL(ctx *ContextFile, path string) (string, error) {
 	base := strings.TrimRight(os.Getenv("NORMAN_SERVER_URL"), "/")
 	if base == "" {
@@ -188,9 +195,9 @@ func handleNotify(args []string) {
 		os.Exit(1)
 	}
 
-	ctx, err := readContext()
+	ctx, err := ensureEnv()
 	if err != nil {
-		outputText("config error: %v", err)
+		outputText("error: %v", err)
 		os.Exit(2)
 	}
 
@@ -224,9 +231,9 @@ func handleNotify(args []string) {
 
 // handlePing sends a lightweight health-check event.
 func handlePing(args []string) {
-	ctx, err := readContext()
+	ctx, err := ensureEnv()
 	if err != nil {
-		outputText("config error: %v", err)
+		outputText("error: %v", err)
 		os.Exit(2)
 	}
 
@@ -266,9 +273,9 @@ func handlePing(args []string) {
 
 // handleStatus queries workspace state.
 func handleStatus(args []string) {
-	ctx, err := readContext()
+	ctx, err := ensureEnv()
 	if err != nil {
-		outputText("config error: %v", err)
+		outputText("error: %v", err)
 		os.Exit(2)
 	}
 
@@ -295,9 +302,9 @@ func handleStatus(args []string) {
 
 // handleLog tails recent events.
 func handleLog(args []string) {
-	ctx, err := readContext()
+	ctx, err := ensureEnv()
 	if err != nil {
-		outputText("config error: %v", err)
+		outputText("error: %v", err)
 		os.Exit(2)
 	}
 
