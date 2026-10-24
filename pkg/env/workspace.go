@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 // WorkspaceManager manages workspace-to-sandbox mappings with context file injection.
@@ -92,10 +94,11 @@ func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 	}
 }
 
-// CreateWorkspace creates a persistent sandbox for the given workspace name.
+// CreateWorkspace creates a persistent OpenShell sandbox for the given workspace name.
 // The mTLS paths are injected into the context file; server URL comes from
 // the NORMAN_SERVER_URL environment variable available inside the sandbox.
-func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string, sessionId string) (*Session, error) {
+// No session is created — sessions are created when a user opens a new session.
+func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string, sessionId string) (*v1.Sandbox, error) {
 	certPath, keyPath := m.client.GetMTLSPaths()
 	ctxFile := &ContextFile{
 		WorkspaceID:    workspace,
@@ -117,11 +120,9 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		return nil, fmt.Errorf("wait ready workspace %s: %w", workspace, err)
 	}
 
-	session := NewSession(m.client, defaultProvider, sb.Name, sessionId)
-	m.sessions[workspace] = session
 	log.Printf("[env] Created workspace '%s' → sandbox '%s'", workspace, sb.Name)
 
-	return session, nil
+	return sb, nil
 }
 
 // GetSession returns an existing session for the workspace, or creates one if needed.
@@ -147,11 +148,13 @@ func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, ses
 
 // recoverOrCreate attempts to find an existing sandbox by name, or creates a new one.
 func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string, sessionId string) (*Session, error) {
+	var session *Session
+
 	// Try to get existing sandbox by name (may be crashed/stopped)
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, workspace)
 	if err == nil && sb != nil {
 		log.Printf("[env] Found existing sandbox '%s' for workspace", workspace)
-		session := NewSession(m.client, defaultProvider, sb.Name, sessionId)
+		session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
 
 		// Attempt recovery with retries
 		for attempt := 0; attempt < maxRetries; attempt++ {
@@ -176,12 +179,24 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 
 		// All retries exhausted — create a new sandbox
 		log.Printf("[env] All recovery attempts failed for '%s', creating new sandbox", workspace)
-		return m.CreateWorkspace(ctx, workspace, sessionId)
+		sb, err = m.CreateWorkspace(ctx, workspace, sessionId)
+		if err != nil {
+			return nil, err
+		}
+		session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
+		m.sessions[workspace] = session
+		return session, nil
 	}
 
 	// No existing sandbox found — create a new one
 	log.Printf("[env] No existing sandbox for '%s', creating new one", workspace)
-	return m.CreateWorkspace(ctx, workspace, sessionId)
+	sb, err = m.CreateWorkspace(ctx, workspace, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
+	m.sessions[workspace] = session
+	return session, nil
 }
 
 // CloseAll shuts down all active sessions.
