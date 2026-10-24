@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -198,6 +199,39 @@ func (c *Client) WaitReady(ctx context.Context, provider, name string) (*v1.Sand
 	return sb, nil
 }
 
+// WaitReadyWithTimeout waits for a sandbox to become ready with an explicit timeout.
+func (c *Client) WaitReadyWithTimeout(ctx context.Context, provider, name string, timeout time.Duration) (*v1.Sandbox, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	sb, err := c.client.Sandboxes().WaitReady(waitCtx, provider, name)
+	if err != nil {
+		return nil, fmt.Errorf("wait for sandbox %s/%s ready (timeout %v): %w", provider, name, timeout, err)
+	}
+	return sb, nil
+}
+
+// DeleteSandbox removes a sandbox and returns only the error.
+func (c *Client) DeleteSandbox(ctx context.Context, provider, name string) error {
+	_, err := c.client.Sandboxes().Delete(ctx, provider, name)
+	if err != nil {
+		return fmt.Errorf("delete sandbox %s/%s: %w", provider, name, err)
+	}
+	return nil
+}
+
+// RunCommandStr executes a command string inside a sandbox and returns (output, exitCode, error).
+func (c *Client) RunCommandStr(ctx context.Context, provider, sandboxName string, command string) (string, int, error) {
+	cmd := strings.Fields(command)
+	result, err := c.client.Exec().Run(ctx, provider, sandboxName, cmd)
+	if err != nil {
+		return "", 1, fmt.Errorf("exec in sandbox %s/%s: %w", provider, sandboxName, err)
+	}
+	exitCode := result.ExitCode
+	output := string(result.Stdout)
+	return output, exitCode, nil
+}
+
 // GetSandbox fetches the current state of a sandbox.
 func (c *Client) GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error) {
 	sb, err := c.client.Sandboxes().Get(ctx, provider, name)
@@ -205,15 +239,6 @@ func (c *Client) GetSandbox(ctx context.Context, provider, name string) (*v1.San
 		return nil, fmt.Errorf("get sandbox %s/%s: %w", provider, name, err)
 	}
 	return sb, nil
-}
-
-// DeleteSandbox removes a sandbox.
-func (c *Client) DeleteSandbox(ctx context.Context, provider, name string) (*v1.DeletionResult, error) {
-	result, err := c.client.Sandboxes().Delete(ctx, provider, name)
-	if err != nil {
-		return nil, fmt.Errorf("delete sandbox %s/%s: %w", provider, name, err)
-	}
-	return result, nil
 }
 
 // RunCommand executes a command inside a sandbox and returns stdout/stderr.

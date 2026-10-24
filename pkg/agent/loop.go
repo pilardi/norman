@@ -196,7 +196,7 @@ func (l *Loop) buildContextFile(workspaceID string) *env.ContextFile {
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
-	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile) (string, error)
+	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile) (*v1.Sandbox, error)
 	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
 	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
 	RunCommand(ctx context.Context, sandboxName string, command string) (string, int, error)
@@ -1910,12 +1910,12 @@ func (f *FakeOpenShellClient) CapturedPrompt() string {
 	return f.capturedPrompt
 }
 
-func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile) (string, error) {
+func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile) (*v1.Sandbox, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))
 	f.sandboxes[name] = sid
-	return sid, nil
+	return &v1.Sandbox{ID: sid, Name: name}, nil
 }
 
 func (f *FakeOpenShellClient) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error) {

@@ -150,6 +150,10 @@ func bootstrap() *server {
 
 	loopClient := env.NewSDKAdapter(openShellClient)
 
+	// Create workspace manager — handles sandbox creation with context file injection.
+	serverURL := fmt.Sprintf("http://%s:%d", cfg.System.Host, cfg.System.ServerPort)
+	wsManager := env.NewWorkspaceManager(openShellClient, serverURL)
+
 	// Initialize raw sources store for environment snapshots (context injection).
 	rawSourcesDir := os.Getenv("NORMAN_RAW_SOURCES_DIR")
 	if rawSourcesDir == "" {
@@ -199,17 +203,18 @@ func bootstrap() *server {
 	reg := skills.NewRegistry(registryPath)
 
 	srv := &server{
-		cfg:        cfg,
-		store:      store,
-		rawSources: rawSources,
-		activator:  activator,
-		loop:       loop,
-		wsHub:      wsHub,
-		notifier:   notifier,
-		scheduler:  sched,
-		registry:   reg,
-		workspaces: make(map[string]*protocol.Workspace),
-		startTime:  time.Now(),
+		cfg:              cfg,
+		store:            store,
+		rawSources:       rawSources,
+		activator:        activator,
+		loop:             loop,
+		wsHub:            wsHub,
+		notifier:         notifier,
+		scheduler:        sched,
+		registry:         reg,
+		workspaceManager: wsManager,
+		workspaces:       make(map[string]*protocol.Workspace),
+		startTime:        time.Now(),
 	}
 
 	// Seed registry from activator's current entries (host-installed skills)

@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+// WorkspaceManager manages workspace-to-sandbox mappings with context file injection.
+type WorkspaceManager struct {
+	client      *Client
+	serverURL   string
+	sessions    map[string]*Session // workspace name -> session
+	definitions map[string]*WorkspaceDefinition // workspace name -> definition (lazy-loaded)
+}
+
 const (
 	maxRetries = 3
 	baseBackoff     = 1 * time.Second
@@ -74,14 +82,6 @@ func WorkspaceDefinitionFromMap(m map[string]interface{}) *WorkspaceDefinition {
 	return w
 }
 
-// WorkspaceManager handles mapping workspace names to persistent OpenShell sessions.
-type WorkspaceManager struct {
-	client      *Client
-	serverURL   string
-	sessions    map[string]*Session // workspace name -> session
-	definitions map[string]*WorkspaceDefinition // workspace name -> definition (lazy-loaded)
-}
-
 // NewWorkspaceManager creates a new workspace manager bound to an OpenShell client.
 func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 	return &WorkspaceManager{
@@ -90,11 +90,6 @@ func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 		sessions:    make(map[string]*Session),
 		definitions: make(map[string]*WorkspaceDefinition),
 	}
-}
-
-// SetServerURL updates the server URL used for context file injection.
-func (m *WorkspaceManager) SetServerURL(url string) {
-	m.serverURL = url
 }
 
 // CreateWorkspace creates a persistent sandbox for the given workspace name.
@@ -109,7 +104,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace, serve
 		MTLSCertPath:   certPath,
 		MTLSKeyPath:    keyPath,
 	}
-	sandbox, err := m.client.CreateSandbox(ctx, defaultProvider, workspace, ctxFile)
+	sb, err := m.client.CreateSandbox(ctx, defaultProvider, workspace, ctxFile)
 	if err != nil {
 		return nil, fmt.Errorf("create workspace %s: %w", workspace, err)
 	}
@@ -118,14 +113,14 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace, serve
 	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	_, err = m.client.WaitReady(waitCtx, defaultProvider, sandbox.Name)
+	_, err = m.client.WaitReadyWithTimeout(waitCtx, defaultProvider, sb.Name, 2*time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("wait ready workspace %s: %w", workspace, err)
 	}
 
-	session := NewSession(m.client, defaultProvider, sandbox.Name)
+	session := NewSessionWithClient(m.client, defaultProvider, sb.Name)
 	m.sessions[workspace] = session
-	log.Printf("[env] Created workspace '%s' → sandbox '%s'", workspace, sandbox.Name)
+	log.Printf("[env] Created workspace '%s' → sandbox '%s'", workspace, sb.Name)
 
 	return session, nil
 }
@@ -153,12 +148,12 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, workspace)
 	if err == nil && sb != nil {
 		log.Printf("[env] Found existing sandbox '%s' for workspace", workspace)
-		session := NewSession(m.client, defaultProvider, sb.Name)
+		session := NewSessionWithClient(m.client, defaultProvider, sb.Name)
 
 		// Attempt recovery with retries
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			_, err = m.client.WaitReady(waitCtx, defaultProvider, sb.Name)
+			_, err = m.client.WaitReadyWithTimeout(waitCtx, defaultProvider, sb.Name, 30*time.Second)
 			cancel()
 
 			if err == nil {
@@ -189,7 +184,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 // CloseAll shuts down all active sessions.
 func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 	for name, session := range m.sessions {
-		if _, err := session.Delete(ctx); err != nil {
+		if err := session.Delete(ctx); err != nil {
 			log.Printf("[env] Error deleting session '%s': %v", name, err)
 		}
 	}

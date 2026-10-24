@@ -16,6 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/agent"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
@@ -34,6 +35,7 @@ type server struct {
 	notifier   *notify.Notifier
 	scheduler  *scheduler.Scheduler
 	registry   *skills.Registry
+	workspaceManager *env.WorkspaceManager
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
 	mu               sync.Mutex

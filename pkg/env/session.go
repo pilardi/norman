@@ -27,6 +27,16 @@ func NewSession(client *Client, provider, sandbox string) *Session {
 	}
 }
 
+// NewSessionWithClient creates a session bound to a specific sandbox.
+func NewSessionWithClient(client *Client, provider, sandbox string) *Session {
+	return &Session{
+		client:    client,
+		provider:  provider,
+		sandbox:   sandbox,
+		namespace: "default",
+	}
+}
+
 // SandboxName returns the name of the underlying OpenShell sandbox.
 func (s *Session) SandboxName() string {
 	return s.sandbox
@@ -68,7 +78,7 @@ func (s *Session) WaitReady(ctx context.Context) (*v1.Sandbox, error) {
 }
 
 // Delete removes the sandbox session.
-func (s *Session) Delete(ctx context.Context) (*v1.DeletionResult, error) {
+func (s *Session) Delete(ctx context.Context) error {
 	return s.client.DeleteSandbox(ctx, s.provider, s.sandbox)
 }
 
