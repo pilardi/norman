@@ -12,23 +12,19 @@ Options:
   -v, --verbose         Enable server-side debug logging (Echo middleware)
   -h, --help            Show this help text and exit
 
-Environment variables:
-  NORMAN_STORE_DIR       Path to the memory store directory (default: $HOME/.norman/store)
-  NORMAN_RAW_SOURCES_DIR Path to the raw sources store directory (default: $HOME/.norman/raw_sources)
-  NORMAN_HOST            Server bind address (default: "%s")
-  NORMAN_PORT            Server port number (default: %d)
-
+Environment variables (take priority over .env files and config.yaml):
+%s
 Config file: ~/.norman/config.yaml
 
 System defaults (overridable in config.yaml):
-  server_port        %s
+  server_port        %d
   host               %s
   server_url         %s
-  base_dir           %d
+  base_dir           %s
   skills.discovery   ~/.norman/skills/, /usr/share/norman/skills/
   skills.max_active  %d
   notify.bell_enabled true
-  notify.rate_limit_per_min %s
+  notify.rate_limit_per_min %d
 
 OpenShell: auto-resolved from OPENSHELL_GATEWAY_ADDRESS env var or
            metadata.json gateway_endpoint (falls back to localhost:8090).
@@ -45,14 +41,13 @@ Workspace-level overrides (per-workspace in config.yaml):
 		"Providers are defined in config.yaml under `llm_providers:`.\n" +
 		"Each provider defines its own model, temperature, max_tokens, and api_key.\n" +
 		"Example: norman-server -p local --verbose\n",
-		ed.System.Host,
+		BuildEnvVarHelpText(),
 		ed.System.ServerPort,
-		ed.System.ServerURL,
 		ed.System.Host,
+		ed.System.ServerURL,
 		ed.System.BaseDir,
 		ed.System.Skills.MaxActive,
 		ed.System.Notify.RateLimitPerMin,
-		ed.System.BaseDir,
 	)
 }
 
@@ -66,9 +61,8 @@ Flags:
   -p, --provider NAME  Select a configured LLM provider (overrides default)
   -v, --verbose        Enable verbose/debug output (request details)
 
-Environment variables:
-  NORMAN_HOST          Server host address (default: "127.0.0.1")
-  NORMAN_PORT          Server port number (default: 8080)
+Environment variables (take priority over .env files and config.yaml):
+` + ClientEnvVarHelpText() + `
 
 Commands:
   config                     Show or edit current configuration
