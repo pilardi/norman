@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -145,14 +144,19 @@ func Load(path string) (*Config, error) {
 
 // LoadDefault reads from the standard config path (~/.norman/config.yaml).
 // If the file does not exist, returns DefaultConfig() instead of an error.
-// Also loads .env files from the current directory and $HOME/.norman/.env as fallbacks.
+// Also loads .env files and applies NORMAN_* environment variable overrides.
+//
+// Priority order (highest to lowest):
+//   1. NORMAN_* environment variables (read directly from os.Environ)
+//   2. .env files (current dir, then $HOME/.norman/.env)
+//   3. config.yaml
+//   4. Embedded defaults
 func LoadDefault() (*Config, error) {
-	// Try loading .env files (current dir first, then home dir)
-	envDir := os.Getenv("HOME")
-	if envDir == "" {
-		envDir = "."
+	// Step 1: Load .env files (lower priority than env vars).
+	if err := LoadEnvFiles(); err != nil {
+		// Non-fatal: log warning but continue with embedded defaults.
+		fmt.Fprintf(os.Stderr, "[config] WARNING: failed to load .env files: %v\n", err)
 	}
-	godotenv.Load(".env", filepath.Join(envDir, ".norman", ".env"))
 
 	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
@@ -165,7 +169,9 @@ func LoadDefault() (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			c := EmbeddedDefaults()
-			overrideEnvVars(c.System)
+			if err := ApplyEnvOverrides(c.System); err != nil {
+				fmt.Fprintf(os.Stderr, "[config] WARNING: %v\n", err)
+			}
 			return c, nil
 		}
 		return nil, fmt.Errorf("read config file: %w", err)
@@ -184,25 +190,12 @@ func LoadDefault() (*Config, error) {
 		c.System.Skills.MaxActive = EmbeddedDefaults().System.Skills.MaxActive
 	}
 
-	overrideEnvVars(c.System)
-	return c, nil
-}
+	// Step 2: Apply NORMAN_* env var overrides (highest priority).
+	if err := ApplyEnvOverrides(c.System); err != nil {
+		fmt.Fprintf(os.Stderr, "[config] WARNING: %v\n", err)
+	}
 
-// overrideEnvVars applies environment variable overrides to the system config.
-// Priority: env vars > user config.yaml > embedded defaults.
-func overrideEnvVars(sc *SystemConfig) {
-	if port := os.Getenv("PORT"); port != "" {
-		n, err := fmt.Sscanf(port, "%d", &sc.ServerPort)
-		if n != 1 || err != nil {
-			fmt.Fprintf(os.Stderr, "[config] WARNING: invalid PORT value %q, ignoring\n", port)
-		}
-	}
-	if host := os.Getenv("HOST"); host != "" {
-		sc.Host = host
-	}
-	if v := os.Getenv("LOGGING_VERBOSE"); v != "" {
-		sc.Logging.Verbose = (v == "true" || v == "1")
-	}
+	return c, nil
 }
 
 // Save writes the Config back to a file path.

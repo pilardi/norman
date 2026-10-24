@@ -20,7 +20,7 @@ import (
 )
 
 // serverURL returns the configured server base URL.
-// Priority: explicit HOST:PORT > config.yaml defaults > hardcoded fallback.
+// Priority: NORMAN_HOST/NORMAN_PORT env vars > config.yaml defaults > hardcoded fallback.
 func serverURL() string {
 	host := os.Getenv("NORMAN_HOST")
 	portStr := os.Getenv("NORMAN_PORT")
