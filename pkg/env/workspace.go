@@ -127,12 +127,8 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 
 // GetSession returns an existing session for the workspace, or creates one if needed.
 func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, sessionId string) (*Session, error) {
-	// Check cache first
+	// Check cache first — sessions are always created with a valid sessionId.
 	if session, ok := m.sessions[workspace]; ok {
-		// If the cached session has no UUID yet, update it with the provided one.
-		if sessionId != "" && session.SessionID() == "" {
-			session.SetSessionId(sessionId)
-		}
 		return session, nil
 	}
 
