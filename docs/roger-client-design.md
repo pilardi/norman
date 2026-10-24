@@ -1,7 +1,7 @@
 # Roger Client — Design Document
 
 > A general-purpose, workspace-aware CLI client for Norman's API, designed to be invoked from scripts and the agent loop inside OpenShell sandboxes.
-> **Status:** Draft — pending implementation review.
+> **Status:** Draft — implementation complete.
 
 ---
 
@@ -136,7 +136,7 @@ roger --version
 | **API spec** (`api-spec.yaml`) | No changes needed — `/api/notifications`, `/api/workspaces/{name}`, `/api/sessions/{id}/events` already exist | ✅ N/A |
 | **WSHub** (`pkg/protocol/types.go`) | Already supports `WebSocketEvent` with `SessionId` field for per-session targeting | ✅ N/A |
 | **Notifier** (`pkg/notify/notifier.go`) | Already has `Notify()` method — `roger` calls HTTP API which routes through same notifier path | ✅ N/A |
-| **Deployment** | `roger` installed as a builtin skill (`pkg/skills/builtin/roger/SKILL.md`) copied to `~/.local/bin/roger` at sandbox creation | ⏳ Pending |
+| **Deployment** | `roger` installed as a builtin skill (`pkg/skills/builtin/roger/SKILL.md`) copied to `~/.local/bin/roger` at sandbox creation | ✅ Done |
 
 ---
 
@@ -160,10 +160,6 @@ roger --version
 | Multiple sessions share one sandbox | `roger ping` targets current session via `$SESSION_ID` env var (falls back to `"*"` if unset) |
 | API auth changes (mTLS rotation) | Context file can be updated; binary re-reads on each invocation |
 | Binary distribution overhead | ~2-3 MB Go static binary; acceptable for sandbox images |
-
----
-
-*Draft — v0.4 · 2026-10-24*
 
 ---
 
@@ -253,4 +249,4 @@ The skill approach means `roger` stays in the same update cycle as Norman itself
 
 ---
 
-*Draft — v0.3 · 2026-10-24*
+*Draft — v0.5 · 2026-10-24*
