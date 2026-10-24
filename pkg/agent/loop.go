@@ -173,12 +173,6 @@ func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {
 // buildContextFile constructs a ContextFile with the server URL and mTLS paths
 // derived from the loop's config and client TLS settings.
 func (l *Loop) buildContextFile(workspaceID string) *env.ContextFile {
-	// Build server URL from config (use defaults if config is nil)
-	var serverURL string
-	if l.config != nil && l.config.System != nil {
-		serverURL = fmt.Sprintf("http://%s:%d", l.config.System.Host, l.config.System.ServerPort)
-	}
-
 	// Get mTLS paths from the openShell client (interface method)
 	certPath, keyPath := "", ""
 	if l.openShell != nil {
@@ -188,7 +182,6 @@ func (l *Loop) buildContextFile(workspaceID string) *env.ContextFile {
 	return &env.ContextFile{
 		WorkspaceID:    workspaceID,
 		WorkspaceName:  workspaceID, // uses ID as name until a proper name is resolved
-		ServerURL:      serverURL,
 		MTLSCertPath:   certPath,
 		MTLSKeyPath:    keyPath,
 	}

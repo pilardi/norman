@@ -43,11 +43,9 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	id := uuid.New()
 	status := protocol.WorkspaceStatusActive
 
-	// Build server URL from config for context file injection.
-	serverURL := fmt.Sprintf("http://%s:%d", s.cfg.System.Host, s.cfg.System.ServerPort)
-
 	// Create the OpenShell sandbox via WorkspaceManager (injects context.json).
-	session, err := s.workspaceManager.CreateWorkspace(c.Request().Context(), req.Name, serverURL)
+	// Server URL is read from NORMAN_SERVER_URL env var inside the sandbox.
+	session, err := s.workspaceManager.CreateWorkspace(c.Request().Context(), req.Name)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": fmt.Sprintf("failed to create sandbox for workspace %s: %v", req.Name, err),

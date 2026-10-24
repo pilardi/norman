@@ -20,7 +20,6 @@ import (
 type ContextFile struct {
 	WorkspaceID    string `json:"workspace_id"`
 	WorkspaceName  string `json:"workspace_name"`
-	ServerURL      string `json:"server_url"`
 	MTLSCertPath   string `json:"mtls_cert_path,omitempty"`
 	MTLSKeyPath    string `json:"mtls_key_path,omitempty"`
 }
@@ -96,21 +95,12 @@ func readContext() (*ContextFile, error) {
 
 	data, err := os.ReadFile(ctxPath)
 	if err != nil {
-		// Fallback: try env var NORMAN_SERVER_URL
-		serverURL := os.Getenv("NORMAN_SERVER_URL")
-		if serverURL == "" {
-			return nil, fmt.Errorf("context file not found at %s and no NORMAN_SERVER_URL set", ctxPath)
-		}
-		return &ContextFile{ServerURL: serverURL}, nil
+		return nil, fmt.Errorf("context file not found at %s", ctxPath)
 	}
 
 	var ctx ContextFile
 	if err := json.Unmarshal(data, &ctx); err != nil {
 		return nil, fmt.Errorf("invalid context file: %w", err)
-	}
-
-	if ctx.ServerURL == "" {
-		return nil, fmt.Errorf("context file missing server_url field")
 	}
 
 	return &ctx, nil
@@ -137,8 +127,12 @@ func buildClient(ctx *ContextFile) *http.Client {
 }
 
 // apiURL constructs the full API URL for a given path.
+// Server URL is read from NORMAN_SERVER_URL env var (not from context).
 func apiURL(ctx *ContextFile, path string) string {
-	base := strings.TrimRight(ctx.ServerURL, "/")
+	base := strings.TrimRight(os.Getenv("NORMAN_SERVER_URL"), "/")
+	if base == "" {
+		base = "http://localhost:8080" // fallback for local dev
+	}
 	return base + path
 }
 

@@ -93,14 +93,13 @@ func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 }
 
 // CreateWorkspace creates a persistent sandbox for the given workspace name.
-// The serverURL and mTLS paths are injected into the context file so that
-// tools like `roger` can reach the Norman server from inside the sandbox.
-func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace, serverURL string) (*Session, error) {
+// The mTLS paths are injected into the context file; server URL comes from
+// the NORMAN_SERVER_URL environment variable available inside the sandbox.
+func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string) (*Session, error) {
 	certPath, keyPath := m.client.GetMTLSPaths()
 	ctxFile := &ContextFile{
 		WorkspaceID:    workspace,
 		WorkspaceName:  workspace,
-		ServerURL:      serverURL,
 		MTLSCertPath:   certPath,
 		MTLSKeyPath:    keyPath,
 	}
@@ -173,12 +172,12 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 
 		// All retries exhausted — create a new sandbox
 		log.Printf("[env] All recovery attempts failed for '%s', creating new sandbox", workspace)
-		return m.CreateWorkspace(ctx, workspace, m.serverURL)
+		return m.CreateWorkspace(ctx, workspace)
 	}
 
 	// No existing sandbox found — create a new one
 	log.Printf("[env] No existing sandbox for '%s', creating new one", workspace)
-	return m.CreateWorkspace(ctx, workspace, m.serverURL)
+	return m.CreateWorkspace(ctx, workspace)
 }
 
 // CloseAll shuts down all active sessions.

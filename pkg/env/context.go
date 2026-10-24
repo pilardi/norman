@@ -9,11 +9,11 @@ import (
 )
 
 // ContextFile is the metadata file injected into each sandbox at creation time.
-// It allows tools like `roger` to auto-detect workspace identity and server URL.
+// It allows tools like `roger` to auto-detect workspace identity and mTLS paths.
+// Server URL is read from the NORMAN_SERVER_URL environment variable instead.
 type ContextFile struct {
 	WorkspaceID    string `json:"workspace_id"`
 	WorkspaceName  string `json:"workspace_name"`
-	ServerURL      string `json:"server_url"`
 	MTLSCertPath   string `json:"mtls_cert_path,omitempty"`
 	MTLSKeyPath    string `json:"mtls_key_path,omitempty"`
 }
