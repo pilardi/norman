@@ -15,7 +15,7 @@ import (
 type WorkspaceManager struct {
 	client      *Client
 	serverURL   string
-	sessions    map[string]*Session // workspace name -> session
+	sessions    map[string]*Session // session ID -> session
 	definitions map[string]*WorkspaceDefinition // workspace name -> definition (lazy-loaded)
 }
 
@@ -128,7 +128,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 // GetSession returns an existing session for the workspace, or creates one if needed.
 func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, sessionId string) (*Session, error) {
 	// Check cache first — sessions are always created with a valid sessionId.
-	if session, ok := m.sessions[workspace]; ok {
+	if session, ok := m.sessions[sessionId]; ok {
 		return session, nil
 	}
 
@@ -138,7 +138,7 @@ func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, ses
 		return nil, err
 	}
 
-	m.sessions[workspace] = session
+	m.sessions[sessionId] = session
 	return session, nil
 }
 
@@ -180,7 +180,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 			return nil, err
 		}
 		session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
-		m.sessions[workspace] = session
+		m.sessions[sessionId] = session
 		return session, nil
 	}
 
@@ -191,7 +191,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 		return nil, err
 	}
 	session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
-	m.sessions[workspace] = session
+	m.sessions[sessionId] = session
 	return session, nil
 }
 
