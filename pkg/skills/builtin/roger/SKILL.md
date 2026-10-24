@@ -24,6 +24,13 @@ A compiled binary skill that provides direct API access for scripts and schedule
 Copied from the host installation into `~/.local/bin/roger` at sandbox creation.
 No git clone or build step required — it is a pre-built artifact.
 
+## Session Targeting
+
+The agent injects `SESSION_ID=<uuid>` into every command it runs inside the sandbox.
+Commands that target a specific session use this env var; if not set, they fall back
+to `"*"` (broadcast to all sessions in the workspace). This allows multiple agent
+sessions per workspace to address each other independently.
+
 ## Example Workflow
 
 ```bash

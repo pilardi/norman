@@ -12,6 +12,7 @@ import (
 	"time"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	v1types "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
 
 const (
@@ -244,6 +245,15 @@ func (c *Client) GetSandbox(ctx context.Context, provider, name string) (*v1.San
 // RunCommand executes a command inside a sandbox and returns stdout/stderr.
 func (c *Client) RunCommand(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error) {
 	result, err := c.client.Exec().Run(ctx, provider, sandbox, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("exec in sandbox %s/%s: %w", provider, sandbox, err)
+	}
+	return result, nil
+}
+
+// RunCommandWithOptions executes a command with the given options (e.g. environment variables).
+func (c *Client) RunCommandWithOptions(ctx context.Context, provider, sandbox string, cmd []string, opts v1types.ExecOptions) (*v1.ExecResult, error) {
+	result, err := c.client.Exec().Run(ctx, provider, sandbox, cmd, opts)
 	if err != nil {
 		return nil, fmt.Errorf("exec in sandbox %s/%s: %w", provider, sandbox, err)
 	}
