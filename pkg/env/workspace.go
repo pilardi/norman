@@ -95,7 +95,7 @@ func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 // CreateWorkspace creates a persistent sandbox for the given workspace name.
 // The mTLS paths are injected into the context file; server URL comes from
 // the NORMAN_SERVER_URL environment variable available inside the sandbox.
-func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string) (*Session, error) {
+func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string, sessionUUID string) (*Session, error) {
 	certPath, keyPath := m.client.GetMTLSPaths()
 	ctxFile := &ContextFile{
 		WorkspaceID:    workspace,
@@ -103,7 +103,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		MTLSCertPath:   certPath,
 		MTLSKeyPath:    keyPath,
 	}
-	sb, err := m.client.CreateSandbox(ctx, defaultProvider, workspace, ctxFile)
+	sb, err := m.client.CreateSandbox(ctx, defaultProvider, workspace, ctxFile, sessionUUID)
 	if err != nil {
 		return nil, fmt.Errorf("create workspace %s: %w", workspace, err)
 	}
@@ -117,7 +117,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		return nil, fmt.Errorf("wait ready workspace %s: %w", workspace, err)
 	}
 
-	session := NewSession(m.client, defaultProvider, sb.Name)
+	session := NewSession(m.client, defaultProvider, sb.Name, sessionUUID)
 	m.sessions[workspace] = session
 	log.Printf("[env] Created workspace '%s' → sandbox '%s'", workspace, sb.Name)
 
@@ -125,14 +125,14 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 }
 
 // GetSession returns an existing session for the workspace, or creates one if needed.
-func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string) (*Session, error) {
+func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, sessionUUID string) (*Session, error) {
 	// Check cache first
 	if session, ok := m.sessions[workspace]; ok {
 		return session, nil
 	}
 
 	// Try to recover a crashed sandbox
-	session, err := m.recoverOrCreate(ctx, workspace)
+	session, err := m.recoverOrCreate(ctx, workspace, sessionUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -142,12 +142,12 @@ func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string) (*S
 }
 
 // recoverOrCreate attempts to find an existing sandbox by name, or creates a new one.
-func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string) (*Session, error) {
+func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string, sessionUUID string) (*Session, error) {
 	// Try to get existing sandbox by name (may be crashed/stopped)
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, workspace)
 	if err == nil && sb != nil {
 		log.Printf("[env] Found existing sandbox '%s' for workspace", workspace)
-		session := NewSession(m.client, defaultProvider, sb.Name)
+		session := NewSession(m.client, defaultProvider, sb.Name, sessionUUID)
 
 		// Attempt recovery with retries
 		for attempt := 0; attempt < maxRetries; attempt++ {
@@ -172,12 +172,12 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 
 		// All retries exhausted — create a new sandbox
 		log.Printf("[env] All recovery attempts failed for '%s', creating new sandbox", workspace)
-		return m.CreateWorkspace(ctx, workspace)
+		return m.CreateWorkspace(ctx, workspace, sessionUUID)
 	}
 
 	// No existing sandbox found — create a new one
 	log.Printf("[env] No existing sandbox for '%s', creating new one", workspace)
-	return m.CreateWorkspace(ctx, workspace)
+	return m.CreateWorkspace(ctx, workspace, sessionUUID)
 }
 
 // CloseAll shuts down all active sessions.

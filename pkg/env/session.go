@@ -12,24 +12,35 @@ import (
 
 // Session represents a single OpenShell sandbox session with command execution.
 type Session struct {
-	client    *Client
-	provider  string
-	sandbox   string
-	namespace string
+	client          *Client
+	provider        string
+	sandbox         string
+	namespace       string
+	normanSessionID string // Norman API session UUID (user-facing identifier)
 }
 
-// NewSession creates a new session bound to a specific sandbox.
-func NewSession(client *Client, provider, sandbox string) *Session {
+// NewSession creates a new session bound to a specific sandbox and Norman API session.
+func NewSession(client *Client, provider, sandbox, normanSessionID string) *Session {
 	return &Session{
-		client:    client,
-		provider:  provider,
-		sandbox:   sandbox,
-		namespace: "default",
+		client:          client,
+		provider:        provider,
+		sandbox:         sandbox,
+		namespace:       "default",
+		normanSessionID: normanSessionID,
 	}
 }
 
-// SessionID returns the session identifier (sandbox name) for this session.
+// SessionID returns the Norman API session UUID for this session.
+// Falls back to the sandbox name if no session ID was provided.
 func (s *Session) SessionID() string {
+	if s.normanSessionID != "" {
+		return s.normanSessionID
+	}
+	return s.sandbox
+}
+
+// SandboxName returns the underlying OpenShell sandbox name.
+func (s *Session) SandboxName() string {
 	return s.sandbox
 }
 

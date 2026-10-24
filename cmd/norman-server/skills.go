@@ -292,7 +292,7 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 	}
 
 	// Get the session for this workspace
-	session, err := s.loop.GetSession(wsName)
+	session, err := s.loop.GetSession(wsName, "")
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": fmt.Sprintf("get session for workspace '%s': %v", wsName, err),
