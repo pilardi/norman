@@ -213,18 +213,15 @@ After chat-first MVP:
 
 ## Related Documents
 
-| Document | Purpose |
-|----------|---------|
-| [`requirements.md`](../requirements.md) | Full requirements spec (chat-first agent vision) |
-| [`glossary.md`](../glossary.md) | Terminology reference |
-| `docs/llm-integration-plan.md` | Provider-agnostic LLM abstraction plan |
-| `docs/llm-tool-access-assessment.md` | Tool access assessment for environment integration |
-| `docs/memory-proposal.md` | Memory architecture enhancement proposal |
-| `docs/provider-config-drift-assessment.md` | Config drift assessment |
-| `docs/task-management-assessment.md` | Task management assessment |
-| `docs/workspace-definition-assessment.md` | Workspace definition plan |
-| `docs/workspace-skill-install-plan.md` | On-demand skill installation plan |
-| `docs/config-embedding-proposal.md` | Embedded default config proposal |
-| `docs/graphify-skill-install-assessment.md` | Graphify skill assessment |
-| `docs/roger-client-design.md` | Roger client design |
-| `docs/roadmap.md` | (merged into this file) |
+- `requirements.md` — Full requirements spec (chat-first agent vision)
+- `glossary.md` — Terminology reference
+- `docs/llm-integration-plan.md` — Provider-agnostic LLM abstraction plan
+- `docs/llm-tool-access-assessment.md` — Tool access assessment for environment integration
+- `docs/memory-proposal.md` — Memory architecture enhancement proposal
+- `docs/provider-config-drift-assessment.md` — Config drift assessment
+- `docs/task-management-assessment.md` — Task management assessment
+- `docs/workspace-definition-assessment.md` — Workspace definition plan
+- `docs/workspace-skill-install-plan.md` — On-demand skill installation plan
+- `docs/config-embedding-proposal.md` — Embedded default config proposal
+- `docs/graphify-skill-install-assessment.md` — Graphify skill assessment
+- `docs/roger-client-design.md` — Roger client design
