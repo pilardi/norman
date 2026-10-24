@@ -23,6 +23,7 @@ Config file: ~/.norman/config.yaml
 System defaults (overridable in config.yaml):
   server_port        %s
   host               %s
+  server_url         %s
   base_dir           %d
   skills.discovery   ~/.norman/skills/, /usr/share/norman/skills/
   skills.max_active  %d
@@ -46,6 +47,7 @@ Workspace-level overrides (per-workspace in config.yaml):
 		"Example: norman-server -p local --verbose\n",
 		ed.System.Host,
 		ed.System.ServerPort,
+		ed.System.ServerURL,
 		ed.System.Host,
 		ed.System.BaseDir,
 		ed.System.Skills.MaxActive,

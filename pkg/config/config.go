@@ -24,6 +24,10 @@ type SystemConfig struct {
 
 	// LLM provider configuration.
 	LlmProviders []ProviderConfig `yaml:"llm_providers"`
+
+	// ServerURL is the external-facing URL for the Norman API (e.g., https://norman.example.com).
+	// If set, it overrides the auto-derived http://host:port URL used in context files and agent communication.
+	ServerURL string `yaml:"server_url,omitempty"`
 }
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.

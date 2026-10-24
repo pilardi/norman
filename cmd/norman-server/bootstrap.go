@@ -151,8 +151,7 @@ func bootstrap() *server {
 	loopClient := env.NewSDKAdapter(openShellClient)
 
 	// Create workspace manager — handles sandbox creation with context file injection.
-	// NORMAN_SERVER_URL env var overrides the default (host:port); useful when Norman is exposed via a proper URL.
-	serverURL := os.Getenv("NORMAN_SERVER_URL")
+	serverURL := cfg.System.ServerURL
 	if serverURL == "" {
 		serverURL = fmt.Sprintf("http://%s:%d", cfg.System.Host, cfg.System.ServerPort)
 	}
