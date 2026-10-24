@@ -154,8 +154,20 @@ func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {
 		return nil, fmt.Errorf("create sandbox for workspace %s: %w", workspaceID, err)
 	}
 
+	// Deploy roger binary skill into the new sandbox
+	session := env.NewSession(client, "default", sandboxName)
+	if l.activator != nil {
+		_, deployErr := l.activator.DeployToSandbox("roger", session)
+		if deployErr != nil {
+			log.Printf("[loop] deploy roger to sandbox '%s': %v", sandboxName, deployErr)
+			// Non-fatal — sandbox still usable without roger
+		} else {
+			log.Printf("[loop] deployed roger skill into sandbox '%s'", sandboxName)
+		}
+	}
+
 	log.Printf("[loop] created new sandbox '%s' for workspace '%s'", sandboxName, workspaceID)
-	return env.NewSession(client, "default", sandboxName), nil
+	return session, nil
 }
 
 // buildContextFile constructs a ContextFile with the server URL and mTLS paths

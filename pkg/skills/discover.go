@@ -41,6 +41,10 @@ type SkillEntry struct {
 
 	// Version tracks the git tag/branch/commit SHA this skill is pinned to.
 	Version string `json:"version,omitempty"`
+
+	// BinaryPath is the host-side path to a pre-built binary for this skill.
+	// If set, DeployToSandbox copies the file instead of cloning a git repo.
+	BinaryPath string `json:"binary_path,omitempty"`
 }
 
 // DiscoverResult holds the result of a discovery scan.
@@ -343,6 +347,7 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 	mcpCapabilities, _ := rawMap["mcp_capabilities"].([]interface{})
 	sourceURL, _ := rawMap["source_url"].(string)
 	version, _ := rawMap["version"].(string)
+	binaryPath, _ := rawMap["binary_path"].(string)
 
 	if name == "" {
 		return SkillEntry{}, fmt.Errorf("missing 'name' in frontmatter")
@@ -397,6 +402,11 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 	}
 	if version != "" {
 		entry.Version = version
+	}
+
+	// Set binary path for pre-built binary skills.
+	if binaryPath != "" {
+		entry.BinaryPath = binaryPath
 	}
 
 	return entry, nil
