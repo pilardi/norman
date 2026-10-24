@@ -16,29 +16,29 @@ type Session struct {
 	provider        string
 	sandbox         string
 	namespace       string
-	normanSessionID string // Norman API session UUID (user-facing identifier)
+	sessionId string // The session ID; set at creation, never the sandbox name
 }
 
 // NewSession creates a new session bound to a specific sandbox and Norman API session.
-func NewSession(client *Client, provider, sandbox, normanSessionID string) *Session {
+func NewSession(client *Client, provider, sandbox, sessionId string) *Session {
 	return &Session{
 		client:          client,
 		provider:        provider,
 		sandbox:         sandbox,
 		namespace:       "default",
-		normanSessionID: normanSessionID,
+		sessionId: sessionId,
 	}
 }
 
 // SessionID returns the Norman API session UUID for this session.
 // This is the user-facing identifier; it is never the sandbox name.
 func (s *Session) SessionID() string {
-	return s.normanSessionID
+	return s.sessionId
 }
 
-// SetNormanSessionID updates the session's Norman API session UUID.
-func (s *Session) SetNormanSessionID(id string) {
-	s.normanSessionID = id
+// SetSessionId updates the session's Norman API session UUID.
+func (s *Session) SetSessionId(id string) {
+	s.sessionId = id
 }
 
 // SandboxName returns the underlying OpenShell sandbox name.

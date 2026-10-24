@@ -154,7 +154,7 @@ func (c *Client) GetMTLSPaths() (certPath, keyPath string) {
 
 // CreateSandbox creates a persistent sandbox (session) for the given workspace.
 // If ctxFile is non-nil, a context.json file is injected into the sandbox.
-func (c *Client) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionUUID string) (*v1.Sandbox, error) {
+func (c *Client) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionId string) (*v1.Sandbox, error) {
 	// Try template-based creation first
 	sandbox, err := c.client.CreateSandboxFromTemplate(
 		ctx,
@@ -182,7 +182,7 @@ func (c *Client) CreateSandbox(ctx context.Context, workspace, name string, ctxF
 
 	// Inject context file if provided
 	if ctxFile != nil {
-		session := NewSession(c, defaultProvider, sandbox.Name, sessionUUID)
+		session := NewSession(c, defaultProvider, sandbox.Name, sessionId)
 		if injectErr := WriteContextFile(ctx, session, *ctxFile); injectErr != nil {
 			log.Printf("[env] WARNING: failed to inject context into workspace %s: %v", name, injectErr)
 		}

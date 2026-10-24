@@ -24,8 +24,8 @@ func NewSDKAdapter(c *Client) *SDKAdapter {
 }
 
 // CreateSandbox adapts env.Client.CreateSandbox to return the full sandbox object.
-func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionUUID string) (*v1.Sandbox, error) {
-	sb, err := a.client.CreateSandbox(ctx, workspace, name, ctxFile, sessionUUID)
+func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionId string) (*v1.Sandbox, error) {
+	sb, err := a.client.CreateSandbox(ctx, workspace, name, ctxFile, sessionId)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox: %w", err)
 	}

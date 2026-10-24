@@ -135,9 +135,7 @@ func (l *Loop) ActivateSkill(name string, session *env.Session) error {
 
 // GetSession returns an OpenShell session for the given workspace ID.
 // Creates a new sandbox if one doesn't already exist for this workspace.
-// If sessionUUID is provided, it becomes the Norman API session ID; otherwise
-// the sandbox name is used as a fallback identifier.
-func (l *Loop) GetSession(workspaceID string, sessionUUID string) (*env.Session, error) {
+func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, error) {
 	// Use the concrete client to create sessions
 	client := l.openShellClient
 
@@ -145,19 +143,19 @@ func (l *Loop) GetSession(workspaceID string, sessionUUID string) (*env.Session,
 	sb, err := client.GetSandbox(context.Background(), "default", workspaceID)
 	if err == nil && sb != nil {
 		log.Printf("[loop] using existing sandbox '%s' for workspace '%s'", sb.Name, workspaceID)
-		return env.NewSession(client, "default", sb.Name, sessionUUID), nil
+		return env.NewSession(client, "default", sb.Name, sessionId), nil
 	}
 
 	// Create a new sandbox with context file (server URL + mTLS paths)
 	sandboxName := fmt.Sprintf("ws-%s", workspaceID)
 	ctxFile := l.buildContextFile(workspaceID)
-	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName, ctxFile, sessionUUID)
+	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName, ctxFile, sessionId)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox for workspace %s: %w", workspaceID, err)
 	}
 
 	// Deploy roger binary skill into the new sandbox
-	session := env.NewSession(client, "default", sandboxName, sessionUUID)
+	session := env.NewSession(client, "default", sandboxName, sessionId)
 	if l.activator != nil {
 		_, deployErr := l.activator.DeployToSandbox("roger", session)
 		if deployErr != nil {
@@ -191,7 +189,7 @@ func (l *Loop) buildContextFile(workspaceID string) *env.ContextFile {
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
-	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionUUID string) (*v1.Sandbox, error)
+	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error)
 	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
 	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
 	RunCommand(ctx context.Context, sandboxName string, command string) (string, int, error)
@@ -1905,7 +1903,7 @@ func (f *FakeOpenShellClient) CapturedPrompt() string {
 	return f.capturedPrompt
 }
 
-func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionUUID string) (*v1.Sandbox, error) {
+func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))
