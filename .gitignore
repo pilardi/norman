@@ -9,3 +9,7 @@ norman
 norman-server
 api-spec.md
 coverage.out
+
+# CLI binaries (but allow builtin skill dirs)
+roger
+!pkg/skills/builtin/roger/

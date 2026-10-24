@@ -39,6 +39,13 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Ensure the OpenShell sandbox exists for this workspace, carrying the session UUID.
+	sid := session.Id.String()
+	_, err = s.workspaceManager.GetSession(c.Request().Context(), req.WorkspaceId, sid)
+	if err != nil {
+		log.Printf("[sessions] failed to ensure sandbox for workspace %s: %v", req.WorkspaceId, err)
+	}
+
 	s.wsHub.BroadcastSession(session.Id.String(), protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session created for workspace " + req.WorkspaceId),

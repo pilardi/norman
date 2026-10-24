@@ -44,6 +44,7 @@ build: generate
 	mkdir -p $(DIST)
 	go build -o $(DIST)/norman ./cmd/norman
 	go build -o $(DIST)/norman-server ./cmd/norman-server
+	go build -o $(DIST)/roger ./cmd/roger
 
 test:
 	@echo "Running all tests with coverage..."

@@ -135,7 +135,7 @@ func (l *Loop) ActivateSkill(name string, session *env.Session) error {
 
 // GetSession returns an OpenShell session for the given workspace ID.
 // Creates a new sandbox if one doesn't already exist for this workspace.
-func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {
+func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, error) {
 	// Use the concrete client to create sessions
 	client := l.openShellClient
 
@@ -143,23 +143,44 @@ func (l *Loop) GetSession(workspaceID string) (*env.Session, error) {
 	sb, err := client.GetSandbox(context.Background(), "default", workspaceID)
 	if err == nil && sb != nil {
 		log.Printf("[loop] using existing sandbox '%s' for workspace '%s'", sb.Name, workspaceID)
-		return env.NewSession(client, "default", sb.Name), nil
+		return env.NewSession(client, "default", sb.Name, sessionId), nil
 	}
 
-	// Create a new sandbox
+	// Create a new sandbox with context file (server URL + mTLS paths)
 	sandboxName := fmt.Sprintf("ws-%s", workspaceID)
-	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName)
+	ctxFile := l.buildContextFile(workspaceID)
+	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName, ctxFile, sessionId)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox for workspace %s: %w", workspaceID, err)
 	}
 
+	// Deploy roger binary skill into the new sandbox
+	session := env.NewSession(client, "default", sandboxName, sessionId)
+	if l.activator != nil {
+		_, deployErr := l.activator.DeployToSandbox("roger", session)
+		if deployErr != nil {
+			log.Printf("[loop] deploy roger to sandbox '%s': %v", sandboxName, deployErr)
+			// Non-fatal — sandbox still usable without roger
+		} else {
+			log.Printf("[loop] deployed roger skill into sandbox '%s'", sandboxName)
+		}
+	}
+
 	log.Printf("[loop] created new sandbox '%s' for workspace '%s'", sandboxName, workspaceID)
-	return env.NewSession(client, "default", sandboxName), nil
+	return session, nil
+}
+
+// buildContextFile constructs a ContextFile for the given workspace.
+func (l *Loop) buildContextFile(workspaceID string) *env.ContextFile {
+	return &env.ContextFile{
+		WorkspaceID:   workspaceID,
+		WorkspaceName: workspaceID, // uses ID as name until a proper name is resolved
+	}
 }
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
-	CreateSandbox(ctx context.Context, workspace, name string) (string, error)
+	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error)
 	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
 	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
 	RunCommand(ctx context.Context, sandboxName string, command string) (string, int, error)
@@ -167,6 +188,7 @@ type OpenShellClient interface {
 	DeleteSandbox(ctx context.Context, workspace, name string) error
 	ListSandboxes(ctx context.Context, workspace string) ([]string, error)
 	KeepAlive(ctx context.Context, sandboxName string) error
+	GetMTLSPaths() (certPath, keyPath string)
 }
 
 // WSHubPublisher sends WebSocket push events.
@@ -504,7 +526,8 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	})
 
 	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:7])
-	_, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName)
+	ctxFile := l.buildContextFile(task.Workspace)
+	_, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName, ctxFile, "")
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("sandbox creation failed: %v", err)
@@ -538,7 +561,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// P3: Re-activate active skills with workspace session for sandbox-based dependency install.
 	if l.activator != nil && len(l.activator.Active()) > 0 {
-		wsSession, err := l.GetSession(task.Workspace)
+		wsSession, err := l.GetSession(task.Workspace, "")
 		if err != nil {
 			log.Printf("[loop] get session for workspace '%s': %v", task.Workspace, err)
 		} else {
@@ -1871,12 +1894,12 @@ func (f *FakeOpenShellClient) CapturedPrompt() string {
 	return f.capturedPrompt
 }
 
-func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string) (string, error) {
+func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))
 	f.sandboxes[name] = sid
-	return sid, nil
+	return &v1.Sandbox{ID: sid, Name: name}, nil
 }
 
 func (f *FakeOpenShellClient) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error) {
@@ -1941,4 +1964,9 @@ func (f *FakeOpenShellClient) KeepAlive(ctx context.Context, sandboxName string)
 		return fmt.Errorf("sandbox %s not found", sandboxName)
 	}
 	return nil
+}
+
+func (f *FakeOpenShellClient) GetMTLSPaths() (certPath, keyPath string) {
+	// Fake client has no mTLS config
+	return "", ""
 }

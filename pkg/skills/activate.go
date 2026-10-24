@@ -64,19 +64,32 @@ func (a *Activator) Activate(name string, session *env.Session) (string, error) 
 
 // DeployToSandbox ensures a skill's files are present inside the given OpenShell sandbox.
 // If the skill is already deployed in this sandbox, it is a no-op (idempotent).
-// Otherwise, it clones the repo into /workspace/<ws-id>/skills/<name>/ and runs
-// any platform-specific install steps (e.g., `graphify install --platform agents`).
+// For git-based skills: clones into /workspace/<ws-id>/skills/<name>/ and runs install.sh.
+// For binary skills (BinaryPath set): copies the host binary to ~/.local/bin/<name>.
 // Returns the deployed SkillEntry or an error.
 func (a *Activator) DeployToSandbox(name string, session *env.Session) (*SkillEntry, error) {
 	if session == nil {
 		return nil, fmt.Errorf("DeployToSandbox requires a non-nil session")
 	}
 
-	sandboxName := session.SandboxName()
+	sandboxName := session.SessionID()
+	ctx := context.Background()
+
+	// Get entry from registry to find source_url/version/binary_path
+	entry, ok := a.registry[name]
+	if !ok {
+		return nil, fmt.Errorf("skill '%s' not found in registry", name)
+	}
+
+	// Binary skills: copy pre-built binary to ~/.local/bin/<name>
+	if entry.BinaryPath != "" {
+		return a.deployBinary(name, session, &entry, ctx)
+	}
+
+	// Git-based skill: clone into /workspace/<ws-id>/skills/<name>/
 	skillDir := filepath.Join("/workspace", sandboxName, "skills", name)
 
 	// Check if skill is already deployed in this sandbox
-	ctx := context.Background()
 	checkCmd := fmt.Sprintf("test -d %s && echo 'exists'", skillDir)
 	output, err := session.Exec(ctx, []string{"bash", "-c", checkCmd})
 	if err == nil && strings.Contains(strings.TrimSpace(output), "exists") {
@@ -86,12 +99,6 @@ func (a *Activator) DeployToSandbox(name string, session *env.Session) (*SkillEn
 			return nil, fmt.Errorf("parse SKILL.md in sandbox '%s': %w", sandboxName, err)
 		}
 		return &entry, nil
-	}
-
-	// Get entry from registry to find source_url/version
-	entry, ok := a.registry[name]
-	if !ok {
-		return nil, fmt.Errorf("skill '%s' not found in registry", name)
 	}
 
 	// Clone into sandbox via session.Exec
@@ -115,6 +122,37 @@ func (a *Activator) DeployToSandbox(name string, session *env.Session) (*SkillEn
 		return nil, fmt.Errorf("parse SKILL.md in sandbox '%s': %w", sandboxName, err)
 	}
 	return &entry, nil
+}
+
+// deployBinary copies a pre-built host binary into the sandbox at ~/.local/bin/<name>.
+func (a *Activator) deployBinary(name string, session *env.Session, entry *SkillEntry, ctx context.Context) (*SkillEntry, error) {
+	sandboxName := session.SessionID()
+	targetPath := filepath.Join("~", ".local", "bin", name)
+
+	// Check if already deployed (idempotent)
+	checkCmd := fmt.Sprintf("test -f %s && echo 'exists'", targetPath)
+	output, err := session.Exec(ctx, []string{"bash", "-c", checkCmd})
+	if err == nil && strings.Contains(strings.TrimSpace(output), "exists") {
+		log.Printf("[skills] '%s' already deployed in sandbox '%s', skipping copy", name, sandboxName)
+		return entry, nil
+	}
+
+	// Copy binary from host path into sandbox home directory
+	copyCmd := fmt.Sprintf("cp %s %s && chmod +x %s", entry.BinaryPath, targetPath, targetPath)
+	output, err = session.Exec(ctx, []string{"bash", "-c", copyCmd})
+	if err != nil {
+		return nil, fmt.Errorf("copy binary '%s' into sandbox '%s': %w (output: %s)", name, sandboxName, err, output)
+	}
+
+	// Ensure ~/.local/bin is in PATH by appending to .bashrc
+	pathCmd := fmt.Sprintf(`grep -q '$HOME/.local/bin' "$HOME/.bashrc" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"`)
+	output, err = session.Exec(ctx, []string{"bash", "-c", pathCmd})
+	if err != nil {
+		log.Printf("[skills] PATH injection for '%s' in sandbox '%s': %v", name, sandboxName, output)
+	}
+
+	log.Printf("[skills] deployed binary skill '%s' → %s in sandbox '%s'", name, targetPath, sandboxName)
+	return entry, nil
 }
 
 // Deactivate removes a skill from active context.

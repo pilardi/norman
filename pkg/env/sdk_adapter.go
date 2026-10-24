@@ -23,16 +23,16 @@ func NewSDKAdapter(c *Client) *SDKAdapter {
 	return &SDKAdapter{client: c}
 }
 
-// CreateSandbox adapts env.Client.CreateSandbox to return a sandbox ID string.
-func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string) (string, error) {
-	sb, err := a.client.CreateSandbox(ctx, workspace, name)
+// CreateSandbox adapts env.Client.CreateSandbox to return the full sandbox object.
+func (a *SDKAdapter) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionId string) (*v1.Sandbox, error) {
+	sb, err := a.client.CreateSandbox(ctx, workspace, name, ctxFile, sessionId)
 	if err != nil {
-		return "", fmt.Errorf("create sandbox: %w", err)
+		return nil, fmt.Errorf("create sandbox: %w", err)
 	}
 	if sb == nil {
-		return "", fmt.Errorf("create sandbox: returned nil sandbox")
+		return nil, fmt.Errorf("create sandbox: returned nil sandbox")
 	}
-	return sb.ID, nil
+	return sb, nil
 }
 
 // WaitReady adapts env.Client.WaitReady to match the interface signature.
@@ -85,7 +85,7 @@ func (a *SDKAdapter) GetLogs(ctx context.Context, sandboxID string) ([]string, e
 
 // DeleteSandbox adapts env.Client.DeleteSandbox to match the interface signature.
 func (a *SDKAdapter) DeleteSandbox(ctx context.Context, workspace, name string) error {
-	_, err := a.client.DeleteSandbox(ctx, "default", name)
+	err := a.client.DeleteSandbox(ctx, "default", name)
 	if err != nil {
 		return fmt.Errorf("delete sandbox: %w", err)
 	}
@@ -108,4 +108,9 @@ func (a *SDKAdapter) KeepAlive(ctx context.Context, sandboxName string) error {
 		return fmt.Errorf("keepalive: %w", err)
 	}
 	return nil
+}
+
+// GetMTLSPaths delegates to the underlying client's mTLS configuration.
+func (a *SDKAdapter) GetMTLSPaths() (certPath, keyPath string) {
+	return a.client.GetMTLSPaths()
 }

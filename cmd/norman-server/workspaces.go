@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -23,7 +24,9 @@ func (s *server) ListWorkspaces(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-// CreateWorkspace creates a new workspace.
+// CreateWorkspace creates a new workspace by provisioning an OpenShell sandbox
+// and persisting the workspace metadata. The sandbox is created with context.json
+// injected so that tools like `roger` can reach the Norman server from inside.
 func (s *server) CreateWorkspace(c echo.Context) error {
 	var req protocol.WorkspaceCreateRequest
 	if err := c.Bind(&req); err != nil {
@@ -39,6 +42,16 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	now := time.Now()
 	id := uuid.New()
 	status := protocol.WorkspaceStatusActive
+
+	// Create the OpenShell sandbox via WorkspaceManager (injects context.json).
+	// Server URL is read from NORMAN_SERVER_URL env var inside the sandbox.
+	sb, err := s.workspaceManager.CreateWorkspace(c.Request().Context(), req.Name, "")
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to create sandbox for workspace %s: %v", req.Name, err),
+		})
+	}
+
 	ws := &protocol.Workspace{
 		Id:        &id,
 		Name:      strPtr(req.Name),
@@ -81,7 +94,7 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
-		Message: strPtr("Workspace created: " + req.Name),
+		Message: strPtr("Workspace created: " + req.Name + " (sandbox: " + sb.Name + ")"),
 	})
 
 	return c.JSON(http.StatusCreated, ws)

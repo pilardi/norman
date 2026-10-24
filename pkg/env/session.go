@@ -7,34 +7,42 @@ import (
 	"strings"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
+	v1types "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
 
 // Session represents a single OpenShell sandbox session with command execution.
 type Session struct {
-	client    *Client
-	provider  string
-	sandbox   string
-	namespace string
+	client          *Client
+	provider        string
+	sandbox         string
+	namespace       string
+	sessionId string // The session ID; set at creation, never the sandbox name
 }
 
-// NewSession creates a new session bound to a specific sandbox.
-func NewSession(client *Client, provider, sandbox string) *Session {
+// NewSession creates a new session bound to a specific sandbox and Norman API session.
+func NewSession(client *Client, provider, sandbox, sessionId string) *Session {
 	return &Session{
-		client:    client,
-		provider:  provider,
-		sandbox:   sandbox,
-		namespace: "default",
+		client:          client,
+		provider:        provider,
+		sandbox:         sandbox,
+		namespace:       "default",
+		sessionId: sessionId,
 	}
 }
 
-// SandboxName returns the name of the underlying OpenShell sandbox.
-func (s *Session) SandboxName() string {
-	return s.sandbox
+// SessionID returns the Norman API session UUID for this session.
+// This is the user-facing identifier; it is never the sandbox name.
+func (s *Session) SessionID() string {
+	return s.sessionId
 }
 
 // Exec runs a command inside the sandbox and returns combined output.
+// SESSION_ID is automatically injected into the command's environment.
 func (s *Session) Exec(ctx context.Context, cmd []string) (string, error) {
-	result, err := s.client.RunCommand(ctx, s.provider, s.sandbox, cmd)
+	opts := v1types.ExecOptions{
+		Env: map[string]string{"SESSION_ID": s.SessionID()},
+	}
+	result, err := s.client.RunCommandWithOptions(ctx, s.provider, s.sandbox, cmd, opts)
 	if err != nil {
 		return "", fmt.Errorf("exec in sandbox %s: %w", s.sandbox, err)
 	}
@@ -68,7 +76,7 @@ func (s *Session) WaitReady(ctx context.Context) (*v1.Sandbox, error) {
 }
 
 // Delete removes the sandbox session.
-func (s *Session) Delete(ctx context.Context) (*v1.DeletionResult, error) {
+func (s *Session) Delete(ctx context.Context) error {
 	return s.client.DeleteSandbox(ctx, s.provider, s.sandbox)
 }
 
