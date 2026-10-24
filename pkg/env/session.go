@@ -31,12 +31,9 @@ func NewSession(client *Client, provider, sandbox, normanSessionID string) *Sess
 }
 
 // SessionID returns the Norman API session UUID for this session.
-// Falls back to the sandbox name if no session ID was provided.
+// This is the user-facing identifier; it is never the sandbox name.
 func (s *Session) SessionID() string {
-	if s.normanSessionID != "" {
-		return s.normanSessionID
-	}
-	return s.sandbox
+	return s.normanSessionID
 }
 
 // SandboxName returns the underlying OpenShell sandbox name.
