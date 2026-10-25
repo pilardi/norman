@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-// handleProvider implements the `norman provider` subcommands.
-// Usage: norman provider add <name> --type <type> --endpoint <url> [flags...]
-//        norman provider list
-func handleProvider(args []string) {
+// handleProviders implements the `norman provider` subcommands.
+// Usage: norman providers add <name> --type <type> --endpoint <url> [flags...]
+//        norman providers list
+func handleProviders(args []string) {
 	if len(args) == 0 {
 		fmt.Println("HELP CASE HIT")
-		printProviderHelp()
+		printprovidersHelp()
 		os.Exit(1)
 	}
 
@@ -22,31 +22,31 @@ func handleProvider(args []string) {
 
 	switch command {
 	case "add":
-		handleProviderAdd(subArgs)
+		handleProvidersAdd(subArgs)
 	case "list", "ls":
-		handleProviderList(subArgs)
+		handleProvidersList(subArgs)
 	case "get":
-		handleProviderGet(subArgs)
+		handleProvidersGet(subArgs)
 	case "update":
-		handleProviderUpdate(subArgs)
+		handleProvidersUpdate(subArgs)
 	case "delete", "del":
-		handleProviderDelete(subArgs)
+		handleProvidersDelete(subArgs)
 	case "help", "-h", "--help":
-		printProviderHelp()
+		printprovidersHelp()
 		return
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown provider subcommand: %s\n\n", command)
 		fmt.Println("HELP CASE HIT")
-		printProviderHelp()
+		printprovidersHelp()
 		os.Exit(1)
 	}
 }
 
-// printProviderHelp displays help for the `norman provider` subcommands.
-func printProviderHelp() {
+// printprovidersHelp displays help for the `norman provider` subcommands.
+func printprovidersHelp() {
 	fmt.Println(`provider — Manage LLM providers (add, list, get, update, delete)
 
-Usage: norman provider <subcommand> [args...]
+Usage: norman providers <subcommand> [args...]
 
 Subcommands:
   add <name> --type <type> --endpoint <url> [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
@@ -66,16 +66,16 @@ Subcommands:
       Remove a provider. Fails if it's the last remaining one.
 
 Examples:
-  norman provider add local --type ollama --endpoint http://localhost:11434 --model llama3
-  norman provider add openai-default --type openai --endpoint https://api.openai.com/v1 --model gpt-4o --temp 0.7 --max-tokens 8192
-  norman provider list
-  norman provider get local
-  norman provider update local --temp 0.5
-  norman provider delete old-provider`)
+  norman providers add local --type ollama --endpoint http://localhost:11434 --model llama3
+  norman providers add openai-default --type openai --endpoint https://api.openai.com/v1 --model gpt-4o --temp 0.7 --max-tokens 8192
+  norman providers list
+  norman providers get local
+  norman providers update local --temp 0.5
+  norman providers delete old-provider`)
 }
 
-// handleProviderAdd adds a new LLM provider via POST /api/providers.
-func handleProviderAdd(args []string) {
+// handleProvidersAdd adds a new LLM provider via POST /api/providers.
+func handleProvidersAdd(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: provider name is required")
 		os.Exit(1)
@@ -114,7 +114,7 @@ func handleProviderAdd(args []string) {
 			}
 		} else if args[i] == "-h" || args[i] == "--help" {
 			fmt.Println("HELP CASE HIT")
-		printProviderHelp()
+		printprovidersHelp()
 			return
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
@@ -135,11 +135,11 @@ func handleProviderAdd(args []string) {
 	}
 
 	fmt.Printf("Provider '%s' created successfully.\n", name)
-	printProviderSummary(resp)
+	printprovidersSummary(resp)
 }
 
-// handleProviderList lists all providers via GET /api/providers.
-func handleProviderList(args []string) {
+// handleProvidersList lists all providers via GET /api/providers.
+func handleProvidersList(args []string) {
 	body, err := httpGet("/api/providers")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing providers: %v\n", err)
@@ -160,7 +160,7 @@ func handleProviderList(args []string) {
 	fmt.Printf("\nConfigured LLM Providers (%d):\n", len(providers))
 	fmt.Println(strings.Repeat("-", 70))
 	for i, p := range providers {
-		printProviderSummary(p)
+		printprovidersSummary(p)
 		if i < len(providers)-1 {
 			fmt.Println(strings.Repeat("-", 70))
 		}
@@ -168,8 +168,8 @@ func handleProviderList(args []string) {
 	fmt.Println()
 }
 
-// handleProviderGet gets a specific provider by name via GET /api/providers/{name}.
-func handleProviderGet(args []string) {
+// handleProvidersGet gets a specific provider by name via GET /api/providers/{name}.
+func handleProvidersGet(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: provider name is required")
 		os.Exit(1)
@@ -189,11 +189,11 @@ func handleProviderGet(args []string) {
 	}
 
 	fmt.Printf("Provider '%s':\n", name)
-	printProviderSummary(resp)
+	printprovidersSummary(resp)
 }
 
-// handleProviderUpdate updates an existing provider via PUT /api/providers/{name}.
-func handleProviderUpdate(args []string) {
+// handleProvidersUpdate updates an existing provider via PUT /api/providers/{name}.
+func handleProvidersUpdate(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: provider name is required")
 		os.Exit(1)
@@ -230,7 +230,7 @@ func handleProviderUpdate(args []string) {
 			}
 		} else if args[i] == "-h" || args[i] == "--help" {
 			fmt.Println("HELP CASE HIT")
-		printProviderHelp()
+		printprovidersHelp()
 			return
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
@@ -257,11 +257,11 @@ func handleProviderUpdate(args []string) {
 	}
 
 	fmt.Printf("Provider '%s' updated successfully.\n", name)
-	printProviderSummary(resp)
+	printprovidersSummary(resp)
 }
 
-// handleProviderDelete deletes a provider via DELETE /api/providers/{name}.
-func handleProviderDelete(args []string) {
+// handleProvidersDelete deletes a provider via DELETE /api/providers/{name}.
+func handleProvidersDelete(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: provider name is required")
 		os.Exit(1)
@@ -277,8 +277,8 @@ func handleProviderDelete(args []string) {
 	fmt.Printf("Provider '%s' removed.\n", name)
 }
 
-// printProviderSummary prints a formatted summary of a provider response.
-func printProviderSummary(p map[string]interface{}) {
+// printprovidersSummary prints a formatted summary of a provider response.
+func printprovidersSummary(p map[string]interface{}) {
 	name, _ := p["name"].(string)
 	if name == "" {
 		name = "(unknown)"

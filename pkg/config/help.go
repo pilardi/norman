@@ -74,11 +74,11 @@ Commands:
   sessions list              List active chat sessions
   sessions archive <session_id>   Archive a session's transcript via POST /api/sessions/{id}
   sessions open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-  provider add <name> --type <t> --endpoint <url> [--model <m>] [--temp <f>] [--max-tokens <i>] [--api-key <k>]  Add a new LLM provider
-  provider list (ls)                               List all configured providers
-  provider get <name>                              Show details for a specific provider
-  provider update <name> --flag value              Update an existing provider's fields
-  provider delete <name>                           Remove a provider
+  providers add <name> --type <t> --endpoint <url> [--model <m>] [--temp <f>] [--max-tokens <i>] [--api-key <k>]  Add a new LLM provider
+  providers list (ls)                              List all configured providers
+  providers get <name>                             Show details for a specific provider
+  providers update <name> --flag value             Update an existing provider's fields
+  providers delete <name>                          Remove a provider
 
 Use "norman help <command>" for detailed help on a specific command.`
 }
