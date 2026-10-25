@@ -1,6 +1,5 @@
 # LLM Integration Plan — Provider-Agnostic Abstraction & Remaining Work
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Date:** 2026-10-19 (merged)

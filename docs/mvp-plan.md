@@ -1,6 +1,5 @@
 # Norman — MVP Implementation Plan
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Goal:** An end-to-end CLI client → Agent Server workflow where a user can configure an agent, create workspaces, install skills, and run tasks.

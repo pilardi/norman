@@ -1,6 +1,5 @@
 # Provider Configuration Drift Assessment
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Date:** 2026-10-22  

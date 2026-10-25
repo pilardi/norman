@@ -1,6 +1,5 @@
 # Proposal: Embedded Default Configuration & Help Message Consistency
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 ## Problem Statement

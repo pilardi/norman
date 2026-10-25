@@ -1,6 +1,5 @@
 # LLM Tool Access Assessment — Agent-to-Environment Integration
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Date:** 2026-10-21  

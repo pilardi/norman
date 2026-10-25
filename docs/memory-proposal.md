@@ -1,6 +1,5 @@
 # Memory Architecture Enhancement Proposal
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Status:** Draft — awaiting review before implementation.

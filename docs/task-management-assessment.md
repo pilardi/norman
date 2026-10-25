@@ -1,6 +1,5 @@
 # Task Management Assessment — Norman Agent
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Date:** 2026-10-22  

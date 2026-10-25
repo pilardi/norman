@@ -54,7 +54,6 @@ Modify `pkg/docs/generator.go` and `cmd/docs-gen/main.go` to accept a custom CSS
 
 Add a link at the top of each `.md` file:
 ```markdown
-> **API Spec**: [Full Reference](api-reference.html)
 ```
 
 And add an `index.md` / `index.html` landing page that lists all docs with links.

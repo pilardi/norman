@@ -1,6 +1,5 @@
 # Session Workflow Proposal
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Status:** Fully Implemented (all ⬜ → ✅ as of 2026-10-16)  

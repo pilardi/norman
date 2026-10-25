@@ -1,6 +1,5 @@
 # Provider Configuration — Design & Implementation Plan
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 > **Branch:** `feat/provider-config`  

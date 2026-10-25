@@ -1,6 +1,5 @@
 # Plan: Workspace-Level On-Demand Skill Installation
 
-> **API Spec**: [Full Reference](api-reference.html)
 
 
 **Date:** 2026-10-20  
