@@ -3,6 +3,7 @@ module github.com/norman/norman
 go 1.25.13
 
 require (
+	github.com/MarceloPetrucio/go-scalar-api-reference v0.0.0-20240521013641-ce5d2efe0e06
 	github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20261013154426-dfb0f4f91761
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3

@@ -60,6 +60,9 @@ echo "What files changed this week?" | ./dist/norman sessions open my-project
 ./dist/norman skills install ./path/to/skill-folder
 ```
 
+**5. API reference docs:**
+The server exposes a live Scalar-powered API reference at `http://localhost:8080/docs`. You can also generate a static HTML file with `make generate-docs`.
+
 ### What matters most: agent isolation
 
 The agent lives entirely inside an OpenShell environment (`.norman/`). The host OS never sees it directly. Each workspace has its own session state, memory store, and skill set. This is the design constraint everything else follows — the server and client are just thin interfaces over that isolated runtime.
