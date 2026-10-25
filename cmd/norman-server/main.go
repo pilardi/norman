@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/norman/norman/docs"
 	"github.com/norman/norman/pkg/agent"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
@@ -64,6 +65,9 @@ func main() {
 	// Register routes on Echo router.
 	e := echo.New()
 	registerRoutes(e, srv)
+
+	// API reference documentation (Scalar-powered).
+	e.GET("/docs", docs.Handler("api-spec.yaml", "Norman API Reference", false))
 
 	log.Printf("Norman Agent Server starting on %s:%d", host, port)
 
