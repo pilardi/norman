@@ -31,6 +31,8 @@ func main() {
 		handleSessions(args)
 	case "open", "chat":
 		handleChat(args[1:])
+	case "provider":
+		handleProvider(args[1:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
