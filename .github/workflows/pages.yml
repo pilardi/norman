@@ -14,7 +14,6 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: github-pages
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,5 +32,7 @@ jobs:
           path: docs/
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/master'
+        if: github.event_name != 'pull_request'
         uses: actions/deploy-pages@v4
+        with:
+          environment: github-pages
