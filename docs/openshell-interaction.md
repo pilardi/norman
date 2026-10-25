@@ -1,5 +1,8 @@
 # OpenShell Interaction Model for Norman
 
+> **API Spec**: [Full Reference](api-reference.html)
+
+
 > How Norman, its agent loop, tool calls, the `roger` client, and the server interact through the OpenShell sandbox boundary.
 
 ---

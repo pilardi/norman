@@ -1,5 +1,8 @@
 # Task Management Assessment — Norman Agent
 
+> **API Spec**: [Full Reference](api-reference.html)
+
+
 > **Date:** 2026-10-22  
 > **Author:** Norman agent (session assessment)  
 > **Scope:** How the agent creates deferred and scheduled tasks, whether task management is presented as a discoverable skill, and how it's wired to OpenShell.  

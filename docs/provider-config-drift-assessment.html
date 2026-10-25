@@ -1,0 +1,204 @@
+<h1>Provider Configuration Drift Assessment</h1>
+<blockquote>
+<p><strong>API Spec</strong>: <a href="api-reference.html">Full Reference</a></p>
+</blockquote>
+<blockquote>
+<p><strong>Date:</strong> 2026-10-22<br>
+<strong>Author:</strong> Norman agent (session assessment)<br>
+<strong>Status:</strong> Draft — actionable items tracked for branch <code>fix/provider-config-drift</code><br>
+<strong>Related:</strong> <code>pkg/config/config.go</code>, <code>pkg/llm/client.go</code>, <code>pkg/llm/llamacpp/provider.go</code>, <code>config_defaults.yaml</code></p>
+</blockquote>
+<hr>
+<h2>1. Problem Statement</h2>
+<p>Norman's LLM provider configuration is split across <strong>two layers</strong> that have drifted apart:</p>
+<p>| Layer | What it owns | Example fields |
+|-------|-------------|----------------|
+| <strong>System-level defaults</strong> (<code>SystemConfig</code>) | Global server settings + LLM runtime knobs | <code>default_model</code>, <code>temperature</code>, <code>max_tokens</code> |
+| <strong>Provider config</strong> (<code>ProviderConfig</code>) | Provider identity + endpoint + type-specific extras | <code>name</code>, <code>type</code>, <code>endpoint</code>, <code>model</code>, <code>Extra</code> |</p>
+<p>The problem: <code>temperature</code> and <code>max_tokens</code> are defined at the <strong>system level</strong>, but they are fundamentally <strong>provider-level concerns</strong>. A system should not dictate a global temperature — it should let each provider declare its own default, with workspace overrides as a secondary layer.</p>
+<p>Similarly, <code>default_model</code> is a system-level field that duplicates what <code>ProviderConfig.Model</code> already captures. The &quot;default provider&quot; concept (a string selector) is redundant when providers are ordered in a list and the first one serves as the implicit default.</p>
+<hr>
+<h2>2. Current Configuration Topology</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    config_defaults.yaml                       │
+│  system:                                                      │
+│    default_model: &quot;gpt-4o&quot;        ← system-level             │
+│    temperature: 0.7               ← system-level            │
+│    max_tokens: 32000              ← system-level            │
+│    llm_providers: []              ← provider list           │
+│    default_provider: &quot;&quot;           ← selector string         │
+└─────────────────────────────────────────────────────────────┘
+          │                    │
+          ▼                    ▼
+  SystemConfig (Go struct)   ProviderConfig[] (Go slice)
+  ├─ DefaultModel            ├─ Name, Type, Endpoint, Model
+  ├─ Temperature             └─ Extra (type-specific fields)
+  └─ MaxTokens
+</code></pre>
+<p><strong>Resolution path in <code>main.go</code> (lines ~85–132):</strong></p>
+<pre><code class="language-go">// Priority: CLI flag &gt; config default_provider &gt; first provider in list
+providerName = selectedProvider || cfg.System.DefaultProvider || providers[0].Name
+
+provCfg, err := cfg.System.ResolveProvider(providerName)
+
+switch provCfg.Type {
+case &quot;openai&quot;:
+    llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))  // ← reads SystemConfig directly!
+case &quot;llamacpp&quot;:
+    wsCfg := config.DefaultWorkspaceConfig()
+    if cfg.System.DefaultModel != &quot;&quot; { wsCfg.Model = cfg.System.DefaultModel }
+    if cfg.System.Temperature &gt; 0  { wsCfg.Temperature = cfg.System.Temperature }
+    if cfg.System.MaxTokens &gt; 0   { wsCfg.MaxTokens = cfg.System.MaxTokens }
+    llmClient = llamacpp.NewProvider(wsCfg, llmCfg)
+}
+</code></pre>
+<hr>
+<h2>3. Identified Drift Points</h2>
+<h3>Drift #1: <code>temperature</code> and <code>max_tokens</code> belong on providers, not system</h3>
+<p><strong>Current:</strong> <code>SystemConfig.Temperature</code> and <code>SystemConfig.MaxTokens</code> are global defaults that apply to <strong>all</strong> providers uniformly.</p>
+<p><strong>Problem:</strong> Different providers have different capabilities. A local llama.cpp server might support 32k tokens but a smaller model should default to 8k. A global &quot;max_tokens: 32000&quot; is misleading for small models.</p>
+<p><strong>Evidence in code:</strong></p>
+<ul>
+<li><code>pkg/llm/client.go</code> line ~45: <code>MaxTokens: cfg.MaxTokens</code> — reads directly from system config</li>
+<li><code>pkg/llm/llamacpp/provider.go</code>: its own <code>Config</code> struct has <code>Temperature</code> and <code>MaxTokens</code>, but these are <strong>not</strong> populated from the provider's <code>Extra</code> map during construction (the <code>NewProvider</code> constructor takes <code>wsCfg.Temperature</code> / <code>wsCfg.MaxTokens</code> instead)</li>
+<li>The <code>CompletionRequest</code> struct carries <code>Temperature</code> and <code>MaxTokens</code> fields — these should be per-provider, not system-wide</li>
+</ul>
+<p><strong>Impact:</strong> Adding a new provider type requires modifying <code>SystemConfig</code> (or duplicating logic in each provider's constructor). There is no single source of truth for &quot;what are this provider's defaults?&quot;</p>
+<h3>Drift #2: <code>default_model</code> duplicates <code>ProviderConfig.Model</code></h3>
+<p><strong>Current:</strong> <code>SystemConfig.DefaultModel</code> holds the global default model name. Each <code>ProviderConfig</code> also has a <code>Model</code> field.</p>
+<p><strong>Problem:</strong> If a provider is configured with <code>model: &quot;llama3.1:8b&quot;</code>, having a separate <code>default_model: &quot;gpt-4o&quot;</code> at system level creates ambiguity — which one wins? The current code in <code>main.go</code> resolves this by checking <code>cfg.System.DefaultModel</code> as a fallback, but this is a workaround for the missing per-provider default.</p>
+<p><strong>Evidence:</strong></p>
+<ul>
+<li><code>pkg/config/config.go</code>: <code>DefaultModel string</code> on <code>SystemConfig</code></li>
+<li><code>pkg/config/config.go</code>: <code>Model string</code> on <code>ProviderConfig</code></li>
+<li><code>main.go</code> line ~120: <code>if cfg.System.DefaultModel != &quot;&quot; { wsCfg.Model = cfg.System.DefaultModel }</code> — system-level override applied to workspace config</li>
+</ul>
+<p><strong>Impact:</strong> The &quot;default model&quot; is a system-level concept that should be the provider's own <code>Model</code> field. A global default_model is only needed when no providers are configured (the fallback path).</p>
+<h3>Drift #3: <code>default_provider</code> string selector vs. first-provider fallback</h3>
+<p><strong>Current:</strong></p>
+<pre><code class="language-yaml">llm_providers:
+  - name: &quot;default&quot;
+    type: &quot;openai&quot;
+    model: &quot;gpt-4o&quot;
+  - name: &quot;local&quot;
+    type: &quot;ollama&quot;
+    model: &quot;llama3.1:8b&quot;
+default_provider: &quot;default&quot;   ← explicit selector
+</code></pre>
+<p><strong>Problem:</strong> The code in <code>main.go</code> already falls back to <code>providers[0].Name</code> when <code>default_provider</code> is empty. Having both an explicit selector AND a positional fallback creates two ways to express &quot;use the first provider,&quot; which is confusing.</p>
+<p><strong>Evidence:</strong></p>
+<ul>
+<li><code>main.go</code> lines 86–92: resolution priority is <code>CLI flag &gt; default_provider &gt; providers[0].Name</code></li>
+<li>If <code>default_provider</code> is empty, it uses the first provider — making the explicit string selector redundant for the common case</li>
+</ul>
+<p><strong>Impact:</strong> Users can express &quot;use the first provider&quot; in two ways (<code>default_provider: &quot;&quot;</code> or omit it), and three ways to override (<code>--provider</code>, <code>default_provider</code>, per-workspace <code>model</code>). The mental model is unclear.</p>
+<h3>Drift #4: Three-tier hierarchy creates precedence confusion</h3>
+<pre><code>1. CLI flag (-p/--provider)          ← highest
+2. SystemConfig.DefaultProvider       ← explicit selector
+3. providers[0].Name                 ← positional fallback
+4. ProviderConfig.Model               ← provider-specific default
+5. WorkspaceConfig.Model              ← workspace override
+6. SystemConfig.DefaultModel          ← global fallback
+</code></pre>
+<p><strong>Problem:</strong> Steps 4 and 6 are the same concept (a model name) at different levels. Steps 2–3 are two selectors for &quot;which provider to use.&quot; The hierarchy is deeper than necessary.</p>
+<hr>
+<h2>4. Proposed Canonical Topology</h2>
+<h3>After refactoring:</h3>
+<pre><code class="language-yaml"># config_defaults.yaml
+system:
+  server_port: 8080
+  host: &quot;127.0.0.1&quot;
+  base_dir: &quot;~/.norman/workspaces&quot;
+  llm_providers:
+    - name: &quot;default&quot;
+      type: &quot;openai&quot;
+      endpoint: &quot;https://api.openai.com/v1&quot;
+      model: &quot;gpt-4o&quot;        ← provider-level default (replaces SystemConfig.DefaultModel)
+      temperature: 0.7         ← provider-level (replaces SystemConfig.Temperature)
+      max_tokens: 32000        ← provider-level (replaces SystemConfig.MaxTokens)
+    - name: &quot;local&quot;
+      type: &quot;llamacpp&quot;
+      endpoint: &quot;http://localhost:8081&quot;
+      model: &quot;llama3.1:8b&quot;
+      temperature: 0.5
+      max_tokens: 8192
+
+# No SystemConfig.DefaultModel, .Temperature, or .MaxTokens fields.
+# No default_provider string — providers are selected by name (CLI flag) or position.
+</code></pre>
+<h3>Resolution path (simplified):</h3>
+<pre><code class="language-go">// Priority: CLI flag &gt; first provider in list (positional default)
+providerName = selectedProvider || providers[0].Name
+
+provCfg := cfg.System.ResolveProvider(providerName)
+
+// Provider config already has Model, Temperature, MaxTokens.
+// Workspace overrides can still override these per-workspace.
+llmClient = createProvider(provCfg, workspaceConfig)
+</code></pre>
+<h3>Key changes:</h3>
+<p>| Field | Before | After | Rationale |
+|-------|--------|-------|-----------|
+| <code>SystemConfig.DefaultModel</code> | Global default model string | <strong>Removed</strong> — each provider has its own <code>model</code> | Model is a provider concern |
+| <code>SystemConfig.Temperature</code> | Global temperature float | <strong>Removed</strong> — each provider has its own <code>temperature</code> | Temperature is provider-specific |
+| <code>SystemConfig.MaxTokens</code> | Global max tokens int | <strong>Removed</strong> — each provider has its own <code>max_tokens</code> | Token budget is provider-specific |
+| <code>SystemConfig.DefaultProvider</code> | Selector string | <strong>Optional</strong> (for explicit naming, not positional) | Keep for CLI <code>-p</code> resolution, remove as primary selector |
+| <code>ProviderConfig.Model</code> | Optional field | <strong>Required</strong> (default model for this provider) | Primary source of truth |
+| <code>ProviderConfig.Temperature</code> | Missing | <strong>Added</strong> — default temperature for this provider | Provider-specific runtime knob |
+| <code>ProviderConfig.MaxTokens</code> | Missing | <strong>Added</strong> — default max tokens for this provider | Provider-specific budget |</p>
+<hr>
+<h2>5. Migration Plan</h2>
+<h3>Phase 1: Extend <code>ProviderConfig</code> (non-breaking)</h3>
+<ul>
+<li>Add <code>Temperature float64</code> and <code>MaxTokens int</code> fields to <code>ProviderConfig</code> struct in <code>pkg/config/config.go</code></li>
+<li>Update <code>config_defaults.yaml</code> to include these on existing providers</li>
+<li>Update embedded defaults (<code>config_defaults.yaml</code>) with provider-level settings</li>
+</ul>
+<h3>Phase 2: Deprecate system-level fields (non-breaking)</h3>
+<ul>
+<li>Keep <code>SystemConfig.DefaultModel</code>, <code>.Temperature</code>, <code>.MaxTokens</code> but mark as deprecated</li>
+<li>Update <code>LoadDefault()</code> to merge provider-level values into workspace config when system-level values are zero</li>
+<li>Add migration warning if old-style config is loaded without provider-level settings</li>
+</ul>
+<h3>Phase 3: Switch primary resolution path (breaking)</h3>
+<ul>
+<li>In <code>main.go</code>, switch from <code>cfg.System.DefaultModel</code> → <code>provCfg.Model</code> as the primary model source</li>
+<li>Switch from <code>cfg.System.Temperature</code> → <code>provCfg.Temperature</code> as the primary temperature source</li>
+<li>Switch from <code>cfg.System.MaxTokens</code> → <code>provCfg.MaxTokens</code> as the primary token budget source</li>
+<li>Remove the &quot;first provider positional fallback&quot; in favor of explicit <code>default_provider</code> or CLI flag</li>
+</ul>
+<h3>Phase 4: Cleanup (breaking)</h3>
+<ul>
+<li>Remove <code>SystemConfig.DefaultModel</code>, <code>.Temperature</code>, <code>.MaxTokens</code> fields entirely</li>
+<li>Update all consumers (<code>client.go</code>, <code>llamacpp/provider.go</code>) to read from provider config instead of system config</li>
+<li>Add integration tests verifying the new resolution path</li>
+<li>Update <code>config_defaults.yaml</code> to remove old-style entries</li>
+</ul>
+<hr>
+<h2>6. Files Affected</h2>
+<p>| File | Change | Phase |
+|------|--------|-------|
+| <code>pkg/config/config.go</code> | Add <code>Temperature</code>, <code>MaxTokens</code> to <code>ProviderConfig</code>; deprecate system-level fields | 1, 3, 4 |
+| <code>config_defaults.yaml</code> | Add provider-level settings; remove old-style top-level fields | 1, 4 |
+| <code>pkg/llm/client.go</code> | Read model/temp/tokens from <code>ProviderConfig</code> instead of <code>SystemConfig</code> | 3, 4 |
+| <code>pkg/llm/llamacpp/provider.go</code> | Constructor reads from provider config's Temperature/MaxTokens | 3, 4 |
+| <code>cmd/norman-server/main.go</code> | Simplify resolution path; remove system-level fallback logic | 2, 3 |
+| <code>pkg/config/embedded.go</code> | No change (YAML is the source of truth) | — |
+| <code>docs/provider-config-drift-assessment.md</code> | This document | — |</p>
+<hr>
+<h2>7. Risk Assessment</h2>
+<p>| Risk | Likelihood | Mitigation |
+|------|-----------|------------|
+| Existing <code>~/.norman/config.yaml</code> files break on migration | Medium (Phase 3+) | Phase 2 deprecation warnings; backward-compatible merge logic |
+| Provider-specific defaults conflict with workspace overrides | Low | Workspace override logic already handles precedence correctly |
+| CLI <code>-p</code> flag behavior changes subtly | Low | Explicit <code>default_provider</code> selector remains available for named resolution |
+| <code>CompletionRequest</code> struct needs <code>Temperature</code>/<code>MaxTokens</code> at provider level, not system level | Medium | These fields already exist on <code>CompletionRequest</code>; the issue is where defaults originate |</p>
+<hr>
+<h2>8. Open Questions</h2>
+<ol>
+<li><strong>Should <code>default_provider</code> be removed entirely?</strong> If providers are always selected by name (CLI flag or explicit config), the positional fallback (<code>providers[0]</code>) becomes unnecessary. However, removing it requires a migration path for configs that rely on implicit first-provider selection.</li>
+<li><strong>Should workspace-level <code>model</code>, <code>temperature</code>, <code>max_tokens</code> be scoped to a provider?</strong> Currently they are global workspace overrides. A more granular approach would allow per-provider workspace overrides (e.g., &quot;use gpt-4o's budget but llama3.1's temperature&quot;). This is likely over-engineering for MVP.</li>
+<li><strong>How do we handle the fallback path (&quot;no providers configured&quot;)?</strong> Currently <code>llm.NewClient(cfg.System)</code> is used as a catch-all. After this refactor, the fallback should create a default provider from system-level defaults (re-purposing <code>SystemConfig</code> fields only for the no-provider case).</li>
+</ol>
+<hr>
+<p><em>Assessment complete. Branch: <code>fix/provider-config-drift</code>. No code changes yet — this document serves as the design spec.</em></p>

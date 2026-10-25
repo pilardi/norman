@@ -1,5 +1,8 @@
 # Plan: Workspace-Level On-Demand Skill Installation
 
+> **API Spec**: [Full Reference](api-reference.html)
+
+
 **Date:** 2026-10-20  
 **Status:** ✅ **COMPLETE** (all phases implemented, committed to `feat/workspace-skill-install`)  
 **Last updated:** 2026-10-21  

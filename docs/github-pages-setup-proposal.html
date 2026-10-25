@@ -1,0 +1,68 @@
+<hr>
+<h2>title: &quot;GitHub Pages Setup Proposal&quot;
+type: source
+updated: 2026-10-25
+tags: [github-pages, ci-cd, docs, scalar]
+workspace: norman</h2>
+<h1>GitHub Pages Setup Proposal</h1>
+<h2>Problem</h2>
+<p>The <code>docs/</code> folder in the <code>master</code> branch is pointed to by GitHub Pages but produces nothing useful:</p>
+<ul>
+<li><code>.md</code> files are served as raw text (no markdown→HTML rendering).</li>
+<li><code>api-reference.html</code> exists but may not render if the Scalar CDN script fails or if Jekyll mode interferes.</li>
+<li>No CI workflow regenerates the HTML on every push.</li>
+</ul>
+<h2>Goals</h2>
+<ol>
+<li>Serve rendered API reference HTML from <code>docs/api-reference.html</code>.</li>
+<li>Pre-render <code>.md</code> files to <code>.html</code> so they appear as proper pages.</li>
+<li>Apply a custom color palette (<code>#000000</code>, <code>#D4AF37</code>, <code>#A52A2A</code>, <code>#E5E5E5</code>, <code>#1C1C1C</code>).</li>
+<li>Link markdown content to the API reference page and vice versa.</li>
+<li>Automate regeneration via CI on every push to <code>master</code>.</li>
+</ol>
+<h2>Changes Required</h2>
+<h3>1. Add <code>.nojekyll</code> to <code>docs/</code></h3>
+<p>Prevents GitHub Pages from attempting Jekyll processing, ensuring static files are served as-is.</p>
+<h3>2. Inject Custom CSS into Scalar Output</h3>
+<p>Modify <code>pkg/docs/generator.go</code> and <code>cmd/docs-gen/main.go</code> to accept a custom CSS string via <code>CustomOptions.CustomCSS</code>. The palette:</p>
+<pre><code class="language-css">:root {
+    --bg-color: #000000;
+    --color-gold: #D4AF37;
+    --color-red: #A52A2A;
+    --color-silver: #E5E5E5;
+    --color-charcoal: #1C1C1C;
+}
+</code></pre>
+<h3>3. Add GitHub Pages CI Workflow</h3>
+<p><code>.github/workflows/pages.yml</code> — on push to <code>master</code>:</p>
+<ul>
+<li>Run <code>make generate-docs</code> (regenerates <code>docs/api-reference.html</code>).</li>
+<li>Convert all <code>.md</code> files in <code>docs/</code> → <code>.html</code> (using a Go-based or CLI tool).</li>
+<li>Deploy the <code>docs/</code> folder via <code>peaceiris/actions-gh-pages</code>.</li>
+</ul>
+<h3>4. Link Markdown Files to API Reference</h3>
+<p>Add a link at the top of each <code>.md</code> file:</p>
+<pre><code class="language-markdown">&gt; **API Spec**: [Full Reference](api-reference.html)
+</code></pre>
+<p>And add an <code>index.md</code> / <code>index.html</code> landing page that lists all docs with links.</p>
+<h3>5. Update <code>Makefile</code></h3>
+<p>Add a <code>generate-docs-html</code> target that converts <code>.md</code> → <code>.html</code> alongside the existing <code>generate-docs</code>.</p>
+<h2>Order of Execution</h2>
+<ol>
+<li>Add <code>.nojekyll</code></li>
+<li>Modify generator to accept custom CSS</li>
+<li>Write the Pages workflow YAML</li>
+<li>Add markdown-to-html conversion (Go tool or CLI)</li>
+<li>Update Makefile targets</li>
+<li>Add links in existing <code>.md</code> files and create <code>index.md</code></li>
+</ol>
+<h2>Files Affected</h2>
+<p>| File | Change |
+|------|--------|
+| <code>docs/.nojekyll</code> | New file |
+| <code>pkg/docs/generator.go</code> | Add <code>CustomCSS</code> field to <code>Options</code> |
+| <code>cmd/docs-gen/main.go</code> | Add <code>--css</code> flag |
+| <code>.github/workflows/pages.yml</code> | New file (CI pipeline) |
+| <code>Makefile</code> | Add <code>generate-docs-html</code> target |
+| <code>docs/index.md</code> | New landing page |
+| All existing <code>.md</code> in <code>docs/</code> | Add API reference link header |</p>

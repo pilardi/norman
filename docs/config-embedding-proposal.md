@@ -1,5 +1,8 @@
 # Proposal: Embedded Default Configuration & Help Message Consistency
 
+> **API Spec**: [Full Reference](api-reference.html)
+
+
 ## Problem Statement
 
 Currently, Norman's configuration has a two-tier model that creates friction:

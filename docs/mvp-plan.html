@@ -1,0 +1,206 @@
+<h1>Norman — MVP Implementation Plan</h1>
+<blockquote>
+<p><strong>API Spec</strong>: <a href="api-reference.html">Full Reference</a></p>
+</blockquote>
+<blockquote>
+<p><strong>Goal:</strong> An end-to-end CLI client → Agent Server workflow where a user can configure an agent, create workspaces, install skills, and run tasks.</p>
+<p><strong>Principle:</strong> Minimize custom code. Compose capabilities from existing tools (OpenShell, git, MCP, shell utilities). The server is the only substantial Go implementation (~5–8k lines).</p>
+</blockquote>
+<hr>
+<h2>Vision Summary</h2>
+<p>Norman is a <strong>chat agent</strong>. You talk to it in a session within a workspace. Tasks and scheduling are <em>emergent</em> from conversation, not manually triggered. The primary interaction model is interactive conversation — everything else exists to support it.</p>
+<h2>Package Layout (MVP)</h2>
+<pre><code>norman/
+  cmd/
+    norman/           # CLI client binary (thin HTTP client)
+    norman-server/    # Agent Server binary
+  pkg/
+    agent/            # Core agent loop: planning, context budgeting, memory management
+    env/              # OpenShell session wrapper + tool dispatch
+    skills/           # Skill discovery, manifest parsing, progressive activation
+    mcp/               # MCP client integration (using go-sdk)
+    memory/            # LTM wiki engine (flat markdown + frontmatter + git versioning)
+    config/            # YAML config parser with ${secret:...} placeholder resolution
+    notify/            # Notification routing (terminal bell, Slack webhook)
+    scheduler/         # Cron registration via OpenShell's cron API
+  internal/
+    api/               # HTTP/WebSocket server endpoints (generated from api-spec.yaml)
+    protocol/          # Thin client protocol (request/response types, generated)
+</code></pre>
+<hr>
+<h2>Completed Steps</h2>
+<h3>Step 1 — Project scaffolding &amp; module setup ✅</h3>
+<ul>
+<li><code>go mod init github.com/norman/norman</code>; package tree compiles with <code>go build ./...</code>.</li>
+<li>Runtime dependencies declared: <code>yaml.v3</code>, <code>go-sdk/mcp</code>, <code>gorilla/websocket</code>, <code>tiktoken-go</code>, <code>go-git</code>.</li>
+</ul>
+<h3>Step 1.5 — API Spec &amp; Generation ✅</h3>
+<ul>
+<li><code>api-spec.yaml</code> (OpenAPI 3.1) is the single source of truth for client-server protocol.</li>
+<li>Three generation targets: types (<code>types.go</code>), client library (<code>client.go</code>), server handlers (<code>handlers.go</code>).</li>
+<li>Regenerate with <code>make generate</code>.</li>
+</ul>
+<h3>Step 2 — Config parser + CLI scaffolding ✅</h3>
+<ul>
+<li>Parse YAML from <code>~/.config/norman/config.yaml</code> (or env var <code>NORMAN_CONFIG</code>).</li>
+<li>Do <strong>not</strong> resolve <code>${secret:...}</code> at parse time; resolve inside the environment via OpenShell's <code>get-secret</code>.</li>
+<li>CLI subcommands: <code>create</code>, <code>switch</code>, <code>run</code>, <code>list</code>, <code>config</code>, <code>skills list/install/remove</code>, <code>sessions</code>, <code>tasks</code>.</li>
+</ul>
+<h3>Step 3 — OpenShell environment integration ✅</h3>
+<ul>
+<li>One persistent OpenShell session per workspace via the OpenShell Go SDK v0.1.x.</li>
+<li>All file I/O goes through OpenShell's tools layer (<code>read</code>, <code>write</code>, <code>edit</code>) — never direct host OS access.</li>
+<li>Session lifecycle: create on <code>norman workspace create</code>, reuse across tasks, recover if crashed (3× retry, exponential backoff).</li>
+</ul>
+<h3>Step 4 — Skill discovery &amp; progressive activation ✅</h3>
+<ul>
+<li>Scan configured discovery paths for valid skill definitions (<code>SKILL.md</code>).</li>
+<li>Load <strong>metadata only</strong> at startup; inject tools into context on demand.</li>
+<li>Deactivate unused skills to reclaim token budget.</li>
+</ul>
+<h3>Step 5 — Agent Server + Task API implementation ✅</h3>
+<ul>
+<li>Echo server skeleton, <code>/health</code>, WebSocket hub at <code>/ws</code>, protocol wiring via <code>pkg/protocol</code>.</li>
+<li>Agent loop (<code>pkg/agent/loop.go</code>), task store (<code>pkg/memory/store.go</code>), 24 handlers wired; WebSocket push events.</li>
+</ul>
+<h3>Step 6 — Memory engine (LTM wiki) + git versioning ✅</h3>
+<ul>
+<li>Flat markdown pages in <code>.norman/memory/</code> with frontmatter (<code>type: entity|source|trend|task</code>).</li>
+<li>Auto-generated <code>index.md</code> (page → type + tags mapping). Append-only <code>log.md</code>. <code>schema.md</code> / <code>AGENTS.md</code> with procedural rules.</li>
+<li>Git-tracked inside the environment; no vector search at MVP — grep/glob + frontmatter metadata suffices.</li>
+</ul>
+<h3>Step 7 — Context budget &amp; compression cycle ✅</h3>
+<ul>
+<li>Track token usage via LLM API's <code>usage.token_count</code> field.</li>
+<li>At 75%: GPT-style summarization (summarize oldest N turns → replace in STM → archive full transcripts to LTM).</li>
+<li>At 90%: forced aggressive compression. Selective retention: original request, active workspace config, current plan steps, pinned entries always preserved.</li>
+</ul>
+<h3>Step 8 — MCP integration + task scheduling + notifications ✅</h3>
+<ul>
+<li>Skills declare MCP connections (<code>mcp:</code> section with <code>endpoint</code>, <code>capabilities[]</code>).</li>
+<li>Register recurring tasks with OpenShell's cron scheduler (5-field or 6-field expressions).</li>
+<li>Server pushes results to connected clients via WebSocket; terminal bell + Slack webhook at MVP. Rate limiting: max 10 notifications/minute.</li>
+</ul>
+<h3>Step 9 — Follow-up: real SDK, scheduler wiring, CLI archive, config tests ✅</h3>
+<ul>
+<li><code>pkg/env/sdk_adapter.go</code> wraps <code>*env.Client</code>; falls back to <code>FakeOpenShellClient</code>.</li>
+<li>Scheduler <code>Start()</code> wired into <code>main()</code>; results channel injected into Loop via <code>WithResultsChannel()</code>.</li>
+<li>CLI command <code>norman sessions archive &lt;task_id&gt;</code> (POST <code>/api/sessions/archive</code>).</li>
+<li>7 unit tests for <code>NotifyConfig</code> defaults/validation.</li>
+</ul>
+<h3>Step 10 — Server rename + client-server communication review ✅</h3>
+<ul>
+<li>Renamed <code>cmd/server/</code> → <code>cmd/norman-server/</code>.</li>
+<li>CLI is now a <strong>thin HTTP client</strong> — delegates operations to the server:
+<ul>
+<li><code>listSkills()</code> → <code>GET /api/skills</code></li>
+<li><code>installSkill()</code> → <code>POST /api/skills/install</code></li>
+<li><code>removeSkill()</code> → <code>DELETE /api/skills/:name</code></li>
+<li><code>handleList()</code> workspace listing → <code>GET /api/workspaces</code></li>
+<li><code>handleRun()</code> → <code>POST /api/tasks</code></li>
+<li><code>handleCreate()</code> → <code>POST /api/workspaces</code></li>
+<li><code>handleSwitch()</code> → <code>GET /api/workspaces/:name</code></li>
+</ul>
+</li>
+</ul>
+<h3>Step 11 — Build system cleanup ✅</h3>
+<ul>
+<li><code>Makefile</code> with <code>help</code>, <code>generate</code>, <code>build</code>, <code>test</code>, <code>vet</code>, <code>clean</code> targets.</li>
+<li><code>.gitignore</code> entries for generated <code>.go</code> files and build artifacts; binaries output to <code>dist/</code>.</li>
+<li>Stale <code>server/</code> directory removed.</li>
+</ul>
+<h3>Step 13 — Logging verbosity ✅</h3>
+<ul>
+<li><code>-v</code>/<code>--verbose</code> CLI flag; prints <code>[debug] METHOD URL</code> to stderr before each request.</li>
+<li>Server conditionally applies <code>middleware.Logger()</code> based on config.</li>
+<li><code>NORMAN_VERBOSE</code> env var support (<code>true</code>/<code>false</code>/<code>1</code>/<code>0</code>).</li>
+</ul>
+<h3>Step 14 — Assessment Review &amp; Remediation ✅</h3>
+<p>All 9 sub-steps (14a–14i) implemented:
+| # | Issue | Resolution |
+|---|-------|------------|
+| 14a | Stale config path in glossary.md / api-reference.html | Updated to <code>~/.norman/config.yaml</code> |
+| 14b | Session archive format inconsistency (<code>.json</code> vs <code>.jsonl</code>) | Unified to <code>.jsonl</code> |
+| 14c | TitleToSlug collision risk | Type suffix appended to slug |
+| 14d | <code>schema.md</code> read/write + git operations | <code>WriteSchema</code>/<code>ReadSchema</code> added; GitDiff/GitCommit wired |
+| 14e | Plan persistence missing from agent loop | <code>SavePlan</code>/<code>LoadPlan</code> added |
+| 14f | Raw Sources layer not implemented | <code>pkg/memory/raw_sources.go</code> — read-only snapshot store |
+| 14g | Budget threshold checks not loop-integrated | Threshold check at cycle start; idempotent compression |
+| 14h | Workspace registry in-memory only | Persisted to disk; loaded on startup |
+| 14i | Skill discovery paths host-FS-bound | <code>AddDiscoveryPaths</code> method; <code>POST /api/skills/paths</code> endpoint |</p>
+<hr>
+<h2>Phase 0 — Interactive Chat CLI (P0)</h2>
+<p><strong>Goal:</strong> Provide the REPL experience that makes the chat-first model usable. This is the <em>primary</em> interaction layer — everything else exists to support it.</p>
+<p>| CLI Command | Purpose | Notes |
+|-------------|---------|-------|
+| <code>norman chat --workspace &lt;name&gt;</code> | Enter REPL chat mode for a session | Primary interaction; blocks until session closed |
+| <code>/help</code> | Show available slash-commands | In-chat help |
+| <code>/list tasks</code> | List emergent scheduled tasks for current session | Read-only, in-chat |
+| <code>/close</code> | Close the current session (save transcript) | Graceful shutdown |
+| <code>/new</code> | Start a new chat session (auto-create or prompt) | Creates new session ID |</p>
+<hr>
+<h2>Library Summary (Go)</h2>
+<p>| Purpose | Library | Stars | Notes |
+|---------|---------|-------|-------|
+| YAML parsing + secret placeholders | <code>go-yaml/yaml/v3</code> | 7017 | Standard, battle-tested |
+| MCP client | <code>github.com/modelcontextprotocol/go-sdk/mcp</code> | 5206 | Official, Google-backed |
+| Git operations | <code>github.com/src-d/go-git</code> | 4871 | Or shell out to <code>git</code> CLI |
+| WebSocket | <code>github.com/gorilla/websocket</code> | 24872 | Mature, well-maintained |
+| Token counting | <code>github.com/pkoukk/tiktoken-go</code> | 955 | OpenAI tokenizer port |
+| HTTP server | stdlib <code>net/http</code> | — | No framework needed for MVP |</p>
+<hr>
+<h2>OpenShell Integration</h2>
+<ul>
+<li>Uses the official Go SDK (<code>github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20261013154426-dfb0f4f91761</code>) — currently pinned to a commit SHA (not yet a tagged release).</li>
+<li><code>pkg/env/</code> provides direct SDK bindings: sandbox lifecycle (<code>CreateSandbox</code>, <code>WaitReady</code>, <code>GetSandbox</code>, <code>DeleteSandbox</code>), command execution (<code>Exec().Run()</code>), and session caching with crash recovery (3× retry, exponential backoff 1s→2s→4s→8s).</li>
+<li>All secrets resolved by OpenShell at runtime via <code>v1.SecretClient</code>.</li>
+</ul>
+<hr>
+<h2>Scope Boundaries</h2>
+<p><strong>In scope:</strong> CLI client → HTTP/WebSocket → Agent Server → OpenShell environment → task execution → results returned to client. One active workspace per session. Flat markdown wiki. Cron scheduling via OpenShell. Slack + terminal bell notifications.</p>
+<p><strong>Deferred:</strong> Multi-workspace parallel environments, vector search, automatic raw-source ingestion loop, multi-agent coordination, skill versioning/dependency resolution, IDE integration, email notifications.</p>
+<hr>
+<h2>MVP Completion Criteria</h2>
+<p>| Criterion | Status | Notes |
+|-----------|--------|-------|
+| Client → Server config sync | ✅ | PUT/GET /api/config working |
+| Workspace CRUD | ✅ | Persisted to disk on Create/Delete; loaded on startup (14h) |
+| Task execution + WebSocket push | ✅ | All 24 endpoints implemented |
+| Wiki engine (flat markdown) | ✅ | Frontmatter, index, log.md working |
+| Schema.md support | ✅ | WriteSchema/ReadSchema added; git diff/commit wired (14d) |
+| Skill discovery paths | ✅ | Config-driven via <code>DiscoveryPaths</code>; POST /api/skills/paths for runtime expansion (14i) |
+| Plan persistence | ✅ | SavePlan/LoadPlan added; plan survives budget compression (14e) |
+| Session archival + budget compression | ✅ | Loop-integrated: checkAndCompress called at planning cycle start (line 480) and post-sandbox provisioning (line 539); idempotent; archives transcript before truncation |
+| MCP integration | ✅ | Skills declare endpoints, tools injected on demand |
+| Scheduler + notifications | ✅ | Cron registration, WS push, bell, Slack |
+| OpenShell mTLS auth | ✅ | NewClientWithTLS with ca.crt/tls.crt/tls.key |
+| Config unified under ~/.norman/ | ✅ | All paths resolved (14a) |</p>
+<hr>
+<h2>Future Iteration Path</h2>
+<p>After chat-first MVP:</p>
+<ul>
+<li>Multi-workspace parallel sessions</li>
+<li>Automatic tool detection/installation based on workspace type</li>
+<li>Git-aware operations (diff, commit suggestions)</li>
+<li>External service access (web search, API calls)</li>
+<li>Skill packaging and distribution (<code>norman install skill-name</code>)</li>
+<li><strong>Entity relationship graph</strong> — knowledge graph of relationships between entities</li>
+<li><strong>Vector search</strong> for semantic similarity over LTM entries</li>
+<li><strong>Automatic raw-source ingestion loop</strong> — continuously watch and ingest changes</li>
+</ul>
+<hr>
+<h2>Related Documents</h2>
+<ul>
+<li><code>requirements.md</code> — Full requirements spec (chat-first agent vision)</li>
+<li><code>glossary.md</code> — Terminology reference</li>
+<li><code>docs/llm-integration-plan.md</code> — Provider-agnostic LLM abstraction plan</li>
+<li><code>docs/llm-tool-access-assessment.md</code> — Tool access assessment for environment integration</li>
+<li><code>docs/memory-proposal.md</code> — Memory architecture enhancement proposal</li>
+<li><code>docs/provider-config-drift-assessment.md</code> — Config drift assessment</li>
+<li><code>docs/task-management-assessment.md</code> — Task management assessment</li>
+<li><code>docs/workspace-definition-assessment.md</code> — Workspace definition plan</li>
+<li><code>docs/workspace-skill-install-plan.md</code> — On-demand skill installation plan</li>
+<li><code>docs/config-embedding-proposal.md</code> — Embedded default config proposal</li>
+<li><code>docs/graphify-skill-install-assessment.md</code> — Graphify skill assessment</li>
+<li><code>docs/roger-client-design.md</code> — Roger client design</li>
+</ul>

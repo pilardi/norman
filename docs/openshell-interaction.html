@@ -1,0 +1,141 @@
+<h1>OpenShell Interaction Model for Norman</h1>
+<blockquote>
+<p><strong>API Spec</strong>: <a href="api-reference.html">Full Reference</a></p>
+</blockquote>
+<blockquote>
+<p>How Norman, its agent loop, tool calls, the <code>roger</code> client, and the server interact through the OpenShell sandbox boundary.</p>
+</blockquote>
+<hr>
+<h2>1. The Invisible Boundary</h2>
+<p>OpenShell is <strong>not visible</strong> to the agent or the tools it invokes. From the agent's perspective:</p>
+<ul>
+<li>It sees a normal filesystem, process table, and network stack.</li>
+<li>No special APIs, no <code>openshell</code> binary, no daemon processes are directly callable.</li>
+<li>Isolation is enforced at the kernel level (seccomp, Landlock, cgroups) — the agent cannot detect whether it is in a sandbox or on bare metal.</li>
+</ul>
+<p>OpenShell's purpose: <strong>contain agent actions</strong> into a controlled environment without risking the host machine or exposing secrets. The agent never sees real credentials; OpenShell injects them only for approved endpoints.</p>
+<hr>
+<h2>2. Architecture Overview</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  Host / Cloud Infrastructure                                  │
+│                                                               │
+│  ┌──────────────────┐    TLS/JWT     ┌──────────────────┐   │
+│  │  Gateway          │◄──────────────►│  Supervisor       │   │
+│  │  (Control Plane)  │                │  (Trusted side)   │   │
+│  └──────────────────┘                └────────┬─────────┘   │
+│                                                │             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              OpenShell Sandbox Boundary              │    │
+│  │                                                     │    │
+│  │  ┌─────────────────────────────────────────────┐    │    │
+│  │  │  Workload (Agent + Tools)                    │    │    │
+│  │  │  • Agent loop                                │    │    │
+│  │  │  • `roger` CLI                              │    │    │
+│  │  │  • LLM provider binaries                     │    │    │
+│  │  │  • Skill scripts                             │    │    │
+│  │  └─────────────────────────────────────────────┘    │    │
+│  │                                                     │    │
+│  │  Sandbox (process owner) — untrusted, forwards      │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                               │
+│  [Outer Network Fence: denies all egress except supervisor]   │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>Three connections tie a sandbox together:</strong></p>
+<p>| Connection | Protection | Purpose |
+|---|---|---|
+| Supervisor ↔ Gateway | Gateway JWT over TLS | Policy, credentials, logs |
+| Supervisor ↔ Sandbox | Mutual TLS + Sandbox JWT | Control plane for exec, terminal, process status |
+| Agent → Supervisor (indirect) | Covered by Supervisor↔Sandbox channel | Tool calls, network requests, file access |</p>
+<hr>
+<h2>3. The Client (Norman) — Outside the Boundary</h2>
+<p>Norman is the <strong>server-side orchestrator</strong> that manages the sandbox lifecycle:</p>
+<p>| Responsibility | Mechanism |
+|---|---|
+| Sandbox creation | <code>POST /api/workspaces</code> → compute driver provisions workload + supervisor |
+| Context injection | Writes <code>~/.config/norman/context.json</code> (workspace_id, workspace_name) into new sandboxes |
+| Session lifecycle | <code>POST /api/sessions</code> → creates session, caches under UUID key |
+| Policy enforcement | Gateway delivers policy; formal verification flags risky changes before auto-approval |
+| Credential management | Providers map service names to stored secrets; supervisor hands them out only where policy allows |</p>
+<p>Norman itself <strong>never runs inside</strong> a sandbox. It is the operator that stands outside and manages sandboxes as resources.</p>
+<hr>
+<h2>4. The Agent Loop — Inside the Boundary</h2>
+<p>The agent loop (<code>pkg/agent/loop.go</code>) is the core runtime:</p>
+<pre><code>Agent Loop (inside sandbox)
+    │
+    ├── Reads workspace context from ~/.config/norman/context.json
+    ├── Sends messages to Norman server via WebSocket hub
+    ├── Receives tool calls, skill activations, scheduled tasks
+    └── Invokes tools (LLM providers, MCP clients, filesystem, shell)
+</code></pre>
+<p><strong>Key constraints the agent observes:</strong></p>
+<ul>
+<li><strong>Fail-closed</strong>: Launch is held until supervisor confirms controls; if the Supervisor↔Sandbox connection drops, the agent freezes.</li>
+<li><strong>No direct egress</strong>: All network from the workload must pass through the mediated channel to the supervisor. The outer fence denies everything else (DNS, TCP, other hosts).</li>
+<li><strong>Process identity</strong>: The sandbox identifies the calling executable from trusted <code>/proc</code> data — not a path the agent claims.</li>
+<li><strong>Single non-root identity</strong>: Workload uses one user with no Linux capabilities.</li>
+<li><strong>Backpressure isolation</strong>: Each TCP connection gets its own stream; a slow download cannot block DNS or exec.</li>
+</ul>
+<hr>
+<h2>5. Tool Calls Through the Boundary</h2>
+<p>When the agent invokes a tool (e.g., <code>llm_chat</code>, <code>filesystem_read</code>, <code>shell_exec</code>):</p>
+<ol>
+<li>The sandbox intercepts the system call (via seccomp user notification for network, Landlock for filesystem).</li>
+<li>The request is forwarded over the <strong>Sandbox Protocol</strong> (authenticated Unix socket / TCP / vsock depending on runtime) to the supervisor.</li>
+<li>The supervisor checks it against policy — if allowed, it opens the real connection and relays traffic back.</li>
+<li>If denied or awaiting review, the request blocks until a decision is made.</li>
+</ol>
+<p><strong>The agent never sees credentials.</strong> OpenShell adds them only to requests bound for approved endpoints (e.g., an LLM API key injected for a specific provider call).</p>
+<hr>
+<h2>6. The <code>roger</code> Client — Agent-Facing Bridge</h2>
+<p><code>roger</code> is the <strong>only direct HTTP client</strong> that runs inside sandboxes, bridging scripts and tools back to Norman's server:</p>
+<pre><code>Script / Skill (inside sandbox)
+    │
+    ├── Reads $NORMAN_SERVER_URL from env + context.json
+    ├── Makes authenticated HTTP POST to /api/notifications
+    ├── Or queries /api/workspaces/{id}, /api/sessions/{id}/events
+    └── Returns JSON on stdout, human-readable on stderr
+</code></pre>
+<p><strong>Design choices:</strong></p>
+<ul>
+<li><strong>No mTLS paths in context file</strong> — agents don't call OpenShell directly (that's server-internal). Norman's API auth is handled separately.</li>
+<li><strong>Zero LLM budget consumed</strong> — direct HTTP POST, bypassing the agent loop.</li>
+<li><strong>Session-scoped</strong>: <code>$SESSION_ID</code> env var targets the correct session via <code>WebSocketEvent.SessionId</code>.</li>
+<li><strong>Skill-based deployment</strong>: <code>roger</code> is installed as a builtin skill (<code>pkg/skills/builtin/roger/SKILL.md</code>) — copied to <code>~/.local/bin/roger</code> at sandbox creation. No custom image rebuild needed.</li>
+</ul>
+<hr>
+<h2>7. Network Constraints Summary</h2>
+<p>| Constraint | Effect on Agent |
+|---|---|
+| Outer network fence | Denies all egress except the protected Supervisor↔Sandbox channel |
+| Mediated channel is the <em>only</em> egress path | Agent cannot reach a service, gateway, DNS, or private address directly |
+| Policy prover (gateway) | Flags new credentialed reach, new HTTP methods, cloud metadata access — blocks auto-approval |
+| Fail-closed guarantee | Agent cannot run before controls confirmed; freezes if connection drops |
+| Token binding | Both Gateway JWT and Sandbox JWT are bound to one sandbox + one generation |</p>
+<hr>
+<h2>8. What the Agent Can See vs. Cannot See</h2>
+<p>| Visible | Hidden (kept by OpenShell) |
+|---|---|
+| <code>~/.config/norman/context.json</code> | Gateway signing key |
+| <code>$NORMAN_SERVER_URL</code> env var | Provider credentials (injected at call time only) |
+| <code>/proc</code> process data (sandbox-verified) | Private keys, client certificates |
+| Filesystem via Landlock (policy-gated) | OpenShell daemon internals |</p>
+<p>If the supervisor disconnects, the sandbox freezes the agent. Only the <strong>same</strong> supervisor process can reconnect and resume it — a new supervisor cannot take over a running sandbox, even with valid credentials.</p>
+<hr>
+<h2>9. Runtime Selection (How the Boundary is Built)</h2>
+<p>| Runtime | Supervisor Location | Transport | Egress Blocked By |
+|---|---|---|---|
+| Docker | Its own container | Authenticated Unix socket | Workload networking turned off |
+| Podman | Its own container | Authenticated Unix socket | Workload networking turned off |
+| Kubernetes | Its own pod | Private service + mTLS | NetworkPolicy allows only supervisor |
+| VMA process on host | vsock | Authenticated vsock | Guest has no network device |</p>
+<p>The runtime's job is to build the boundary and prove it's in place. Policy behaves the same way regardless of runtime.</p>
+<hr>
+<h2>10. Reference</h2>
+<ul>
+<li>OpenShell Architecture: https://docs.nvidia.com/openshell/about/architecture</li>
+<li>OpenShell v0.1.5 docs: https://docs.nvidia.com/openshell/v0.1.5/about/overview</li>
+<li>Norman Roger Client Design: <code>docs/roger-client-design.md</code></li>
+</ul>
+<hr>
+<p><em>Draft · 2026-10-24 · Norman project</em></p>

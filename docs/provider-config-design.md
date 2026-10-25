@@ -1,5 +1,8 @@
 # Provider Configuration — Design & Implementation Plan
 
+> **API Spec**: [Full Reference](api-reference.html)
+
+
 > **Branch:** `feat/provider-config`  
 > **Date:** 2026-10-25  
 > **Status:** Draft → In Progress

@@ -1,0 +1,113 @@
+<h1>Workspace Definition Assessment &amp; Plan</h1>
+<blockquote>
+<p><strong>API Spec</strong>: <a href="api-reference.html">Full Reference</a></p>
+</blockquote>
+<blockquote>
+<p><strong>Status:</strong> ✅ <strong>IMPLEMENTED</strong> — All 7 steps completed and committed on branch <code>workspace-definition-assessment</code>.
+<strong>Date:</strong> 2026-10-19
+<strong>Author:</strong> Pablo (via goose)</p>
+</blockquote>
+<hr>
+<h2>Problem Statement</h2>
+<p>The LLM's system prompt (<code>buildSystemPrompt()</code>) gives the agent a generic identity (&quot;helpful AI assistant&quot;) but <strong>no definition of what the workspace <em>is</em></strong> — its purpose, boundaries, or domain. This means:</p>
+<ul>
+<li>The agent has no anchor for <em>why</em> it's acting in a given session</li>
+<li>Wiki entries lack workspace-level scoping metadata</li>
+<li>Compression can't distinguish &quot;this project's decision&quot; from &quot;general knowledge&quot;</li>
+<li>Skill activation matches only on prompt keywords, not domain grounding</li>
+<li>Cross-workspace contamination risk (similar file structures → conflate wiki entries)</li>
+</ul>
+<hr>
+<h2>Current State Analysis</h2>
+<p>| Layer | Definition | Gap |
+|-------|-----------|-----|
+| <strong>Infrastructure</strong> (<code>pkg/env/workspace.go</code>) | OpenShell sandbox container mapped to a workspace name | Purely infra — no semantic meaning |
+| <strong>Memory</strong> (<code>pkg/memory/store.go</code>) | JSON file in <code>.norman/workspaces/&lt;name&gt;.json</code> storing arbitrary key-value data | Just a persistence handle; no schema |
+| <strong>Session</strong> (<code>pkg/agent/loop.go</code>) | Chat conversation bound to workspace via <code>session_id</code> | Good — but workspace has no identity beyond its name |
+| <strong>System Prompt</strong> (<code>buildSystemPrompt()</code>) | Generic: &quot;You are Norman, a helpful AI assistant operating inside an OpenShell sandbox environment...&quot; | <strong>No workspace-specific identity or purpose injected.</strong> |</p>
+<hr>
+<h2>Proposed Workspace Definition (for System Prompt)</h2>
+<pre><code class="language-markdown">## Workspace Identity
+
+You are operating inside a **workspace** — a bounded project environment with a specific purpose.
+
+A workspace is defined by:
+- **Purpose**: What problem or domain it addresses (e.g., &quot;API migration for X service&quot;)
+- **Scope**: Which subsystems, repos, or services fall under it
+- **Boundaries**: What is *inside* the workspace vs. external context
+- **State**: The current `.norman/` memory state that persists across sessions
+
+The workspace definition is provided at session start and should be referenced when:
+- Creating new wiki entries (tag with workspace identity)
+- Deciding what to preserve vs. compress in STM
+- Activating skills (match against workspace domain keywords)
+- Evaluating whether an observation is reusable (does it apply to this workspace?)
+
+If no explicit purpose is provided, infer one from the file tree and existing wiki entries.
+</code></pre>
+<hr>
+<h2>Impact on Agent Memory Layers</h2>
+<p>| Layer | Current Behavior | With Workspace Definition |
+|-------|-----------------|--------------------------|
+| <strong>STM</strong> | No anchor for <em>why</em> the agent acts; every session starts fresh | Context anchored to workspace purpose; coherence across turns |
+| <strong>LTM (Wiki)</strong> | Entries have no workspace-level metadata; conflation risk | Entries tagged <code>workspace: &lt;name&gt;</code>; scoping enforced |
+| <strong>Compression</strong> | Discards context without knowing relevance to domain | Preserves workspace-specific decisions; discards generic filler |
+| <strong>Session Bootstrap</strong> | Injects pointers to entries but no identity grounding | Bootstrap prioritizes entries matching this workspace's purpose |
+| <strong>Skill Activation</strong> | Matches on prompt keywords only | Matches against workspace tags/purpose for proactive activation |</p>
+<hr>
+<h2>Risks Without This Fix</h2>
+<ol>
+<li><strong>Cross-workspace contamination</strong>: Similar file structures (e.g., both have <code>README.md</code>, <code>main.go</code>) → conflate wiki entries</li>
+<li><strong>Stale knowledge bleeding</strong>: &quot;Trending&quot; entries from one project may appear in another's context</li>
+<li><strong>No workspace-level lifecycle</strong>: Agent can't distinguish &quot;new user&quot; from &quot;resuming work&quot; without identity anchor</li>
+</ol>
+<hr>
+<h2>Implementation Plan</h2>
+<p>| Step | Action | Files Affected | Effort | Priority |
+|------|--------|----------------|--------|----------|
+| <strong>1</strong> | Add <code>WorkspaceDefinition</code> struct with <code>name</code>, <code>purpose</code>, <code>scope</code>, <code>tags</code> fields to <code>pkg/env/workspace.go</code> | <code>workspace.go</code> | Low | <strong>Immediate</strong> |
+| <strong>2</strong> | Update <code>buildSystemPrompt()</code> to inject workspace identity into system prompt | <code>loop.go</code> → <code>buildSystemPrompt()</code> | Low | <strong>Immediate</strong> |
+| <strong>3</strong> | Add workspace-level metadata (<code>workspace:</code> frontmatter field) to wiki entries | <code>wiki/entry.go</code>, <code>memory/store.go</code> | Medium | Short-term |
+| <strong>4</strong> | Update session bootstrap to include workspace identity in <code>[SESSION BOOTSTRAP]</code> section | <code>loop.go</code> → <code>buildMessages()</code> | Low | Short-term |
+| <strong>5</strong> | Add workspace-aware skill activation — match skills against workspace tags/purpose | <code>skills/activate.go</code>, <code>agent/loop.go</code> → <code>resolveSkills()</code> | Medium | Longer-term |
+| <strong>6</strong> | Update <code>AGENTS.md</code> maintenance rules to reference workspace identity in deduplication and decay logic | <code>AGENTS.md</code> | Low | Short-term |
+| <strong>7</strong> | Add <code>/api/workspaces</code> endpoint for explicit workspace definition management (create, read, update) | <code>internal/api/handlers.go</code>, <code>protocol/types.go</code> | Medium | Longer-term |</p>
+<hr>
+<h2>Priority Recommendation</h2>
+<ul>
+<li><strong>Immediate</strong>: Steps 1–2 and 6. Lowest effort, highest impact on agent reasoning quality.</li>
+<li><strong>Short-term</strong>: Steps 3–4. Ensures LTM entries are properly scoped to their workspace from creation.</li>
+<li><strong>Longer-term</strong>: Steps 5 and 7. Skill activation and API management enhance but don't fix the core reasoning gap.</li>
+</ul>
+<hr>
+<h2>Key Insight</h2>
+<p>The workspace definition isn't just metadata — it's the <strong>anchor</strong> that makes all other memory layers coherent. Without it, the wiki is a flat dump with no namespace; with it, every memory operation gets a <code>workspace:</code> tag for scoping, and the bootstrap mechanism can prioritize entries relevant to <em>this</em> workspace's identity over generic ones.</p>
+<hr>
+<h2>Implementation Status (Updated 2026-10-19)</h2>
+<p>| Step | Action | Status | Commit |
+|------|--------|--------|--------|
+| <strong>1</strong> | Add <code>WorkspaceDefinition</code> struct with <code>name</code>, <code>purpose</code>, <code>scope</code>, <code>tags</code> fields to <code>pkg/env/workspace.go</code> | ✅ Complete | <code>064a0f2</code> |
+| <strong>2</strong> | Update <code>buildSystemPrompt()</code> to inject workspace identity into system prompt | ✅ Complete | <code>5014a8f</code> |
+| <strong>3</strong> | Add workspace-level metadata (<code>workspace:</code> frontmatter field) to wiki entries | ✅ Complete | <code>8a1c283</code> |
+| <strong>4</strong> | Update session bootstrap to include workspace identity in <code>[SESSION BOOTSTRAP]</code> section | ✅ Complete | <code>685fbfd</code> |
+| <strong>5</strong> | Add workspace-aware skill activation — match skills against workspace tags/purpose | ✅ Complete | <code>70e46ed</code> |
+| <strong>6</strong> | Update <code>AGENTS.md</code> maintenance rules to reference workspace identity in deduplication and decay logic | ✅ Complete | <code>70e46ed</code> |
+| <strong>7</strong> | Add <code>/api/workspaces</code> endpoint for explicit workspace definition management (create, read, update) | ✅ Complete | <code>8d18d06</code> |</p>
+<h3>What Was Built</h3>
+<ul>
+<li><strong>Infrastructure layer:</strong> <code>WorkspaceDefinition</code> struct with serialization (<code>ToMap</code>/<code>FromMap</code>) and system prompt generation (<code>AsSystemPrompt()</code>)</li>
+<li><strong>Memory layer:</strong> Wiki entries now carry <code>workspace:</code> frontmatter; <code>Filter.Workspace</code> enables scoped LTM queries; <code>CreateWithWorkspace()</code> convenience method</li>
+<li><strong>Session layer:</strong> System prompt prepends workspace identity block; bootstrap messages include workspace purpose/scope/tags</li>
+<li><strong>Skill activation:</strong> <code>MatchSkillWithWorkspace()</code> matches skills against workspace tags, scope items, and purpose keywords</li>
+<li><strong>API layer:</strong> Full CRUD + partial-update (<code>PATCH</code>) for workspaces via <code>/api/workspaces</code> endpoints with proper OpenAPI spec</li>
+</ul>
+<h3>Remaining Future Work (Post-MVP)</h3>
+<ul>
+<li>[ ] Per-workspace axes.json opt-in (memory-proposal.md Phase 2)</li>
+<li>[ ] Vector search fallback for LTM beyond flat markdown</li>
+<li>[ ] CLI commands: <code>norman workspace create/update/delete list</code></li>
+<li>[ ] Cross-workspace contamination detection in compression logic</li>
+<li>[ ] Workspace lifecycle events (archive, merge, fork)</li>
+</ul>
+<hr>
+<p><em>This document serves as both the assessment artifact and the implementation blueprint.</em></p>

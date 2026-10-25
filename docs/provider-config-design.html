@@ -1,0 +1,176 @@
+<h1>Provider Configuration — Design &amp; Implementation Plan</h1>
+<blockquote>
+<p><strong>API Spec</strong>: <a href="api-reference.html">Full Reference</a></p>
+</blockquote>
+<blockquote>
+<p><strong>Branch:</strong> <code>feat/provider-config</code><br>
+<strong>Date:</strong> 2026-10-25<br>
+<strong>Status:</strong> Draft → In Progress</p>
+</blockquote>
+<hr>
+<h2>1. Problem Statement</h2>
+<p>The <code>norman config</code> CLI command exposes general server settings (port, host, bell, rate limit) but does <strong>not</strong> let users configure LLM providers — neither adding new ones nor editing existing ones. The data model (<code>ProviderConfig</code>) and runtime consumer (<code>NewClientWithProvider</code>) already exist; the gap is the <strong>CLI display/update path</strong> and the <strong>server-side PUT handler</strong>.</p>
+<hr>
+<h2>2. Target Design</h2>
+<h3>2.1 API Endpoints (new)</h3>
+<p>Add four CRUD endpoints under <code>/api/providers</code>:</p>
+<p>| Method | Path | Description |
+|--------|------|-------------|
+| <code>GET</code>  | <code>/api/providers</code> | List all configured providers |
+| <code>POST</code> | <code>/api/providers</code> | Add a new provider (validates type/model/api_key) |
+| <code>PUT</code>  | <code>/api/providers/{name}</code> | Update an existing provider's fields |
+| <code>DELETE</code> | <code>/api/providers/{name}</code> | Remove a provider (fails if it's the last one or selected by CLI flag) |</p>
+<h3>2.2 Schema Addition to <code>api-spec.yaml</code></h3>
+<pre><code class="language-yaml">components:
+  schemas:
+    ProviderConfig:
+      type: object
+      required: [name, type, endpoint]
+      properties:
+        name:
+          type: string
+          description: Unique provider identifier (e.g., &quot;default&quot;, &quot;local-llama&quot;)
+        type:
+          type: string
+          enum: [openai, anthropic, ollama, gemini, llamacpp]
+          description: Provider implementation type
+        endpoint:
+          type: string
+          format: uri
+          description: Base API URL (e.g., &quot;https://api.openai.com/v1&quot;)
+        model:
+          type: string
+          description: Default model name for this provider
+        temperature:
+          type: number
+          format: float
+          description: Provider default temperature (0–2)
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: Provider default max tokens per call
+        api_key:
+          type: string
+          description: API key (masked in GET responses, required for openai/anthropic types)
+        extra:
+          type: object
+          additionalProperties: true
+          description: Type-specific fields (e.g., cache_size for llamacpp)
+
+    ProviderCreateRequest:
+      type: object
+      required: [name, type, endpoint]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [openai, anthropic, ollama, gemini, llamacpp]
+        endpoint:
+          type: string
+        model:
+          type: string
+        temperature:
+          type: number
+          format: float
+        max_tokens:
+          type: integer
+        api_key:
+          type: string
+        extra:
+          type: object
+          additionalProperties: true
+
+    ProviderUpdateRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [openai, anthropic, ollama, gemini, llamacpp]
+        endpoint:
+          type: string
+        model:
+          type: string
+        temperature:
+          type: number
+          format: float
+        max_tokens:
+          type: integer
+        api_key:
+          type: string
+        extra:
+          type: object
+          additionalProperties: true
+
+    ProviderResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        endpoint:
+          type: string
+        model:
+          type: string
+        temperature:
+          type: number
+          format: float
+        max_tokens:
+          type: integer
+        api_key_masked:
+          type: boolean
+          description: true if api_key is non-empty (never returns raw key in GET)
+        extra:
+          type: object
+          additionalProperties: true
+</code></pre>
+<h3>2.3 CLI Enhancements (<code>cmd/norman/config.go</code>)</h3>
+<ul>
+<li><strong>Display</strong>: Append provider listing to human-readable and <code>--json</code> output</li>
+<li><strong>Set</strong>: Accept dotted-path syntax for individual fields, e.g.:
+<pre><code class="language-bash">norman config --set providers.0.name=local
+norman config --set providers.0.type=ollama
+norman config --set providers.0.endpoint=http://localhost:11434
+norman config --set providers.0.model=llama3
+</code></pre>
+</li>
+<li><strong>Add</strong>: New command <code>norman provider add &lt;name&gt; --type &lt;type&gt; --endpoint &lt;url&gt;</code> (delegated to PUT /api/providers)</li>
+</ul>
+<h3>2.4 Server-Side (<code>cmd/norman-server/config.go</code>)</h3>
+<p>Extend <code>mergeUpdatesIntoSystem</code> to handle:</p>
+<ul>
+<li><code>&quot;providers&quot;</code> key → JSON array of ProviderCreateRequest objects → append to <code>cfg.System.LlmProviders</code></li>
+<li><code>&quot;providers.0.name&quot;</code> style keys → partial update on existing provider by index/name</li>
+</ul>
+<h3>2.5 Workspace-Level Provider Override (future)</h3>
+<p>Add <code>ProviderName string</code> field to <code>WorkspaceConfig</code> — allows per-workspace provider selection without duplicating endpoint config.</p>
+<hr>
+<h2>3. Implementation Order</h2>
+<p>| Step | File(s) | Change |
+|------|---------|--------|
+| 1 | <code>api-spec.yaml</code> | Add Provider schemas + CRUD paths |
+| 2 | Run <code>make generate</code> | Regenerate <code>pkg/protocol/types.go</code>, <code>client.go</code>, <code>handlers.go</code> |
+| 3 | <code>cmd/norman-server/config.go</code> | Extend <code>mergeUpdatesIntoSystem</code> for provider keys |
+| 4 | <code>cmd/norman-server/routes.go</code> | Wire up new provider endpoints (GET/POST/PUT/DELETE) |
+| 5 | <code>cmd/norman/config.go</code> | Add display + <code>--set</code> handling for providers |
+| 6 | <code>pkg/config/config_test.go</code> | Add tests for provider validation &amp; merge |</p>
+<hr>
+<h2>4. Validation Rules</h2>
+<ul>
+<li><code>name</code> must be unique across the list (case-insensitive)</li>
+<li><code>type</code> must be one of: <code>openai</code>, <code>anthropic</code>, <code>ollama</code>, <code>gemini</code>, <code>llamacpp</code></li>
+<li><code>endpoint</code> must be a valid URI</li>
+<li>For <code>openai</code> and <code>anthropic</code> types, <code>api_key</code> is required (non-empty)</li>
+<li><code>temperature</code> must be in <code>[0, 2]</code></li>
+<li><code>max_tokens</code> must be &gt;= 1</li>
+<li>Cannot delete the last remaining provider</li>
+<li>Cannot delete a provider that is currently selected via <code>-p</code> flag (runtime conflict)</li>
+</ul>
+<hr>
+<h2>5. Backward Compatibility</h2>
+<ul>
+<li>Existing configs without <code>llm_providers</code> continue to work (empty list = no providers, falls back to embedded defaults)</li>
+<li>The <code>&quot;default&quot;</code> provider from <code>config_defaults.yaml</code> is preserved as-is</li>
+<li><code>SystemConfig.DefaultModel</code>, <code>Temperature</code>, <code>MaxTokens</code> fields remain for workspace-level overrides but are superseded by provider-level values</li>
+</ul>

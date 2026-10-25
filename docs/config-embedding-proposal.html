@@ -1,0 +1,139 @@
+<h1>Proposal: Embedded Default Configuration &amp; Help Message Consistency</h1>
+<blockquote>
+<p><strong>API Spec</strong>: <a href="api-reference.html">Full Reference</a></p>
+</blockquote>
+<h2>Problem Statement</h2>
+<p>Currently, Norman's configuration has a two-tier model that creates friction:</p>
+<ol>
+<li><strong>Compiled defaults</strong> are hardcoded as Go constants (<code>DefaultModel</code>, <code>DefaultServerPort</code>, etc.) in <code>pkg/config/config.go</code>.</li>
+<li><strong>User-overridable config</strong> lives at <code>~/.norman/config.yaml</code> (loaded by <code>LoadDefault()</code>).</li>
+<li>The CLI client and server each have their own help text, leading to drift between what the CLI prints and what the server prints.</li>
+</ol>
+<p>The desired behavior is:</p>
+<ul>
+<li>A single canonical <code>config.yaml</code> shipped alongside <code>main.go</code> (server) defines <strong>defaults</strong> that are baked into the compiled binary.</li>
+<li>When no <code>.norman/config.yaml</code> exists in the server's environment, those embedded defaults are used — they are <strong>not user-modifiable</strong>.</li>
+<li>When a user creates/edits <code>~/.norman/config.yaml</code>, it becomes an <strong>overlay</strong> that can override the embedded defaults (user-modifiable).</li>
+<li>The help message for both server and client is generated from a single source of truth.</li>
+</ul>
+<hr>
+<h2>Proposed Architecture</h2>
+<h3>1. Embedded Default Config (<code>config_defaults.yaml</code>)</h3>
+<pre><code>cmd/norman-server/config_defaults.yaml   ← shipped alongside main.go, compiled into binary
+pkg/config/embedded.go                     ← Go code that reads the YAML at build time
+</code></pre>
+<p>The file defines the <em>system defaults</em> — values that are immutable unless you recompile. Example:</p>
+<pre><code class="language-yaml"># config_defaults.yaml
+system:
+  default_model: &quot;gpt-4o&quot;
+  server_port: 8080
+  host: &quot;127.0.0.1&quot;
+  temperature: 0.7
+  max_tokens: 32000
+  skills:
+    discovery_paths:
+      - &quot;~/.norman/skills/&quot;
+      - &quot;/usr/share/norman/skills/&quot;
+    max_active: 3
+    path: &quot;~/.norman/skills/&quot;
+  notify:
+    bell_enabled: true
+    rate_limit_per_minute: 10
+  logging:
+    verbose: false
+  llm_providers: []
+  default_provider: &quot;&quot;
+</code></pre>
+<p>This YAML is read at build time (via <code>go:embed</code>) and used as the fallback when no user config exists.</p>
+<h3>2. Runtime Config Resolution Order</h3>
+<pre><code>Priority (highest → lowest):
+  1. CLI flags / env vars (--provider, NORMAN_HOST, etc.)
+  2. ~/.norman/config.yaml          ← user overlay (modifiable)
+  3. Embedded defaults from config_defaults.yaml  ← compiled-in fallback
+</code></pre>
+<p>The <code>Load()</code> function in <code>pkg/config</code> would change:</p>
+<pre><code class="language-go">// LoadDefault reads the user config; if absent, falls back to embedded defaults.
+func LoadDefault() (*Config, error) {
+    path := filepath.Join(os.Getenv(&quot;HOME&quot;), &quot;.norman&quot;, &quot;config.yaml&quot;)
+    
+    // Try user overlay first
+    data, err := os.ReadFile(path)
+    if err == nil {
+        c := DefaultConfig()
+        yaml.Unmarshal(data, c)
+        return c, nil  // user config found — done
+    }
+    
+    // No user config → use embedded defaults
+    return EmbeddedDefaults(), nil
+}
+</code></pre>
+<h3>3. Help Message Unification</h3>
+<p>The help text currently appears in two places:</p>
+<p>| Location | Content |
+|----------|---------|
+| <code>cmd/norman-server/main.go</code> (<code>--help</code>) | Server flags, env vars, provider info |
+| <code>cmd/norman/main.go</code> (<code>printUsage()</code>) | CLI commands, flags |</p>
+<p><strong>Proposal</strong>: Move both help texts into a shared function in <code>pkg/config/help.go</code>, driven by the embedded defaults. This ensures that if a default changes (e.g., port → 9090), both help messages update automatically.</p>
+<pre><code class="language-go">// pkg/config/help.go
+func ServerHelpText() string { ... }   // used by server main
+func ClientHelpText() string { ... }   // used by CLI main
+</code></pre>
+<p>The text templates would reference constants/defaults rather than hardcoding values like <code>8080</code> or <code>gpt-4o</code>.</p>
+<h3>4. Migration Path</h3>
+<p>| Phase | Action |
+|-------|--------|
+| 1 | Create <code>config_defaults.yaml</code> with current hardcoded defaults |
+| 2 | Add <code>go:embed</code> directive in <code>pkg/config/embedded.go</code> to load it at build time |
+| 3 | Refactor <code>LoadDefault()</code> to prefer user config, fall back to embedded |
+| 4 | Extract help text into shared templates referencing embedded values |
+| 5 | Update server and CLI main.go to call the shared help functions |
+| 6 | Add tests for: (a) no-user-config → embedded defaults used; (b) user-config present → overrides embedded; (c) help text consistency |</p>
+<hr>
+<h2>Design Decisions &amp; Trade-offs</h2>
+<h3>Why not just hardcode Go constants in <code>main.go</code>?</h3>
+<p>Hardcoded literals (<code>const DefaultModel = &quot;gpt-4o&quot;</code>) are also compiled into the binary and read-only at runtime — so both approaches achieve immutability. The difference is <em>where</em> the definition lives:</p>
+<ul>
+<li><strong>Go constants</strong> are scattered across <code>.go</code> files as source code, mixed with logic. A non-developer can't easily audit what's baked in without reading Go syntax.</li>
+<li><strong>Embedded YAML</strong> is a standalone data file referenced by <code>embed.FS</code>. It's plain text, readable by anyone, and clearly separated from loading logic.</li>
+</ul>
+<p>This matters because your goal is to <em>remove defaults from the code</em> while keeping them post-compilation immutable. <code>go:embed</code> achieves both: no Go literals remain in <code>main.go</code>, and the YAML is baked into the binary at build time (not a user-editable file on disk).</p>
+<h3>What about &quot;not user modifiable&quot;?</h3>
+<p>The proposal distinguishes two modes:</p>
+<ul>
+<li><strong>Embedded defaults</strong>: Read-only, baked into binary. Used when <code>~/.norman/config.yaml</code> is absent.</li>
+<li><strong>User overlay</strong>: When the file exists, it <em>replaces</em> embedded defaults (full merge). User can edit freely.</li>
+</ul>
+<p>This means &quot;not user modifiable&quot; applies only to the <em>absence</em> case — if the user wants to customize, they create the file and it becomes modifiable.</p>
+<h3>Consistency guarantee</h3>
+<p>Help messages are now single-source:</p>
+<pre><code class="language-go">const defaultPort = 8080  // in config_defaults.yaml + embedded.go
+// Both server and CLI templates reference `defaultPort`, not &quot;8080&quot; literally.
+</code></pre>
+<hr>
+<h2>File Changes Summary</h2>
+<p>| File | Change |
+|------|--------|
+| <code>pkg/config/config_defaults.yaml</code> (new) | Canonical defaults YAML, compiled into binary via go:embed |
+| <code>pkg/config/embedded.go</code> (new) | <code>go:embed</code> directive + <code>EmbeddedDefaults()</code> function |
+| <code>pkg/config/config.go</code> (modify) | <code>LoadDefault()</code> falls back to embedded; remove hardcoded constants |
+| <code>pkg/config/help.go</code> (new) | Shared help text templates driven by embedded defaults |
+| <code>cmd/norman-server/main.go</code> (modify) | Use <code>config.ServerHelpText()</code> instead of inline string |
+| <code>cmd/norman/main.go</code> (modify) | Use <code>config.ClientHelpText()</code> instead of inline string |</p>
+<hr>
+<h2>Testing Plan</h2>
+<ol>
+<li><strong>Unit tests</strong> in <code>pkg/config/embedded_test.go</code>: verify embedded YAML parses into <code>Config</code>.</li>
+<li><strong>Integration test</strong>: simulate no-user-config → verify defaults match embedded.</li>
+<li><strong>Integration test</strong>: simulate user config present → verify merge behavior.</li>
+<li><strong>Consistency check</strong>: diff server help vs. CLI help output for structural parity (same flags, same defaults listed).</li>
+</ol>
+<hr>
+<h2>Open Questions</h2>
+<ol>
+<li>Should <code>config_defaults.yaml</code> be git-tracked or generated at build time? → <em>Recommend: git-tracked for reproducibility.</em></li>
+<li>Should embedded defaults support the full <code>Config</code> schema (including providers) or just system-level fields? → <em>Full schema to avoid split logic.</em></li>
+<li>How do we handle backward compatibility with existing <code>~/.norman/config.yaml</code> files that may use different field names? → <em>YAML merge semantics: user file fully replaces embedded defaults, so no partial-merge risk.</em></li>
+</ol>
+<hr>
+<p><em>Draft — v0.1 | 2026-10-22</em></p>

@@ -1,5 +1,8 @@
 # Memory Architecture Enhancement Proposal
 
+> **API Spec**: [Full Reference](api-reference.html)
+
+
 > **Status:** Draft — awaiting review before implementation.
 > **Source of ideas:** gajae-way (https://github.com/Yeachan-Heo/gajae-way) memory system and session bootstrap mechanism.
 > **Date:** 2026-10-15
