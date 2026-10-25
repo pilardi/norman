@@ -21,6 +21,7 @@ Usage: norman config [--set key=value | --json]
 
 Options:
   --set     Set a config value (e.g., --set server_port=9090)
+            For providers use dot-path notation: --set providers.0.name=myprovider
   --json    Output as machine-readable JSON
 
 Config is managed by the server at ~/.config/norman/config.yaml.
@@ -73,8 +74,13 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 		case "openshell_address":
 			update["openshell_address"] = val
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
-			os.Exit(1)
+			// Check if it's a provider dot-path (e.g., "providers.0.name")
+			if strings.HasPrefix(key, "providers.") {
+				update[key] = val
+			} else {
+				fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
+				os.Exit(1)
+			}
 		}
 
 		// POST update to server
@@ -103,6 +109,27 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			"rate_limit_per_min": cfg.Notify.RateLimitPerMin,
 			"openshell_address":  resolvedGateway,
 		}
+
+		// Include providers if available.
+		if len(cfg.LlmProviders) > 0 {
+			providers := make([]map[string]interface{}, len(cfg.LlmProviders))
+			for i, p := range cfg.LlmProviders {
+				prov := map[string]interface{}{
+					"name":      p.Name,
+					"type":      p.Type,
+					"endpoint":  p.Endpoint,
+					"model":     p.Model,
+					"temp":      p.Temperature,
+					"max_tokens": p.MaxTokens,
+				}
+				if len(p.Extra) > 0 {
+					prov["extra"] = p.Extra
+				}
+				providers[i] = prov
+			}
+			output["providers"] = providers
+		}
+
 		data, _ := json.MarshalIndent(output, "", "  ")
 		fmt.Println(string(data))
 		return
@@ -130,6 +157,23 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	}
 
 	// Note: workspace overrides are managed server-side; client cannot read them here.
+
+	// Display providers if any exist.
+	if len(cfg.LlmProviders) > 0 {
+		fmt.Println("  providers:")
+		for i, p := range cfg.LlmProviders {
+			masked := " (key masked)"
+			if p.ApiKey == "" {
+				masked = ""
+			}
+			fmt.Printf("    [%d] name: %s\n", i+1, p.Name)
+			fmt.Printf("        type:     %s\n", p.Type)
+			fmt.Printf("        endpoint: %s\n", p.Endpoint)
+			fmt.Printf("        model:    %s\n", p.Model)
+			fmt.Printf("        temp:     %.2f\n", p.Temperature)
+			fmt.Printf("        max_tokens: %d%s\n", p.MaxTokens, masked)
+		}
+	}
 }
 
 // getConfig fetches the current system config from the server.

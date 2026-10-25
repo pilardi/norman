@@ -25,6 +25,8 @@ tags:
     description: Manual recurring/cron task registration
   - name: websocket
     description: Real-time push events to connected clients
+  - name: provider
+    description: LLM provider lifecycle management (add, list, update, remove)
 
 paths:
   /api/workspaces:
@@ -679,6 +681,110 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WebSocketEvent"
+
+  /api/providers:
+    get:
+      tags: [provider]
+      summary: List all configured LLM providers
+      operationId: listProviders
+      responses:
+        "200":
+          description: List of configured providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProviderResponse"
+
+    post:
+      tags: [provider]
+      summary: Add a new LLM provider
+      operationId: createProvider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderCreateRequest"
+      responses:
+        "201":
+          description: Provider created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderResponse"
+        "400":
+          description: Invalid request (e.g., duplicate name, missing required fields)
+        "409":
+          description: Provider with this name already exists
+
+  /api/providers/{name}:
+    get:
+      tags: [provider]
+      summary: Get provider details by name
+      operationId: getProvider
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Provider details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderResponse"
+        "404":
+          description: Provider not found
+
+    put:
+      tags: [provider]
+      summary: Update an existing provider's configuration
+      operationId: updateProvider
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderUpdateRequest"
+      responses:
+        "200":
+          description: Provider updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderResponse"
+        "400":
+          description: Invalid request (e.g., invalid type, temperature out of range)
+        "404":
+          description: Provider not found
+
+    delete:
+      tags: [provider]
+      summary: Remove a provider (cannot delete the last remaining one)
+      operationId: deleteProvider
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Provider removed successfully
+        "400":
+          description: Cannot delete the last remaining provider
+        "404":
+          description: Provider not found
 
 components:
   schemas:
@@ -1400,3 +1506,134 @@ components:
       additionalProperties:
         $ref: "#/components/schemas/WorkspaceConfig"
       description: Map of workspace_id -> WorkspaceConfig
+
+    # --- Provider Schemas ---
+
+    ProviderConfig:
+      type: object
+      required: [name, type, endpoint]
+      properties:
+        name:
+          type: string
+          description: Unique provider identifier (e.g., "default", "local-llama")
+        type:
+          type: string
+          enum: [openai, anthropic, ollama, gemini, llamacpp]
+          description: Provider implementation type
+        endpoint:
+          type: string
+          format: uri
+          description: Base API URL (e.g., "https://api.openai.com/v1")
+        model:
+          type: string
+          description: Default model name for this provider
+        temperature:
+          type: number
+          format: float
+          description: Provider default temperature (0–2)
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: Provider default max tokens per call
+        api_key:
+          type: string
+          description: API key (masked in GET responses, required for openai/anthropic types)
+        extra:
+          type: object
+          additionalProperties: true
+          description: Type-specific fields (e.g., cache_size for llamacpp)
+
+    ProviderCreateRequest:
+      type: object
+      required: [name, type, endpoint]
+      properties:
+        name:
+          type: string
+          description: Unique provider identifier
+        type:
+          type: string
+          enum: [openai, anthropic, ollama, gemini, llamacpp]
+          description: Provider implementation type
+        endpoint:
+          type: string
+          format: uri
+          description: Base API URL (e.g., "https://api.openai.com/v1")
+        model:
+          type: string
+          description: Default model name for this provider
+        temperature:
+          type: number
+          format: float
+          description: Provider default temperature (0–2)
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: Provider default max tokens per call
+        api_key:
+          type: string
+          description: API key (required for openai/anthropic types)
+        extra:
+          type: object
+          additionalProperties: true
+          description: Type-specific fields (e.g., cache_size for llamacpp)
+
+    ProviderUpdateRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [openai, anthropic, ollama, gemini, llamacpp]
+          description: Provider implementation type
+        endpoint:
+          type: string
+          format: uri
+          description: Base API URL (e.g., "https://api.openai.com/v1")
+        model:
+          type: string
+          description: Default model name for this provider
+        temperature:
+          type: number
+          format: float
+          description: Provider default temperature (0–2)
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: Provider default max tokens per call
+        api_key:
+          type: string
+          description: API key (required for openai/anthropic types when type is changed)
+        extra:
+          type: object
+          additionalProperties: true
+          description: Type-specific fields (e.g., cache_size for llamacpp)
+
+    ProviderResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Unique provider identifier
+        type:
+          type: string
+          enum: [openai, anthropic, ollama, gemini, llamacpp]
+          description: Provider implementation type
+        endpoint:
+          type: string
+          description: Base API URL
+        model:
+          type: string
+          description: Default model name for this provider
+        temperature:
+          type: number
+          format: float
+          description: Provider default temperature (0–2)
+        max_tokens:
+          type: integer
+          description: Provider default max tokens per call
+        api_key_masked:
+          type: boolean
+          description: true if api_key is non-empty (never returns raw key in GET responses)
+        extra:
+          type: object
+          additionalProperties: true
+          description: Type-specific fields (e.g., cache_size for llamacpp)

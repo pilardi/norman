@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/config"
@@ -106,9 +107,87 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				return fmt.Errorf("openshell_address must be a string")
 			}
 		default:
+			// Handle provider dot-path keys (e.g., "providers.0.name", "providers.1.temperature")
+			if strings.HasPrefix(k, "providers.") {
+				if err := applyProviderUpdate(cfg, k, v); err != nil {
+					return err
+				}
+				continue
+			}
 			return fmt.Errorf("unknown config key: %s", k)
 		}
 	}
+	return nil
+}
+
+// applyProviderUpdate applies a dot-path update to a specific provider.
+// Expected format: "providers.<index>.<field>"
+func applyProviderUpdate(cfg *config.SystemConfig, path string, value interface{}) error {
+	parts := strings.SplitN(path, ".", 3)
+	if len(parts) != 3 || parts[0] != "providers" {
+		return fmt.Errorf("invalid provider path: %s", path)
+	}
+
+	// Parse index.
+	var idx int
+	if _, err := fmt.Sscanf(parts[1], "%d", &idx); err != nil {
+		return fmt.Errorf("invalid provider index in %s: %v", path, err)
+	}
+
+	if idx < 0 || idx >= len(cfg.LlmProviders) {
+		return fmt.Errorf("provider index %d out of range (have %d providers)", idx, len(cfg.LlmProviders))
+	}
+
+	prov := &cfg.LlmProviders[idx]
+	field := parts[2]
+
+	switch field {
+	case "name":
+		if s, ok := value.(string); ok {
+			prov.Name = s
+		} else {
+			return fmt.Errorf("providers.%d.name must be a string", idx)
+		}
+	case "type":
+		if s, ok := value.(string); ok {
+			prov.Type = s
+		} else {
+			return fmt.Errorf("providers.%d.type must be a string", idx)
+		}
+	case "endpoint":
+		if s, ok := value.(string); ok {
+			prov.Endpoint = s
+		} else {
+			return fmt.Errorf("providers.%d.endpoint must be a string", idx)
+		}
+	case "model":
+		if s, ok := value.(string); ok {
+			prov.Model = s
+		} else {
+			return fmt.Errorf("providers.%d.model must be a string", idx)
+		}
+	case "temperature":
+		if f, ok := value.(float64); ok {
+			prov.Temperature = f
+		} else {
+			return fmt.Errorf("providers.%d.temperature must be a number", idx)
+		}
+	case "max_tokens":
+		if f, ok := value.(float64); ok {
+			prov.MaxTokens = int(f)
+		} else {
+			return fmt.Errorf("providers.%d.max_tokens must be a number", idx)
+		}
+	case "api_key":
+		if s, ok := value.(string); ok {
+			prov.ApiKey = s
+		} else {
+			return fmt.Errorf("providers.%d.api_key must be a string", idx)
+		}
+	default:
+		return fmt.Errorf("unknown provider field %q", field)
+	}
+
 	return nil
 }
 
