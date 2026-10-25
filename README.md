@@ -52,8 +52,18 @@ echo "What files changed this week?" | ./dist/norman sessions open my-project
 | `/switch <id>` | Switch to another session |
 | `/archive <id>` | Archive a session's transcript |
 
-**4. Manage workspaces and skills:**
+**Real-time events:** While in the REPL, you'll also see server push events streamed live — task progress updates (`[ws] task_progress step=N`), budget compression notifications (`[ws] session_compressed budget threshold: 75%`), and system notifications.
+
+**4. Manage providers, workspaces and skills:**
 ```bash
+# LLM provider configuration (type, endpoint, model, API key)
+./dist/norman providers add myprovider --type openai --endpoint https://api.openai.com/v1 --model gpt-4o
+./dist/norman providers list
+./dist/norman providers get myprovider
+./dist/norman providers update myprovider --type anthropic
+./dist/norman providers delete myprovider
+
+# Workspaces and skills
 ./dist/norman workspaces create api-migration
 ./dist/norman workspaces list
 ./dist/norman skills list

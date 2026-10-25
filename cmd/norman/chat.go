@@ -12,7 +12,83 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
+
+// wsURL converts an HTTP server URL to its WebSocket equivalent (http→ws, https→wss).
+func wsURL() string {
+	base := serverURL()
+	ws := strings.Replace(base, "http://", "ws://", 1)
+	ws = strings.Replace(ws, "https://", "wss://", 1)
+	return ws
+}
+
+// runWebSocketLoop connects to the WebSocket endpoint and displays incoming events.
+// It runs concurrently with the REPL input loop.
+func runWebSocketLoop(sessionID string) {
+	wsURL := wsURL() + "/ws?session_id=" + url.PathEscape(sessionID)
+	fmt.Printf("Connecting to real-time events at %s ...\n", wsURL)
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WebSocket connection failed: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	go func() {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				fmt.Fprintf(os.Stderr, "WebSocket read error: %v\n", err)
+				return
+			}
+		}
+	}()
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\n[ws] Connection closed: %v\n", err)
+			return
+		}
+
+		var event map[string]interface{}
+		if err := json.Unmarshal(msg, &event); err != nil {
+			fmt.Fprintf(os.Stderr, "[ws] Bad JSON: %v\n", err)
+			continue
+		}
+
+		displayWSMessage(event)
+	}
+}
+
+// displayWSMessage formats and prints a WebSocket event for the user.
+func displayWSMessage(event map[string]interface{}) {
+	eventType, _ := event["event"].(string)
+	message, _ := event["message"].(string)
+	sessionID, _ := event["session_id"].(string)
+	taskID, _ := event["task_id"].(string)
+	step, _ := event["step"].(float64)
+	threshold, _ := event["threshold"].(string)
+
+	prefix := fmt.Sprintf("[ws] %s", eventType)
+	if sessionID != "" {
+		prefix += " @" + sessionID[:8]
+	}
+
+	switch eventType {
+	case "task_progress":
+		fmt.Printf("%s  step=%d task=%s\n", prefix, int(step), taskID)
+	case "session_compressed":
+		fmt.Printf("%s  budget threshold: %s\n", prefix, threshold)
+	case "notification":
+		fmt.Printf("%s  %s\n", prefix, message)
+	default:
+		data, _ := json.MarshalIndent(event, "", "  ")
+		fmt.Printf("%s\n%s\n", prefix, string(data))
+	}
+}
 
 // parseSlashCommand checks if a line is a slash-command and returns the command + args.
 // Returns (command, args, isSlash) — only slash-commands trigger local actions.
@@ -141,6 +217,9 @@ func handleChat(args []string) {
 			fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
 		}
 	}
+
+	// Start real-time WebSocket event push loop (runs concurrently).
+	go runWebSocketLoop(sessionID)
 
 	// Enter REPL loop.
 	fmt.Println("\n=== Norman Chat Session ===")

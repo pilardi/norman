@@ -189,7 +189,7 @@ All 9 sub-steps (14a–14i) implemented:
 | Schema.md support | ✅ | WriteSchema/ReadSchema added; git diff/commit wired (14d) |
 | Skill discovery paths | ✅ | Config-driven via `DiscoveryPaths`; POST /api/skills/paths for runtime expansion (14i) |
 | Plan persistence | ✅ | SavePlan/LoadPlan added; plan survives budget compression (14e) |
-| Session archival + budget compression | ✅ | Threshold checks exist but not loop-integrated (14g) |
+| Session archival + budget compression | ✅ | Loop-integrated: checkAndCompress called at planning cycle start (line 480) and post-sandbox provisioning (line 539); idempotent; archives transcript before truncation |
 | MCP integration | ✅ | Skills declare endpoints, tools injected on demand |
 | Scheduler + notifications | ✅ | Cron registration, WS push, bell, Slack |
 | OpenShell mTLS auth | ✅ | NewClientWithTLS with ca.crt/tls.crt/tls.key |
