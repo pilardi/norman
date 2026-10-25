@@ -5,10 +5,10 @@ internal/api/handlers.go
 
 # Build artifacts
 dist/
-norman
-norman-server
-api-spec.md
-coverage.out
+/norman
+/norman-server
+/api-spec.md
+/coverage.out
 
 # CLI binaries (but allow builtin skill dirs)
 roger
