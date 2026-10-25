@@ -34,3 +34,5 @@ jobs:
       - name: Deploy to GitHub Pages
         if: github.event_name != 'pull_request'
         uses: actions/deploy-pages@v4
+        with:
+          environment: github-pages
