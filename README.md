@@ -1,5 +1,10 @@
 <img width="1573" height="562" alt="norman" src="https://github.com/user-attachments/assets/0122bb6b-e5d6-4069-90f3-d92bf0fdc40d" />
 
+[![CI](https://github.com/pilardi/norman/actions/workflows/go.yml/badge.svg)](https://github.com/pilardi/norman/actions/workflows/go.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
+[![Last Commit](https://img.shields.io/github/last-commit/pilardi/norman.svg)](https://github.com/pilardi/norman/commits/master)
+
 ## The poor man's agent
 
 A chat-first agent built entirely with local AI tools — **goose**, **Berd**, **Unsloth**, **llamacpp**, and **Qwen3.8**. No cloud dependencies required. No grand claims about what it can do. It is a work in progress, and it will probably never be "complete."
