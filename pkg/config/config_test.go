@@ -375,7 +375,7 @@ func TestWorkspaceConfigMerge(t *testing.T) {
 	cfg.Workspaces["test-ws"] = &WorkspaceConfig{
 		Model:          "claude-sonnet",
 		MaxTokens:      64000,
-		Temperature:      0.3,
+		Temperature:    0.3,
 		SkillOverrides: []string{"web-search", "git"},
 	}
 
@@ -401,8 +401,8 @@ func TestWorkspaceConfigDefaults(t *testing.T) {
 
 	merged := cfg.MergeWorkspaceConfig("empty-ws", ws)
 
-	if merged.Model != "gpt-4o" {
-		t.Errorf("expected model to fall back to provider default 'gpt-4o', got %q", merged.Model)
+	if merged.Model != "unsloth/Qwen3.8-27B-GGUF:IQ3_S" {
+		t.Errorf("expected model to fall back to provider default 'unsloth/Qwen3.8-27B-GGUF:IQ3_S', got %q", merged.Model)
 	}
 	if merged.Temperature != 0.7 {
 		t.Errorf("expected temperature to fall back to 0.7, got %.2f", merged.Temperature)
