@@ -67,7 +67,7 @@ func main() {
 	registerRoutes(e, srv)
 
 	// API reference documentation (Scalar-powered).
-	e.GET("/docs", docs.Handler("api-spec.yaml", "Norman API Reference", false))
+	e.GET("/docs", docs.Handler("api-spec.yaml", "Norman API Reference", false, ":root{--bg-color:#000000;--color-gold:#D4AF37;--color-red:#A52A2A;--color-silver:#E5E5E5;--color-charcoal:#1C1C1C}"))
 
 	log.Printf("Norman Agent Server starting on %s:%d", host, port)
 
