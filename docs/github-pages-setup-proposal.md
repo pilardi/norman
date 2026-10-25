@@ -8,7 +8,9 @@ workspace: norman
 
 # GitHub Pages Setup Proposal
 
+
 ## Problem
+
 
 The `docs/` folder in the `master` branch is pointed to by GitHub Pages but produces nothing useful:
 - `.md` files are served as raw text (no markdown→HTML rendering).
@@ -17,6 +19,7 @@ The `docs/` folder in the `master` branch is pointed to by GitHub Pages but prod
 
 ## Goals
 
+
 1. Serve rendered API reference HTML from `docs/api-reference.html`.
 2. Pre-render `.md` files to `.html` so they appear as proper pages.
 3. Apply a custom color palette (`#000000`, `#D4AF37`, `#A52A2A`, `#E5E5E5`, `#1C1C1C`).
@@ -24,6 +27,7 @@ The `docs/` folder in the `master` branch is pointed to by GitHub Pages but prod
 5. Automate regeneration via CI on every push to `master`.
 
 ## Changes Required
+
 
 ### 1. Add `.nojekyll` to `docs/`
 
@@ -64,6 +68,7 @@ Add a `generate-docs-html` target that converts `.md` → `.html` alongside the 
 
 ## Order of Execution
 
+
 1. Add `.nojekyll`
 2. Modify generator to accept custom CSS
 3. Write the Pages workflow YAML
@@ -72,6 +77,7 @@ Add a `generate-docs-html` target that converts `.md` → `.html` alongside the 
 6. Add links in existing `.md` files and create `index.md`
 
 ## Files Affected
+
 
 | File | Change |
 |------|--------|

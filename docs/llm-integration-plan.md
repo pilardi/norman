@@ -1,4 +1,5 @@
 # LLM Integration Plan — Provider-Agnostic Abstraction & Remaining Work
+
 > **Date:** 2026-10-19 (merged)
 > **Status:** Draft — actionable items tracked for MVP completion
 > **Related:** `requirements.md` §4.1, `go.dev/blog/llmpowered`

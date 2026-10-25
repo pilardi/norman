@@ -1,4 +1,5 @@
 # LLM Tool Access Assessment — Agent-to-Environment Integration
+
 > **Date:** 2026-10-21  
 > **Author:** Norman agent (session assessment)  
 > **Scope:** How tools are granted to the LLM for interacting with the OpenShell workspace environment.  

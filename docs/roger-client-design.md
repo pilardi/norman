@@ -1,4 +1,5 @@
 # Roger Client — Design Document
+
 > A general-purpose, workspace-aware CLI client for Norman's API, designed to be invoked from scripts and the agent loop inside OpenShell sandboxes.
 > **Status:** Implementation complete.
 

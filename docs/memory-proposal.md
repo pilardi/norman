@@ -1,4 +1,5 @@
 # Memory Architecture Enhancement Proposal
+
 > **Status:** Draft — awaiting review before implementation.
 > **Source of ideas:** gajae-way (https://github.com/Yeachan-Heo/gajae-way) memory system and session bootstrap mechanism.
 > **Date:** 2026-10-15

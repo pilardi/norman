@@ -1,4 +1,5 @@
 # Proposal: Embedded Default Configuration & Help Message Consistency
+
 ## Problem Statement
 
 Currently, Norman's configuration has a two-tier model that creates friction:

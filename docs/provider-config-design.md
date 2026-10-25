@@ -1,4 +1,5 @@
 # Provider Configuration — Design & Implementation Plan
+
 > **Branch:** `feat/provider-config`  
 > **Date:** 2026-10-25  
 > **Status:** Draft → In Progress
