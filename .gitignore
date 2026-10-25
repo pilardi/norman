@@ -15,3 +15,4 @@ roger
 !pkg/skills/builtin/roger/
 
 docs/api-reference.html
+docs/*.html
