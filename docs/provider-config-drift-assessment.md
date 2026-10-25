@@ -1,7 +1,4 @@
 # Provider Configuration Drift Assessment
-
-
-
 > **Date:** 2026-10-22  
 > **Author:** Norman agent (session assessment)  
 > **Status:** Draft — actionable items tracked for branch `fix/provider-config-drift`  

@@ -1,7 +1,4 @@
 # Assessment: Installing Graphify as a Norman Skill
-
-
-
 **Date:** 2026-10-19  
 **Status:** Draft — for discussion, not yet implemented
 

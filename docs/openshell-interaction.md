@@ -1,7 +1,4 @@
 # OpenShell Interaction Model for Norman
-
-
-
 > How Norman, its agent loop, tool calls, the `roger` client, and the server interact through the OpenShell sandbox boundary.
 
 ---
