@@ -12,11 +12,13 @@ import (
 func main() {
 	var specPath, outputPath, title string
 	var darkMode bool
+	var customCSS string
 
 	flag.StringVar(&specPath, "spec", "api-spec.yaml", "Path to the OpenAPI spec file")
 	flag.StringVar(&outputPath, "out", "", "Output path for the generated HTML (required)")
 	flag.StringVar(&title, "title", "API Reference", "Page title")
 	flag.BoolVar(&darkMode, "dark", false, "Enable dark mode")
+	flag.StringVar(&customCSS, "css", "", "Custom CSS to inject into the page (e.g., color palette)")
 	flag.Parse()
 
 	if outputPath == "" {
@@ -24,7 +26,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := docs.Generate(specPath, outputPath, title, darkMode); err != nil {
+	if err := docs.Generate(specPath, outputPath, title, darkMode, customCSS); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating docs: %v\n", err)
 		os.Exit(1)
 	}

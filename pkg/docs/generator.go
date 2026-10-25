@@ -10,15 +10,15 @@ import (
 )
 
 // Generate writes a Scalar-powered API reference HTML page to outputPath,
-// rendering the OpenAPI spec at specPath.
-func Generate(specPath, outputPath, title string, darkMode bool) error {
+// rendering the OpenAPI spec at specPath. The customCSS parameter can contain
+// CSS rules that will be injected into the generated page (e.g., custom color palette).
+func Generate(specPath, outputPath, title string, darkMode bool, customCSS string) error {
 	opts := scalar.Options{
-		SpecURL: "file://" + absPath(specPath),
-		CustomOptions: scalar.CustomOptions{
-			PageTitle: title,
-		},
-		DarkMode: darkMode,
+		SpecURL:     "file://" + absPath(specPath),
+		CustomCss:   customCSS,
+		DarkMode:    darkMode,
 	}
+	opts.PageTitle = title
 
 	html, err := scalar.ApiReferenceHTML(&opts)
 	if err != nil {
@@ -34,14 +34,13 @@ func Generate(specPath, outputPath, title string, darkMode bool) error {
 }
 
 // GenerateBytes returns the HTML content without writing to disk.
-func GenerateBytes(specPath, title string, darkMode bool) ([]byte, error) {
+func GenerateBytes(specPath, title string, darkMode bool, customCSS string) ([]byte, error) {
 	opts := scalar.Options{
-		SpecURL: "file://" + absPath(specPath),
-		CustomOptions: scalar.CustomOptions{
-			PageTitle: title,
-		},
-		DarkMode: darkMode,
+		SpecURL:   "file://" + absPath(specPath),
+		CustomCss: customCSS,
+		DarkMode:  darkMode,
 	}
+	opts.PageTitle = title
 
 	html, err := scalar.ApiReferenceHTML(&opts)
 	if err != nil {

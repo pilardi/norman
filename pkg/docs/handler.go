@@ -12,15 +12,14 @@ import (
 
 // Handler returns an Echo handler for serving the API reference at /docs.
 // It renders the spec from a given file path using Scalar's CDN-based renderer.
-func Handler(specPath string, title string, darkMode bool) echo.HandlerFunc {
+func Handler(specPath string, title string, darkMode bool, customCSS string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		opts := scalar.Options{
-			SpecURL: "file://" + absPath(specPath),
-			CustomOptions: scalar.CustomOptions{
-				PageTitle: title,
-			},
-			DarkMode: darkMode,
+			SpecURL:   "file://" + absPath(specPath),
+			CustomCss: customCSS,
+			DarkMode:  darkMode,
 		}
+		opts.PageTitle = title
 
 		html, err := scalar.ApiReferenceHTML(&opts)
 		if err != nil {

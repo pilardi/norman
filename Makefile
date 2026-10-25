@@ -9,7 +9,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build test test-race test-short clean generate-docs
+.PHONY: help generate build test test-race test-short clean generate-docs generate-docs-html
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -66,4 +66,8 @@ clean:
 
 generate-docs:
 	@echo "Generating API reference HTML via Scalar..."
-	go run ./cmd/docs-gen/ -spec api-spec.yaml -out docs/api-reference.html --title "Norman API Reference"
+	go run ./cmd/docs-gen/ -spec api-spec.yaml -out docs/api-reference.html --title "Norman API Reference" --css ":root{--bg-color:#000000;--color-gold:#D4AF37;--color-red:#A52A2A;--color-silver:#E5E5E5;--color-charcoal:#1C1C1C}"
+
+generate-docs-html: generate-docs
+	@echo "Converting markdown files to HTML..."
+	go run ./cmd/md2html/ --out docs/ docs/*.md

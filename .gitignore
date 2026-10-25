@@ -13,3 +13,6 @@ dist/
 # CLI binaries (but allow builtin skill dirs)
 roger
 !pkg/skills/builtin/roger/
+
+docs/api-reference.html
+docs/*.html
