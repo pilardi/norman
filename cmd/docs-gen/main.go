@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/norman/norman/docs"
+	"github.com/norman/norman/pkg/docs"
 )
 
 func main() {

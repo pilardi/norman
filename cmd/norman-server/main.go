@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/norman/norman/docs"
+	"github.com/norman/norman/pkg/docs"
 	"github.com/norman/norman/pkg/agent"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
