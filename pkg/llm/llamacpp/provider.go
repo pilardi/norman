@@ -224,6 +224,12 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 	if err != nil {
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
+	}
 
 	return &sseStreamReader{resp: resp}, nil
 }
