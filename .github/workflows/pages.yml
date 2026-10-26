@@ -3,8 +3,6 @@ name: GitHub Pages
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
 
 permissions:
   contents: read
@@ -33,5 +31,4 @@ jobs:
           path: docs/
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/master'
         uses: actions/deploy-pages@v4
