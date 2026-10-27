@@ -25,8 +25,9 @@ system:
   llm_providers:
     - name: "local-llamacpp"
       type: "llamacpp"
-      endpoint: "http://localhost:8288/v1"
+      endpoint: "http://localhost:8288"
       model: "unsloth/Qwen3.8-27B-GGUF:IQ3_S"
       temperature: 0.7
       max_tokens: 55000
       api_key: "" # set your OpenAI key here (non-empty required for openai type)
+      embedding_endpoint: "/embeddings" # optional: "/embeddings" or "/api/v1/embeddings"; leave empty for auto-detect

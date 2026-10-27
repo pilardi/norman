@@ -22,37 +22,53 @@ const ProviderName = "llamacpp"
 
 // --- Request / Response Types ---
 
-// ChatRequest mirrors the llama.cpp HTTP server's chat endpoint body.
+// ChatRequest mirrors the llama.cpp native /completion endpoint body.
 type ChatRequest struct {
-	Model        string   `json:"model"`
-	Messages     []llm.Message `json:"messages"`
-	Tools        []llm.Tool     `json:"tools,omitempty"`
-	Stream       bool     `json:"stream"`
-	Temperature    float64  `json:"temperature"`
-	MaxTokens    int      `json:"max_tokens"`
-	Stop         []string `json:"stop,omitempty"`
-	PresencePenalty  float32 `json:"presence_penalty,omitempty"`
-	FrequencyPenalty float32 `json:"frequency_penalty,omitempty"`
-	CachePrompt  bool     `json:"cache_prompt,omitempty"` // opt-in per-request cache usage
+	Prompt     string `json:"prompt"`
+	NPredict   int    `json:"n_predict,omitempty"`
+	Model      string `json:"model"`
+	Stream     bool   `json:"stream"`
+	Temperature float64 `json:"temperature,omitempty"`
+	Stop       []string `json:"stop,omitempty"`
+	CachePrompt bool   `json:"cache_prompt,omitempty"`
 }
 
-// ChatResponse is the llama.cpp chat completion response.
+// ChatResponse is the llama.cpp native /completion response.
 type ChatResponse struct {
-	ID           string    `json:"id"`
-	Model        string    `json:"model"`
-	Choices      []Choice  `json:"choices"`
-	Usage        Usage     `json:"usage"`
-	RawJSON      []byte    `json:"-"`
+	Content    string `json:"content"`
+	StopReason string `json:"stop_reason,omitempty"`
+	RawJSON    []byte `json:"-"`
 }
 
-// Choice mirrors a single choice in the response.
-type Choice struct {
-	Message      llm.Message `json:"message"`
-	FinishReason string      `json:"finish_reason"`
-	Index        int         `json:"index"`
+// EmbedRequest is the body for /api/v1/embeddings (OpenAI-compatible).
+type EmbedRequest struct {
+	Input    string `json:"input"`
+	Model    string `json:"model,omitempty"`
+	Truncate bool   `json:"truncate,omitempty"`
 }
 
-// Usage matches llama.cpp's usage reporting (includes cached_tokens).
+// EmbedResponse is the OpenAI-compatible embedding result (from /api/v1/embeddings).
+type EmbedResponse struct {
+	Data   []EmbedData `json:"data"`
+	Usage  Usage       `json:"usage"`
+}
+
+// NativeEmbedResponse is the llama.cpp-native /embeddings response shape.
+// Returns a single pooled embedding vector with token metadata.
+type NativeEmbedResponse struct {
+	Embedding []float32 `json:"embedding"`
+	Tokens    []int     `json:"tokens,omitempty"`
+	Pooling   string    `json:"pooling,omitempty"`
+}
+
+// EmbedData holds a single embedding vector (OpenAI-compatible format).
+type EmbedData struct {
+	Object    string    `json:"object"`
+	Index     int       `json:"index"`
+	Embedding []float32 `json:"embedding"`
+}
+
+// Usage matches llama.cpp's usage reporting for embeddings.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CachedTokens     int `json:"cached_tokens,omitempty"`
@@ -60,39 +76,20 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-// EmbedRequest is the body for /api/v1/embeddings.
-type EmbedRequest struct {
-	Input  string `json:"input"`
-	Model  string `json:"model,omitempty"`
-	Truncate bool `json:"truncate,omitempty"`
-}
-
-// EmbedResponse is the embedding result.
-type EmbedResponse struct {
-	Data   []EmbedData `json:"data"`
-	Usage  Usage       `json:"usage"`
-}
-
-// EmbedData holds a single embedding vector.
-type EmbedData struct {
-	Object string    `json:"object"`
-	Index  int       `json:"index"`
-	Embedding []float32 `json:"embedding"`
-}
-
 // --- Provider Implementation ---
 
 // Provider implements llm.LLM + llm.Embedder for llama.cpp's HTTP server.
 type Provider struct {
-	BaseURL      string
-	Model        string
-	Temperature  float64
-	MaxTokens    int
-	HTTPClient   *http.Client
-	Timeout      time.Duration
-	CacheEnabled bool   // whether --cache-prompt is active on the server
-	CacheSize    int    // max KV cache tokens (n_ctx)
-	CacheType    string // "fq" or quantized type
+	BaseURL          string
+	Model            string
+	Temperature        float64
+	MaxTokens        int
+	HTTPClient       *http.Client
+	Timeout          time.Duration
+	CacheEnabled     bool   // whether --cache-prompt is active on the server
+	CacheSize        int    // max KV cache tokens (n_ctx)
+	CacheType        string // "fq" or quantized type
+	EmbeddingEndpoint string // embedding endpoint path; "" = auto-detect, "/api/v1/embeddings", "/embeddings"
 }
 
 // NewProvider creates a provider configured from workspace config and
@@ -124,15 +121,12 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 	}
 
 	body := ChatRequest{
-		Model:        req.Model,
-		Messages:     req.Messages,
-		Tools:        req.Tools,
-		Temperature:    req.Temperature,
-		MaxTokens:    req.MaxTokens,
-		Stop:         req.StopSequences,
-		PresencePenalty:  req.PresencePenalty,
-		FrequencyPenalty: req.FrequencyPenalty,
-		CachePrompt:  p.CacheEnabled, // opt-in to server-side KV cache
+		Prompt:      buildPrompt(req.Messages),
+		NPredict:    req.MaxTokens,
+		Model:       req.Model,
+		Temperature:   req.Temperature,
+		Stop:        req.StopSequences,
+		CachePrompt: p.CacheEnabled,
 	}
 
 	payload, err := json.Marshal(body)
@@ -140,7 +134,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	url := p.BaseURL + "/api/v1/chat"
+	url := p.BaseURL + "/completion"
 
 	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
@@ -169,21 +163,24 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("parse response: %w", err))
 	}
 
-	// Convert to universal CompletionResponse
 	completion := &llm.CompletionResponse{
-		ID:           chatResp.ID,
-		Model:        chatResp.Model,
-		Message:      chatResp.Choices[0].Message,
-		FinishReason: chatResp.Choices[0].FinishReason,
-		Usage: llm.Usage{
-			PromptTokens:     chatResp.Usage.PromptTokens,
-			CompletionTokens: chatResp.Usage.CompletionTokens,
-			TotalTokens:      chatResp.Usage.TotalTokens,
-		},
-		RawJSON: bodyBytes,
+		ID:           "", // native API doesn't return an ID
+		Model:        req.Model,
+		Message:      llm.Message{Role: "assistant", Content: chatResp.Content},
+		FinishReason: chatResp.StopReason,
+		RawJSON:      bodyBytes,
 	}
 
 	return completion, nil
+}
+
+// buildPrompt concatenates messages into a single prompt string for the native API.
+func buildPrompt(messages []llm.Message) string {
+	var parts []string
+	for _, m := range messages {
+		parts = append(parts, fmt.Sprintf("%s: %s", strings.ToLower(m.Role), m.Content))
+	}
+	return strings.Join(parts, "\n") + "\n"
 }
 
 // Stream sends a chat completion request and yields incremental chunks via SSE.
@@ -193,16 +190,13 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 	}
 
 	body := ChatRequest{
-		Model:        req.Model,
-		Messages:     req.Messages,
-		Tools:        req.Tools,
-		Temperature:    req.Temperature,
-		MaxTokens:    req.MaxTokens,
-		Stop:         req.StopSequences,
-		PresencePenalty:  req.PresencePenalty,
-		FrequencyPenalty: req.FrequencyPenalty,
-		Stream:       true,
-		CachePrompt:  p.CacheEnabled,
+		Prompt:      buildPrompt(req.Messages),
+		NPredict:    req.MaxTokens,
+		Model:       req.Model,
+		Temperature:   req.Temperature,
+		Stop:        req.StopSequences,
+		Stream:      true,
+		CachePrompt: p.CacheEnabled,
 	}
 
 	payload, err := json.Marshal(body)
@@ -210,7 +204,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	url := p.BaseURL + "/api/v1/chat"
+	url := p.BaseURL + "/completion"
 
 	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
@@ -235,14 +229,16 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 }
 
 // EmbedText returns a float32 vector for the given text.
+// It auto-detects the embedding endpoint: /api/v1/embeddings (OpenAI-compatible) or
+// /embeddings (llama.cpp-native). Falls back gracefully between them.
 func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error) {
 	if p.HTTPClient == nil {
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
 
 	body := EmbedRequest{
-		Input:  text,
-		Model:  p.Model,
+		Input:    text,
+		Model:    p.Model,
 		Truncate: true,
 	}
 
@@ -251,40 +247,56 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 		return nil, fmt.Errorf("marshal embedding request: %w", err)
 	}
 
-	url := p.BaseURL + "/api/v1/embeddings"
+	// Try OpenAI-compatible endpoint first, then fall back to native /embeddings
+	endpoints := []string{"/api/v1/embeddings", "/embeddings"}
+	for _, ep := range endpoints {
+		if p.EmbeddingEndpoint != "" {
+			ep = p.EmbeddingEndpoint
+		}
 
-	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
-	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("create request: %w", err))
+		fullURL := p.BaseURL + ep
+		reqHTTP, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(payload))
+		if err != nil {
+			continue
+		}
+		reqHTTP.Header.Set("Content-Type", "application/json")
+
+		resp, err := p.HTTPClient.Do(reqHTTP)
+		if err != nil {
+			continue
+		}
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			// If it's a 404 on the first endpoint, try the other
+			if resp.StatusCode == http.StatusNotFound && ep == "/api/v1/embeddings" {
+				continue
+			}
+			return nil, mapHTTPError(resp.StatusCode, string(bodyBytes))
+		}
+
+		// Try OpenAI-compatible format first (/api/v1/embeddings)
+		var openAIResp EmbedResponse
+		if err := json.Unmarshal(bodyBytes, &openAIResp); err == nil && len(openAIResp.Data) > 0 {
+			return openAIResp.Data[0].Embedding, nil
+		}
+
+		// Try native /embeddings format
+		var nativeResp NativeEmbedResponse
+		if err := json.Unmarshal(bodyBytes, &nativeResp); err == nil && len(nativeResp.Embedding) > 0 {
+			return nativeResp.Embedding, nil
+		}
+
+		// Neither format matched — return raw error
+		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("unexpected response shape from %s: %s", ep, string(bodyBytes)))
 	}
 
-	reqHTTP.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.HTTPClient.Do(reqHTTP)
-	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("read response body: %w", err))
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, mapHTTPError(resp.StatusCode, string(bodyBytes))
-	}
-
-	var embedResp EmbedResponse
-	if err := json.Unmarshal(bodyBytes, &embedResp); err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("parse response: %w", err))
-	}
-
-	if len(embedResp.Data) == 0 {
-		return nil, fmt.Errorf("no embedding data returned")
-	}
-
-	return embedResp.Data[0].Embedding, nil
+	return nil, fmt.Errorf("no embedding endpoint available (tried /api/v1/embeddings and /embeddings)")
 }
 
 // ProviderInfo returns metadata about the underlying llama.cpp provider.
@@ -321,22 +333,32 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 	}
 
 	data := strings.TrimPrefix(line, "data: ")
+
+	// Native /completion format: {"content":"...","stop_reason":"..."}
+	var nativeResp struct {
+		Content    string `json:"content"`
+		StopReason string `json:"stop_reason,omitempty"`
+	}
+	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
+		return llm.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
+	}
+
+	// Fallback to OpenAI-compatible format for backward compat
 	var delta map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &delta); err != nil {
-		return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
-	}
-
-	chunk := llm.Chunk{}
-	if msg, ok := delta["message"].(map[string]interface{}); ok {
-		if content, ok := msg["content"].(string); ok {
-			chunk.Delta = content
+	if err := json.Unmarshal([]byte(data), &delta); err == nil {
+		chunk := llm.Chunk{}
+		if msg, ok := delta["message"].(map[string]interface{}); ok {
+			if content, ok := msg["content"].(string); ok {
+				chunk.Delta = content
+			}
 		}
-	}
-	if fr, ok := delta["finish_reason"].(string); ok {
-		chunk.FinishReason = fr
+		if fr, ok := delta["finish_reason"].(string); ok {
+			chunk.FinishReason = fr
+		}
+		return chunk, nil
 	}
 
-	return chunk, nil
+	return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 }
 
 func (s *sseStreamReader) Close() error {
@@ -395,4 +417,16 @@ func WithCacheType(typ string) Option {
 // WithCacheDisabled disables server-side prompt caching.
 func WithCacheDisabled() Option {
 	return func(p *Provider) { p.CacheEnabled = false }
+}
+
+// WithNativeEmbeddings configures the provider to use the native /embeddings endpoint
+// instead of the OpenAI-compatible /api/v1/embeddings route. This is useful when
+// you need --pooling none support or token-level embeddings.
+func WithNativeEmbeddings() Option {
+	return func(p *Provider) { p.EmbeddingEndpoint = "/embeddings" }
+}
+
+// WithOpenAICompatibleEmbeddings explicitly uses the /api/v1/embeddings endpoint.
+func WithOpenAICompatibleEmbeddings() Option {
+	return func(p *Provider) { p.EmbeddingEndpoint = "/api/v1/embeddings" }
 }
