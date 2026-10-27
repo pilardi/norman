@@ -12,6 +12,29 @@ import (
 // handleProviders implements the `norman provider` subcommands.
 // Usage: norman providers add <name> --type <type> --endpoint <url> [flags...]
 //        norman providers list
+// parseExtra parses "key=val,key2=val2" into a map[string]string.
+func parseExtra(s string) map[string]interface{} {
+	result := make(map[string]interface{})
+	pairs := strings.Split(s, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		idx := strings.Index(pair, "=")
+		if idx == -1 {
+			result[pair] = true
+		} else {
+			key := strings.TrimSpace(pair[:idx])
+			val := strings.TrimSpace(pair[idx+1:])
+			if key != "" {
+				result[key] = val
+			}
+		}
+	}
+	return result
+}
+
 func handleProviders(args []string) {
 	if len(args) == 0 {
 		fmt.Println("HELP CASE HIT")
@@ -119,7 +142,7 @@ func handleProvidersAdd(args []string) {
 		} else if strings.HasPrefix(args[i], "--extra") {
 			// Handle --extra key=val or --extra key val
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				req["extra"] = args[i+1]
+				req["extra"] = parseExtra(args[i+1])
 				i++
 			}
 		} else if args[i] == "-h" || args[i] == "--help" {
@@ -213,7 +236,7 @@ func handleProvidersAddInteractive() {
 		req["api_key"] = apiKey
 	}
 	if extra != "" {
-		req["extra"] = extra
+		req["extra"] = parseExtra(extra)
 	}
 
 	// Show summary for confirmation
@@ -333,7 +356,7 @@ func handleProvidersUpdate(args []string) {
 			i++
 		} else if strings.HasPrefix(args[i], "--extra") {
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				req["extra"] = args[i+1]
+				req["extra"] = parseExtra(args[i+1])
 				i++
 			}
 		} else if args[i] == "-h" || args[i] == "--help" {
@@ -446,7 +469,7 @@ func handleProvidersUpdateInteractive() {
 		req["api_key"] = apiKey
 	}
 	if extra != "" {
-		req["extra"] = extra
+		req["extra"] = parseExtra(extra)
 	}
 
 	if len(req) == 0 {
