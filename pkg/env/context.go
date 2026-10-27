@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"time"
 )
 
 // ContextFile is the metadata file injected into each sandbox at creation time.
@@ -26,19 +27,34 @@ func WriteContextFile(ctx context.Context, session *Session, ctxFile ContextFile
 	// Write to ~/.config/norman/context.json inside the sandbox
 	contentPath := filepath.Join("~", ".config", "norman", "context.json")
 
-	// Ensure parent dirs exist (mkdir -p ~/.config/norman)
-	mkdirCmd := fmt.Sprintf("mkdir -p %q", filepath.Join("~", ".config", "norman"))
-	if _, err := session.Exec(ctx, []string{"bash", "-c", mkdirCmd}); err != nil {
-		return fmt.Errorf("mkdir context dir: %w", err)
+	// Ensure parent dirs exist (mkdir -p ~/.config/norman), retrying with backoff
+	// since the sandbox may not be fully initialized yet.
+	var mkdirErr error
+	for i := 0; i < 5; i++ {
+		mkdirCmd := fmt.Sprintf("mkdir -p %q", filepath.Join("~", ".config", "norman"))
+		if _, err := session.Exec(ctx, []string{"bash", "-c", mkdirCmd}); err == nil {
+			break
+		}
+		mkdirErr = err
+		if i < 4 {
+			time.Sleep(time.Duration(1<<uint(i)) * 200 * time.Millisecond)
+		}
+	}
+	if mkdirErr != nil {
+		return fmt.Errorf("mkdir context dir: %w", mkdirErr)
 	}
 
-	// Write the file
-	writeCmd := fmt.Sprintf("printf '%%s' '%s' > %q", escapeShellArg(string(jsonData)), contentPath)
-	if _, err := session.Exec(ctx, []string{"bash", "-c", writeCmd}); err != nil {
-		return fmt.Errorf("write context.json: %w", err)
+	// Write the file, retrying with backoff
+	for i := 0; i < 5; i++ {
+		writeCmd := fmt.Sprintf("printf '%%s' '%s' > %q", escapeShellArg(string(jsonData)), contentPath)
+		if _, err := session.Exec(ctx, []string{"bash", "-c", writeCmd}); err == nil {
+			return nil
+		}
+		if i < 4 {
+			time.Sleep(time.Duration(1<<uint(i)) * 200 * time.Millisecond)
+		}
 	}
-
-	return nil
+	return fmt.Errorf("write context.json after retries")
 }
 
 

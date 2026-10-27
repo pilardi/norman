@@ -409,6 +409,20 @@ func TestWorkspaceConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestMergeWorkspaceConfigNil(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// Passing nil should not panic and should return defaults.
+	merged := cfg.MergeWorkspaceConfig("nil-ws", nil)
+
+	if merged.Model != "unsloth/Qwen3.8-27B-GGUF:IQ3_S" {
+		t.Errorf("expected model to fall back to provider default 'unsloth/Qwen3.8-27B-GGUF:IQ3_S', got %q", merged.Model)
+	}
+	if merged.Temperature != 0.7 {
+		t.Errorf("expected temperature to fall back to 0.7, got %.2f", merged.Temperature)
+	}
+}
+
 func TestClientEnvVarsSubset(t *testing.T) {
 	clientVars := ClientEnvVars()
 	names := make([]string, len(clientVars))

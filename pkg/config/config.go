@@ -268,15 +268,20 @@ func (c *Config) MergeWorkspaceConfig(workspaceID string, ws *WorkspaceConfig) *
 	// Use the first configured provider as the system-level default source.
 	if len(c.System.LlmProviders) > 0 {
 		first := c.System.LlmProviders[0]
-		if ws.Model == "" {
+		if result.Model == "" {
 			result.Model = first.Model
 		}
-		if ws.Temperature == 0 && first.Temperature > 0 {
+		if result.Temperature == 0 && first.Temperature > 0 {
 			result.Temperature = first.Temperature
 		}
-		if ws.MaxTokens == 0 && first.MaxTokens > 0 {
+		if result.MaxTokens == 0 && first.MaxTokens > 0 {
 			result.MaxTokens = first.MaxTokens
 		}
+	}
+
+	// If no workspace-level overrides are provided, return the defaults immediately.
+	if ws == nil {
+		return result
 	}
 
 	// Workspace-level overrides take precedence

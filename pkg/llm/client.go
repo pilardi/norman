@@ -151,6 +151,12 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 	if err != nil {
 		return nil, wrapError(ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
+	}
 
 	return &sseStreamReader{
 		resp: resp,
