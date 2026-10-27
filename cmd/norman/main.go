@@ -32,7 +32,7 @@ func main() {
 	case "open", "chat":
 		handleChat(args[1:])
 	case "providers":
-		handleProviders(args[1:])
+		handleProviders(args)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
