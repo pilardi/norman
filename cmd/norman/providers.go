@@ -372,27 +372,47 @@ func handleProvidersUpdate(args []string) {
 func handleProvidersUpdateInteractive() {
 	scanner := bufio.NewScanner(os.Stdin)
 
-	prompt := func(label string) string {
-		fmt.Printf("%s: ", label)
+	promptWithCurrent := func(label string, current interface{}) string {
+		if current != nil {
+			fmt.Printf("%s [%v]: ", label, current)
+		} else {
+			fmt.Printf("%s: ", label)
+		}
 		scanner.Scan()
 		return strings.TrimSpace(scanner.Text())
 	}
 
-	name := prompt("Provider name")
+	name := promptWithCurrent("Provider name", nil)
 	if name == "" {
 		fmt.Fprintln(os.Stderr, "Error: provider name is required")
 		os.Exit(1)
 	}
 
+	// Fetch current provider data to show in prompts
+	body, err := httpGet("/api/providers/" + urlPathEscape(name))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching provider '%s': %v\n", name, err)
+		os.Exit(1)
+	}
+
+	var current map[string]interface{}
+	if err := json.Unmarshal(body, &current); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing provider data: %v\n", err)
+		os.Exit(1)
+	}
+
 	validTypes := []string{"openai", "anthropic", "ollama", "gemini", "llamacpp"}
 	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
-	providerType := prompt("Provider type (empty to skip)")
-	endpoint := prompt("Endpoint URL (empty to skip)")
-	model := prompt("Model (empty to skip)")
-	tempStr := prompt("Temperature (empty to skip)")
-	maxTokensStr := prompt("Max tokens (empty to skip)")
-	apiKey := prompt("API key (empty to skip)")
-	extra := prompt("Extra key=val (empty to skip)")
+
+	providerType := promptWithCurrent("Provider type", current["type"])
+	endpoint := promptWithCurrent("Endpoint URL", current["endpoint"])
+	model := promptWithCurrent("Model", current["model"])
+
+	tempVal := current["temperature"]
+	tempStr := promptWithCurrent("Temperature", fmt.Sprintf("%.2f", tempVal))
+	maxTokensStr := promptWithCurrent("Max tokens", current["max_tokens"])
+	apiKey := promptWithCurrent("API key", current["api_key"])
+	extra := promptWithCurrent("Extra (key=val)", current["extra"])
 
 	// Build the request map (only non-empty fields)
 	req := make(map[string]interface{})
@@ -407,12 +427,12 @@ func handleProvidersUpdateInteractive() {
 		req["model"] = model
 	}
 	if tempStr != "" {
-		tempVal, err := strconv.ParseFloat(tempStr, 64)
+		tVal, err := strconv.ParseFloat(tempStr, 64)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", tempStr, err)
 			os.Exit(1)
 		}
-		req["temperature"] = tempVal
+		req["temperature"] = tVal
 	}
 	if maxTokensStr != "" {
 		tokensVal, err := strconv.Atoi(maxTokensStr)
@@ -449,7 +469,7 @@ func handleProvidersUpdateInteractive() {
 	}
 
 	url := "/api/providers/" + urlPathEscape(name)
-	body, err := httpPostJSON(url, req)
+	body, err = httpPostJSON(url, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
 		os.Exit(1)
