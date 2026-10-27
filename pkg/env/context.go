@@ -29,26 +29,29 @@ func WriteContextFile(ctx context.Context, session *Session, ctxFile ContextFile
 
 	// Ensure parent dirs exist (mkdir -p ~/.config/norman), retrying with backoff
 	// since the sandbox may not be fully initialized yet.
-	for i := 0; i < 3; i++ {
+	var mkdirErr error
+	for i := 0; i < 5; i++ {
 		mkdirCmd := fmt.Sprintf("mkdir -p %q", filepath.Join("~", ".config", "norman"))
 		if _, err := session.Exec(ctx, []string{"bash", "-c", mkdirCmd}); err == nil {
 			break
 		}
-		if i < 2 {
-			time.Sleep(time.Duration(1<<uint(i)) * 100 * time.Millisecond)
-		} else {
-			return fmt.Errorf("mkdir context dir: %w", err)
+		mkdirErr = err
+		if i < 4 {
+			time.Sleep(time.Duration(1<<uint(i)) * 200 * time.Millisecond)
 		}
+	}
+	if mkdirErr != nil {
+		return fmt.Errorf("mkdir context dir: %w", mkdirErr)
 	}
 
 	// Write the file, retrying with backoff
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 5; i++ {
 		writeCmd := fmt.Sprintf("printf '%%s' '%s' > %q", escapeShellArg(string(jsonData)), contentPath)
 		if _, err := session.Exec(ctx, []string{"bash", "-c", writeCmd}); err == nil {
 			return nil
 		}
-		if i < 2 {
-			time.Sleep(time.Duration(1<<uint(i)) * 100 * time.Millisecond)
+		if i < 4 {
+			time.Sleep(time.Duration(1<<uint(i)) * 200 * time.Millisecond)
 		}
 	}
 	return fmt.Errorf("write context.json after retries")
