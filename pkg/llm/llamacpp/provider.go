@@ -22,42 +22,22 @@ const ProviderName = "llamacpp"
 
 // --- Request / Response Types ---
 
-// ChatRequest mirrors the llama.cpp HTTP server's chat endpoint body.
+// ChatRequest mirrors the llama.cpp native /completion endpoint body.
 type ChatRequest struct {
-	Model        string   `json:"model"`
-	Messages     []llm.Message `json:"messages"`
-	Tools        []llm.Tool     `json:"tools,omitempty"`
-	Stream       bool     `json:"stream"`
-	Temperature    float64  `json:"temperature"`
-	MaxTokens    int      `json:"max_tokens"`
-	Stop         []string `json:"stop,omitempty"`
-	PresencePenalty  float32 `json:"presence_penalty,omitempty"`
-	FrequencyPenalty float32 `json:"frequency_penalty,omitempty"`
-	CachePrompt  bool     `json:"cache_prompt,omitempty"` // opt-in per-request cache usage
+	Prompt     string `json:"prompt"`
+	NPredict   int    `json:"n_predict,omitempty"`
+	Model      string `json:"model"`
+	Stream     bool   `json:"stream"`
+	Temperature float64 `json:"temperature,omitempty"`
+	Stop       []string `json:"stop,omitempty"`
+	CachePrompt bool   `json:"cache_prompt,omitempty"`
 }
 
-// ChatResponse is the llama.cpp chat completion response.
+// ChatResponse is the llama.cpp native /completion response.
 type ChatResponse struct {
-	ID           string    `json:"id"`
-	Model        string    `json:"model"`
-	Choices      []Choice  `json:"choices"`
-	Usage        Usage     `json:"usage"`
-	RawJSON      []byte    `json:"-"`
-}
-
-// Choice mirrors a single choice in the response.
-type Choice struct {
-	Message      llm.Message `json:"message"`
-	FinishReason string      `json:"finish_reason"`
-	Index        int         `json:"index"`
-}
-
-// Usage matches llama.cpp's usage reporting (includes cached_tokens).
-type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CachedTokens     int `json:"cached_tokens,omitempty"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	Content    string `json:"content"`
+	StopReason string `json:"stop_reason,omitempty"`
+	RawJSON    []byte `json:"-"`
 }
 
 // EmbedRequest is the body for /api/v1/embeddings.
@@ -73,10 +53,18 @@ type EmbedResponse struct {
 	Usage  Usage       `json:"usage"`
 }
 
+// Usage matches llama.cpp's usage reporting for embeddings.
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CachedTokens     int `json:"cached_tokens,omitempty"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
 // EmbedData holds a single embedding vector.
 type EmbedData struct {
-	Object string    `json:"object"`
-	Index  int       `json:"index"`
+	Object    string    `json:"object"`
+	Index     int       `json:"index"`
 	Embedding []float32 `json:"embedding"`
 }
 
@@ -124,15 +112,12 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 	}
 
 	body := ChatRequest{
-		Model:        req.Model,
-		Messages:     req.Messages,
-		Tools:        req.Tools,
-		Temperature:    req.Temperature,
-		MaxTokens:    req.MaxTokens,
-		Stop:         req.StopSequences,
-		PresencePenalty:  req.PresencePenalty,
-		FrequencyPenalty: req.FrequencyPenalty,
-		CachePrompt:  p.CacheEnabled, // opt-in to server-side KV cache
+		Prompt:      buildPrompt(req.Messages),
+		NPredict:    req.MaxTokens,
+		Model:       req.Model,
+		Temperature:   req.Temperature,
+		Stop:        req.StopSequences,
+		CachePrompt: p.CacheEnabled,
 	}
 
 	payload, err := json.Marshal(body)
@@ -140,7 +125,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	url := p.BaseURL + "/api/v1/chat"
+	url := p.BaseURL + "/completion"
 
 	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
@@ -169,21 +154,24 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("parse response: %w", err))
 	}
 
-	// Convert to universal CompletionResponse
 	completion := &llm.CompletionResponse{
-		ID:           chatResp.ID,
-		Model:        chatResp.Model,
-		Message:      chatResp.Choices[0].Message,
-		FinishReason: chatResp.Choices[0].FinishReason,
-		Usage: llm.Usage{
-			PromptTokens:     chatResp.Usage.PromptTokens,
-			CompletionTokens: chatResp.Usage.CompletionTokens,
-			TotalTokens:      chatResp.Usage.TotalTokens,
-		},
-		RawJSON: bodyBytes,
+		ID:           "", // native API doesn't return an ID
+		Model:        req.Model,
+		Message:      llm.Message{Role: "assistant", Content: chatResp.Content},
+		FinishReason: chatResp.StopReason,
+		RawJSON:      bodyBytes,
 	}
 
 	return completion, nil
+}
+
+// buildPrompt concatenates messages into a single prompt string for the native API.
+func buildPrompt(messages []llm.Message) string {
+	var parts []string
+	for _, m := range messages {
+		parts = append(parts, fmt.Sprintf("%s: %s", strings.ToLower(m.Role), m.Content))
+	}
+	return strings.Join(parts, "\n") + "\n"
 }
 
 // Stream sends a chat completion request and yields incremental chunks via SSE.
@@ -193,16 +181,13 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 	}
 
 	body := ChatRequest{
-		Model:        req.Model,
-		Messages:     req.Messages,
-		Tools:        req.Tools,
-		Temperature:    req.Temperature,
-		MaxTokens:    req.MaxTokens,
-		Stop:         req.StopSequences,
-		PresencePenalty:  req.PresencePenalty,
-		FrequencyPenalty: req.FrequencyPenalty,
-		Stream:       true,
-		CachePrompt:  p.CacheEnabled,
+		Prompt:      buildPrompt(req.Messages),
+		NPredict:    req.MaxTokens,
+		Model:       req.Model,
+		Temperature:   req.Temperature,
+		Stop:        req.StopSequences,
+		Stream:      true,
+		CachePrompt: p.CacheEnabled,
 	}
 
 	payload, err := json.Marshal(body)
@@ -210,7 +195,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	url := p.BaseURL + "/api/v1/chat"
+	url := p.BaseURL + "/completion"
 
 	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
@@ -321,22 +306,32 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 	}
 
 	data := strings.TrimPrefix(line, "data: ")
+
+	// Native /completion format: {"content":"...","stop_reason":"..."}
+	var nativeResp struct {
+		Content    string `json:"content"`
+		StopReason string `json:"stop_reason,omitempty"`
+	}
+	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
+		return llm.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
+	}
+
+	// Fallback to OpenAI-compatible format for backward compat
 	var delta map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &delta); err != nil {
-		return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
-	}
-
-	chunk := llm.Chunk{}
-	if msg, ok := delta["message"].(map[string]interface{}); ok {
-		if content, ok := msg["content"].(string); ok {
-			chunk.Delta = content
+	if err := json.Unmarshal([]byte(data), &delta); err == nil {
+		chunk := llm.Chunk{}
+		if msg, ok := delta["message"].(map[string]interface{}); ok {
+			if content, ok := msg["content"].(string); ok {
+				chunk.Delta = content
+			}
 		}
-	}
-	if fr, ok := delta["finish_reason"].(string); ok {
-		chunk.FinishReason = fr
+		if fr, ok := delta["finish_reason"].(string); ok {
+			chunk.FinishReason = fr
+		}
+		return chunk, nil
 	}
 
-	return chunk, nil
+	return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 }
 
 func (s *sseStreamReader) Close() error {

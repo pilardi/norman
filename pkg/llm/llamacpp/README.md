@@ -1,7 +1,8 @@
 # llamacpp Provider
 
 llama.cpp HTTP server provider implementing `LLM` + `Embedder` interfaces with
-explicit KV-cache prompt caching optimization.
+explicit KV-cache prompt caching optimization. Uses llama.cpp's **native `/completion`**
+endpoint (not the OpenAI-compatible `/v1/chat/completions` wrapper).
 
 ## Architecture
 
@@ -16,7 +17,7 @@ explicit KV-cache prompt caching optimization.
 ┌─────────────────────────────────────────────────────────┐
 │  llama.cpp HTTP Server                                  │
 │                                                         │
-│  POST /api/v1/chat      ← chat completions (SSE stream)│
+│  POST /completion       ← native chat completions (SSE) │
 │  POST /api/v1/embeddings ← embedding vectors            │
 │                                                         │
 │  ┌─────────────────────────────────────────────────┐   │
@@ -28,6 +29,17 @@ explicit KV-cache prompt caching optimization.
 │  └─────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
+
+## API Format
+
+The provider uses llama.cpp's **native `/completion`** endpoint rather than the
+OpenAI-compatible `/v1/chat/completions` wrapper. This means:
+
+- **Request**: `{"prompt":"...","n_predict":N,"model":"...","stream":true}`
+  (single prompt string + n_predict, not a messages array)
+- **Response** (native): `{"content":"...","stop_reason":"..."}`
+- **SSE fallback**: If the server returns OpenAI-compatible format (`choices[].message.content`),
+  the parser falls back to that format automatically.
 
 ## Prompt Caching Strategy
 
@@ -49,25 +61,23 @@ same prefix, the server restores cached KV entries instead of reprocessing token
 After each completion, check the response:
 ```json
 {
-  "usage": {
-    "prompt_tokens": 1200,
-    "cached_tokens": 800,   // ← this tells you how many tokens were served from cache
-    "completion_tokens": 150,
-    "total_tokens": 1350
-  }
+  "content": "...",
+  "stop_reason": "eos_token"
 }
 ```
 
-A `cached_tokens` value > 0 means the prefix was found in KV cache. The ratio
-`cached_tokens / prompt_tokens` gives your hit rate for that request.
+> **Note:** The native `/completion` endpoint does not include token usage stats
+> in the response body. To monitor cache hit rates, use the `--log-disable` and
+> `--log-raw` server flags or check the server's stderr output for KV-cache
+> statistics (e.g., `cached_tokens: 800`).
 
 ### Tuning Guide
 
 1. **Measure your longest repeated prefix** (system prompt + conversation history).
 2. Set `CacheSize` to at least that length + 20% headroom.
 3. Use `fq` type if accuracy is critical; switch to `q4_0` if memory is constrained.
-4. Monitor `cached_tokens` in responses — if it's consistently 0, your cache size
-   may be too small or prefixes are varying too much.
+4. Monitor KV-cache stats in server logs — if cache hits are consistently 0, your
+   cache size may be too small or prefixes are varying too much.
 
 ## Usage
 
