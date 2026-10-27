@@ -39,6 +39,18 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Validate the workspace exists before ensuring its sandbox.
+	found := false
+	for _, ws := range s.workspaces {
+		if ws.Id != nil && ws.Id.String() == req.WorkspaceId {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found: " + req.WorkspaceId})
+	}
+
 	// Ensure the OpenShell sandbox exists for this workspace, carrying the session UUID.
 	sid := session.Id.String()
 	_, err = s.workspaceManager.GetSession(c.Request().Context(), req.WorkspaceId, sid)
