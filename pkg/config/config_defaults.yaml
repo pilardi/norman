@@ -30,3 +30,4 @@ system:
       temperature: 0.7
       max_tokens: 55000
       api_key: "" # set your OpenAI key here (non-empty required for openai type)
+      embedding_endpoint: "/embeddings" # optional: "/embeddings" or "/api/v1/embeddings"; leave empty for auto-detect

@@ -31,14 +31,15 @@ type SystemConfig struct {
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.
 type ProviderConfig struct {
-	Name      string         `yaml:"name"`       // identifier, e.g. "default", "local"
-	Type      string         `yaml:"type"`       // "openai", "llamacpp", etc.
-	Endpoint  string         `yaml:"endpoint"`   // base API URL
-	Model     string         `yaml:"model"`      // model name/identifier
-	Temperature float64        `yaml:"temperature"` // provider default temperature
-	MaxTokens int            `yaml:"max_tokens"`  // provider default max tokens
-	ApiKey    string         `yaml:"api_key"`     // provider API key (e.g. OpenAI key)
-	Extra     map[string]any `yaml:",inline"`    // type-specific fields (cache_size, etc.)
+	Name              string         `yaml:"name"`       // identifier, e.g. "default", "local"
+	Type              string         `yaml:"type"`       // "openai", "llamacpp", etc.
+	Endpoint          string         `yaml:"endpoint"`   // base API URL
+	Model             string         `yaml:"model"`      // model name/identifier
+	Temperature       float64        `yaml:"temperature"` // provider default temperature
+	MaxTokens         int            `yaml:"max_tokens"`  // provider default max tokens
+	ApiKey            string         `yaml:"api_key"`     // provider API key (e.g. OpenAI key)
+	EmbeddingEndpoint string         `yaml:"embedding_endpoint"` // embedding route: "/embeddings" or "/api/v1/embeddings"
+	Extra             map[string]any `yaml:",inline"`    // type-specific fields (cache_size, etc.)
 }
 
 // ResolveProvider returns the provider config matching the given name.

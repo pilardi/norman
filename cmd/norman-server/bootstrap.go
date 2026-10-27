@@ -85,7 +85,16 @@ func bootstrap() *server {
 				wsCfg.MaxTokens = provCfg.MaxTokens
 			}
 
-			llmClient = llamacpp.NewProvider(wsCfg, llmCfg)
+			// Apply embedding endpoint configuration.
+			var opts []llamacpp.Option
+			switch provCfg.EmbeddingEndpoint {
+			case "/embeddings":
+				opts = append(opts, llamacpp.WithNativeEmbeddings())
+			case "/api/v1/embeddings":
+				opts = append(opts, llamacpp.WithOpenAICompatibleEmbeddings())
+			}
+
+			llmClient = llamacpp.NewProvider(wsCfg, llmCfg, opts...)
 		default:
 			log.Fatalf("unsupported provider type %q", provCfg.Type)
 		}

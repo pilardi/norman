@@ -18,7 +18,8 @@ endpoint (not the OpenAI-compatible `/v1/chat/completions` wrapper).
 │  llama.cpp HTTP Server                                  │
 │                                                         │
 │  POST /completion       ← native chat completions (SSE) │
-│  POST /api/v1/embeddings ← embedding vectors            │
+│  POST /api/v1/embeddings ← OpenAI-compatible embeddings │
+│  POST /embeddings     ← native embeddings (token-level) │
 │                                                         │
 │  ┌─────────────────────────────────────────────────┐   │
 │  │ KV Cache (persistent across requests)           │   │
@@ -104,6 +105,84 @@ llama-server --model path/to/model.gguf \
     --ctx-size 4096 \
     --cache-type-fq
 ```
+
+## Embedding Endpoints
+
+The provider supports **two embedding endpoints** with automatic fallback:
+
+| Endpoint | Route | Pooling Support | Response Shape |
+|----------|-------|----------------|----------------|
+| OpenAI-compatible | `/api/v1/embeddings` | Requires pooling ≠ `none` | `{"data":[...],"usage":{...}}` |
+| Native llama.cpp | `/embeddings` | All modes including `--pooling none` | `{"embedding":[...],"tokens":[...],"pooling":"..."}` |
+
+### Auto-Detection (Default)
+
+By default, `EmbedText()` tries `/api/v1/embeddings` first and falls back to `/embeddings`
+if the first returns a 404 or unexpected response shape. This covers most deployment scenarios.
+
+### Explicit Native Embeddings
+
+When you need token-level embeddings or custom pooling modes:
+
+```go
+p := llamacpp.NewProvider(cfg,
+    llamacpp.WithNativeEmbeddings(), // forces /embeddings endpoint
+)
+```
+
+### Explicit OpenAI-Compatible Embeddings
+
+When you want guaranteed OpenAI-compatible response format:
+
+```go
+p := llamacpp.NewProvider(cfg,
+    llamacpp.WithOpenAICompatibleEmbeddings(), // forces /api/v1/embeddings
+)
+```
+
+### When to Use Each
+
+| Scenario | Recommended Endpoint |
+|----------|---------------------|
+| RAG / semantic search (sentence-level vectors) | `/api/v1/embeddings` (auto-detect) |
+| Token-level similarity analysis | `/embeddings` (`WithNativeEmbeddings()`) |
+| Custom pooling (e.g., `--pooling none`) | `/embeddings` (`WithNativeEmbeddings()`) |
+| Drop-in OpenAI SDK replacement | `/api/v1/embeddings` (`WithOpenAICompatibleEmbeddings()`) |
+
+### Native `/embeddings` Response Shape
+
+When using the native endpoint, the server returns:
+```json
+{
+  "embedding": [0.0234, -0.1567, ...],
+  "tokens": [1, 2, 3, 4, 5],
+  "pooling": "none"
+}
+```
+
+The `pooling` field indicates which pooling mode the server is configured with (`cls`, `mean`, `last`, or `none`).
+
+## YAML Configuration
+
+You can configure the embedding endpoint directly in your `config.yaml`:
+
+```yaml
+llm_providers:
+  - name: "local-llamacpp"
+    type: "llamacpp"
+    endpoint: "http://localhost:8288"
+    model: "unsloth/Qwen3.8-27B-GGUF:IQ3_S"
+    embedding_endpoint: "/embeddings"  # forces native /embeddings
+```
+
+Valid values for `embedding_endpoint`:
+| Value | Effect |
+|-------|--------|
+| `"/embeddings"` | Forces native llama.cpp `/embeddings` endpoint |
+| `"/api/v1/embeddings"` | Forces OpenAI-compatible `/api/v1/embeddings` endpoint |
+| (empty / omitted) | Auto-detect: tries `/api/v1/embeddings` first, falls back to `/embeddings` |
+
+> **Note:** The Go options `WithNativeEmbeddings()` and `WithOpenAICompatibleEmbeddings()` are equivalent to setting this field in YAML. Use the YAML field for persistent configuration; use the Go options when building providers programmatically.
 
 ## Errors
 

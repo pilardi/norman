@@ -40,17 +40,32 @@ type ChatResponse struct {
 	RawJSON    []byte `json:"-"`
 }
 
-// EmbedRequest is the body for /api/v1/embeddings.
+// EmbedRequest is the body for /api/v1/embeddings (OpenAI-compatible).
 type EmbedRequest struct {
-	Input  string `json:"input"`
-	Model  string `json:"model,omitempty"`
-	Truncate bool `json:"truncate,omitempty"`
+	Input    string `json:"input"`
+	Model    string `json:"model,omitempty"`
+	Truncate bool   `json:"truncate,omitempty"`
 }
 
-// EmbedResponse is the embedding result.
+// EmbedResponse is the OpenAI-compatible embedding result (from /api/v1/embeddings).
 type EmbedResponse struct {
 	Data   []EmbedData `json:"data"`
 	Usage  Usage       `json:"usage"`
+}
+
+// NativeEmbedResponse is the llama.cpp-native /embeddings response shape.
+// Returns a single pooled embedding vector with token metadata.
+type NativeEmbedResponse struct {
+	Embedding []float32 `json:"embedding"`
+	Tokens    []int     `json:"tokens,omitempty"`
+	Pooling   string    `json:"pooling,omitempty"`
+}
+
+// EmbedData holds a single embedding vector (OpenAI-compatible format).
+type EmbedData struct {
+	Object    string    `json:"object"`
+	Index     int       `json:"index"`
+	Embedding []float32 `json:"embedding"`
 }
 
 // Usage matches llama.cpp's usage reporting for embeddings.
@@ -61,26 +76,20 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-// EmbedData holds a single embedding vector.
-type EmbedData struct {
-	Object    string    `json:"object"`
-	Index     int       `json:"index"`
-	Embedding []float32 `json:"embedding"`
-}
-
 // --- Provider Implementation ---
 
 // Provider implements llm.LLM + llm.Embedder for llama.cpp's HTTP server.
 type Provider struct {
-	BaseURL      string
-	Model        string
-	Temperature  float64
-	MaxTokens    int
-	HTTPClient   *http.Client
-	Timeout      time.Duration
-	CacheEnabled bool   // whether --cache-prompt is active on the server
-	CacheSize    int    // max KV cache tokens (n_ctx)
-	CacheType    string // "fq" or quantized type
+	BaseURL          string
+	Model            string
+	Temperature        float64
+	MaxTokens        int
+	HTTPClient       *http.Client
+	Timeout          time.Duration
+	CacheEnabled     bool   // whether --cache-prompt is active on the server
+	CacheSize        int    // max KV cache tokens (n_ctx)
+	CacheType        string // "fq" or quantized type
+	EmbeddingEndpoint string // embedding endpoint path; "" = auto-detect, "/api/v1/embeddings", "/embeddings"
 }
 
 // NewProvider creates a provider configured from workspace config and
@@ -220,14 +229,16 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 }
 
 // EmbedText returns a float32 vector for the given text.
+// It auto-detects the embedding endpoint: /api/v1/embeddings (OpenAI-compatible) or
+// /embeddings (llama.cpp-native). Falls back gracefully between them.
 func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error) {
 	if p.HTTPClient == nil {
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
 
 	body := EmbedRequest{
-		Input:  text,
-		Model:  p.Model,
+		Input:    text,
+		Model:    p.Model,
 		Truncate: true,
 	}
 
@@ -236,40 +247,56 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 		return nil, fmt.Errorf("marshal embedding request: %w", err)
 	}
 
-	url := p.BaseURL + "/api/v1/embeddings"
+	// Try OpenAI-compatible endpoint first, then fall back to native /embeddings
+	endpoints := []string{"/api/v1/embeddings", "/embeddings"}
+	for _, ep := range endpoints {
+		if p.EmbeddingEndpoint != "" {
+			ep = p.EmbeddingEndpoint
+		}
 
-	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
-	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("create request: %w", err))
+		fullURL := p.BaseURL + ep
+		reqHTTP, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(payload))
+		if err != nil {
+			continue
+		}
+		reqHTTP.Header.Set("Content-Type", "application/json")
+
+		resp, err := p.HTTPClient.Do(reqHTTP)
+		if err != nil {
+			continue
+		}
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			// If it's a 404 on the first endpoint, try the other
+			if resp.StatusCode == http.StatusNotFound && ep == "/api/v1/embeddings" {
+				continue
+			}
+			return nil, mapHTTPError(resp.StatusCode, string(bodyBytes))
+		}
+
+		// Try OpenAI-compatible format first (/api/v1/embeddings)
+		var openAIResp EmbedResponse
+		if err := json.Unmarshal(bodyBytes, &openAIResp); err == nil && len(openAIResp.Data) > 0 {
+			return openAIResp.Data[0].Embedding, nil
+		}
+
+		// Try native /embeddings format
+		var nativeResp NativeEmbedResponse
+		if err := json.Unmarshal(bodyBytes, &nativeResp); err == nil && len(nativeResp.Embedding) > 0 {
+			return nativeResp.Embedding, nil
+		}
+
+		// Neither format matched — return raw error
+		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("unexpected response shape from %s: %s", ep, string(bodyBytes)))
 	}
 
-	reqHTTP.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.HTTPClient.Do(reqHTTP)
-	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("read response body: %w", err))
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, mapHTTPError(resp.StatusCode, string(bodyBytes))
-	}
-
-	var embedResp EmbedResponse
-	if err := json.Unmarshal(bodyBytes, &embedResp); err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("parse response: %w", err))
-	}
-
-	if len(embedResp.Data) == 0 {
-		return nil, fmt.Errorf("no embedding data returned")
-	}
-
-	return embedResp.Data[0].Embedding, nil
+	return nil, fmt.Errorf("no embedding endpoint available (tried /api/v1/embeddings and /embeddings)")
 }
 
 // ProviderInfo returns metadata about the underlying llama.cpp provider.
@@ -390,4 +417,16 @@ func WithCacheType(typ string) Option {
 // WithCacheDisabled disables server-side prompt caching.
 func WithCacheDisabled() Option {
 	return func(p *Provider) { p.CacheEnabled = false }
+}
+
+// WithNativeEmbeddings configures the provider to use the native /embeddings endpoint
+// instead of the OpenAI-compatible /api/v1/embeddings route. This is useful when
+// you need --pooling none support or token-level embeddings.
+func WithNativeEmbeddings() Option {
+	return func(p *Provider) { p.EmbeddingEndpoint = "/embeddings" }
+}
+
+// WithOpenAICompatibleEmbeddings explicitly uses the /api/v1/embeddings endpoint.
+func WithOpenAICompatibleEmbeddings() Option {
+	return func(p *Provider) { p.EmbeddingEndpoint = "/api/v1/embeddings" }
 }
