@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -22,13 +23,21 @@ func handleProviders(args []string) {
 
 	switch command {
 	case "add":
-		handleProvidersAdd(subArgs)
+		if len(subArgs) == 0 {
+			handleProvidersAddInteractive()
+		} else {
+			handleProvidersAdd(subArgs)
+		}
 	case "list", "ls":
 		handleProvidersList(subArgs)
 	case "get":
 		handleProvidersGet(subArgs)
 	case "update":
-		handleProvidersUpdate(subArgs)
+		if len(subArgs) == 0 {
+			handleProvidersUpdateInteractive()
+		} else {
+			handleProvidersUpdate(subArgs)
+		}
 	case "delete", "del":
 		handleProvidersDelete(subArgs)
 	case "help", "-h", "--help":
@@ -49,7 +58,7 @@ func printprovidersHelp() {
 Usage: norman providers <subcommand> [args...]
 
 Subcommands:
-  add <name> --type <type> --endpoint <url> [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
+  add [name] [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
       Add a new LLM provider. Required flags: --type, --endpoint.
       Type must be one of: openai, anthropic, ollama, gemini, llamacpp.
 
@@ -84,7 +93,7 @@ func handleProvidersAdd(args []string) {
 	name := args[0]
 	args = args[1:]
 
-	var req map[string]interface{}
+	req := make(map[string]interface{})
 	req["name"] = name
 
 	for i := 0; i < len(args); i++ {
@@ -114,7 +123,7 @@ func handleProvidersAdd(args []string) {
 			}
 		} else if args[i] == "-h" || args[i] == "--help" {
 			fmt.Println("HELP CASE HIT")
-		printprovidersHelp()
+			printprovidersHelp()
 			return
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
@@ -135,6 +144,94 @@ func handleProvidersAdd(args []string) {
 	}
 
 	fmt.Printf("Provider '%s' created successfully.\n", name)
+	printprovidersSummary(resp)
+}
+
+// handleProvidersAddInteractive runs an interactive prompt-based workflow for adding a provider.
+func handleProvidersAddInteractive() {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	prompt := func(label string) string {
+		fmt.Printf("%s: ", label)
+		scanner.Scan()
+		return strings.TrimSpace(scanner.Text())
+	}
+
+	name := prompt("Provider name")
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "Error: provider name is required")
+		os.Exit(1)
+	}
+
+	validTypes := []string{"openai", "anthropic", "ollama", "gemini", "llamacpp"}
+	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
+	providerType := prompt("Provider type")
+	if providerType == "" {
+		fmt.Fprintln(os.Stderr, "Error: type is required")
+		os.Exit(1)
+	}
+
+	endpoint := prompt("Endpoint URL")
+	if endpoint == "" {
+		fmt.Fprintln(os.Stderr, "Error: endpoint is required")
+		os.Exit(1)
+	}
+
+	model := prompt("Model (optional)")
+	tempStr := prompt("Temperature (optional, e.g. 0.7)")
+	maxTokensStr := prompt("Max tokens (optional)")
+	apiKey := prompt("API key (optional)")
+	extra := prompt("Extra key=val (optional, empty to skip)")
+
+	// Build the request map
+	req := make(map[string]interface{})
+	req["name"] = name
+	req["type"] = providerType
+	req["endpoint"] = endpoint
+
+	if model != "" {
+		req["model"] = model
+	}
+	if tempStr != "" {
+		req["temperature"] = tempStr
+	}
+	if maxTokensStr != "" {
+		req["max_tokens"] = maxTokensStr
+	}
+	if apiKey != "" {
+		req["api_key"] = apiKey
+	}
+	if extra != "" {
+		req["extra"] = extra
+	}
+
+	// Show summary for confirmation
+	fmt.Println("\n--- Provider Summary ---")
+	for k, v := range req {
+		fmt.Printf("  %s: %v\n", k, v)
+	}
+	fmt.Print("\nConfirm and create? (yes/no): ")
+	scanner.Scan()
+	confirm := strings.TrimSpace(strings.ToLower(scanner.Text()))
+
+	if confirm != "yes" && confirm != "y" {
+		fmt.Println("Aborted.")
+		return
+	}
+
+	body, err := httpPostJSON("/api/providers", req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating provider: %v\n", err)
+		os.Exit(1)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nProvider '%s' created successfully.\n", name)
 	printprovidersSummary(resp)
 }
 
@@ -202,7 +299,7 @@ func handleProvidersUpdate(args []string) {
 	name := args[0]
 	args = args[1:]
 
-	var req map[string]interface{}
+	req := make(map[string]interface{})
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--type" && i+1 < len(args) {
@@ -230,7 +327,7 @@ func handleProvidersUpdate(args []string) {
 			}
 		} else if args[i] == "-h" || args[i] == "--help" {
 			fmt.Println("HELP CASE HIT")
-		printprovidersHelp()
+			printprovidersHelp()
 			return
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
@@ -257,6 +354,93 @@ func handleProvidersUpdate(args []string) {
 	}
 
 	fmt.Printf("Provider '%s' updated successfully.\n", name)
+	printprovidersSummary(resp)
+}
+
+// handleProvidersUpdateInteractive runs an interactive prompt-based workflow for updating a provider.
+func handleProvidersUpdateInteractive() {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	prompt := func(label string) string {
+		fmt.Printf("%s: ", label)
+		scanner.Scan()
+		return strings.TrimSpace(scanner.Text())
+	}
+
+	name := prompt("Provider name")
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "Error: provider name is required")
+		os.Exit(1)
+	}
+
+	validTypes := []string{"openai", "anthropic", "ollama", "gemini", "llamacpp"}
+	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
+	providerType := prompt("Provider type (empty to skip)")
+	endpoint := prompt("Endpoint URL (empty to skip)")
+	model := prompt("Model (empty to skip)")
+	tempStr := prompt("Temperature (empty to skip)")
+	maxTokensStr := prompt("Max tokens (empty to skip)")
+	apiKey := prompt("API key (empty to skip)")
+	extra := prompt("Extra key=val (empty to skip)")
+
+	// Build the request map (only non-empty fields)
+	req := make(map[string]interface{})
+
+	if providerType != "" {
+		req["type"] = providerType
+	}
+	if endpoint != "" {
+		req["endpoint"] = endpoint
+	}
+	if model != "" {
+		req["model"] = model
+	}
+	if tempStr != "" {
+		req["temperature"] = tempStr
+	}
+	if maxTokensStr != "" {
+		req["max_tokens"] = maxTokensStr
+	}
+	if apiKey != "" {
+		req["api_key"] = apiKey
+	}
+	if extra != "" {
+		req["extra"] = extra
+	}
+
+	if len(req) == 0 {
+		fmt.Println("No fields provided. Nothing to update.")
+		return
+	}
+
+	// Show summary for confirmation
+	fmt.Println("\n--- Update Summary ---")
+	for k, v := range req {
+		fmt.Printf("  %s: %v\n", k, v)
+	}
+	fmt.Print("\nConfirm and update? (yes/no): ")
+	scanner.Scan()
+	confirm := strings.TrimSpace(strings.ToLower(scanner.Text()))
+
+	if confirm != "yes" && confirm != "y" {
+		fmt.Println("Aborted.")
+		return
+	}
+
+	url := "/api/providers/" + urlPathEscape(name)
+	body, err := httpPostJSON(url, req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
+		os.Exit(1)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nProvider '%s' updated successfully.\n", name)
 	printprovidersSummary(resp)
 }
 
