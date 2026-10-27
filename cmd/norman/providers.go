@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -193,10 +194,20 @@ func handleProvidersAddInteractive() {
 		req["model"] = model
 	}
 	if tempStr != "" {
-		req["temperature"] = tempStr
+		tempVal, err := strconv.ParseFloat(tempStr, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", tempStr, err)
+			os.Exit(1)
+		}
+		req["temperature"] = tempVal
 	}
 	if maxTokensStr != "" {
-		req["max_tokens"] = maxTokensStr
+		tokensVal, err := strconv.Atoi(maxTokensStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", maxTokensStr, err)
+			os.Exit(1)
+		}
+		req["max_tokens"] = tokensVal
 	}
 	if apiKey != "" {
 		req["api_key"] = apiKey
@@ -396,10 +407,20 @@ func handleProvidersUpdateInteractive() {
 		req["model"] = model
 	}
 	if tempStr != "" {
-		req["temperature"] = tempStr
+		tempVal, err := strconv.ParseFloat(tempStr, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", tempStr, err)
+			os.Exit(1)
+		}
+		req["temperature"] = tempVal
 	}
 	if maxTokensStr != "" {
-		req["max_tokens"] = maxTokensStr
+		tokensVal, err := strconv.Atoi(maxTokensStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", maxTokensStr, err)
+			os.Exit(1)
+		}
+		req["max_tokens"] = tokensVal
 	}
 	if apiKey != "" {
 		req["api_key"] = apiKey
