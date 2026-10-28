@@ -266,7 +266,7 @@ func TestExecuteBudgetCheckAtStart(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		loop.execute(ctx, task)
+		loop.execute(ctx, task, "")
 		close(done)
 	}()
 
@@ -312,7 +312,7 @@ func TestExecuteCallsCheckTwice(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		loop.execute(ctx, task)
+		loop.execute(ctx, task, "")
 		close(done)
 	}()
 
@@ -500,7 +500,7 @@ func TestRawSourcesContextInjection(t *testing.T) {
 		Workspace: "default",
 	}
 
-	loop.execute(context.Background(), task)
+	loop.execute(context.Background(), task, "")
 
 	// Verify the captured prompt contains raw source context markers.
 	capturedPrompt := fakeClient.CapturedPrompt()
@@ -536,7 +536,7 @@ func TestRawSourcesNilInLoop(t *testing.T) {
 		Workspace: "default",
 	}
 
-	loop.execute(context.Background(), task)
+	loop.execute(context.Background(), task, "")
 
 	// Should complete without error.
 	if task.Status != protocol.TaskStatusCompleted {
@@ -654,7 +654,7 @@ func TestSendMessageMultiTurnWithToolCall(t *testing.T) {
 
 	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
 
-	resp, err := loop.SendMessage(context.Background(), "session-1", "List files in /tmp")
+	resp, err := loop.SendMessage(context.Background(), "session-1", "List files in /tmp", "")
 	if err != nil {
 		t.Fatalf("SendMessage failed: %v", err)
 	}
@@ -697,7 +697,7 @@ func TestSendMessageMultiTurnMaxTurnsReached(t *testing.T) {
 
 	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
 
-	resp, err := loop.SendMessage(context.Background(), "session-1", "Keep calling tools")
+	resp, err := loop.SendMessage(context.Background(), "session-1", "Keep calling tools", "")
 	if err != nil {
 		t.Fatalf("SendMessage failed: %v", err)
 	}
@@ -721,7 +721,7 @@ func TestSendMessageShellOnlyFallback(t *testing.T) {
 	// No LLM client wired — should fall back to shell-only path
 	loop := New(nil, store, nil, act, fakeWSHub, fakeClient) // no WithLLMClient call
 
-	resp, err := loop.SendMessage(context.Background(), "session-1", "echo hello world")
+	resp, err := loop.SendMessage(context.Background(), "session-1", "echo hello world", "")
 	if err != nil {
 		t.Fatalf("SendMessage failed: %v", err)
 	}

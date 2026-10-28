@@ -456,6 +456,39 @@ func fetchOllamaModels(endpoint string) ([]modelEntry, error) {
 	return entries, nil
 }
 
+// queryModelsForProvider queries the server's /api/providers/{name}/models endpoint
+// and returns available model entries. Returns an empty slice on error (non-fatal).
+func queryModelsForProvider(name string) []modelEntry {
+	body, err := httpGet("/api/providers/" + urlPathEscape(name) + "/models")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not fetch available models for '%s': %v\n", name, err)
+		return nil
+	}
+
+	var resp protocol.AvailableModelsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: error parsing model response: %v\n", err)
+		return nil
+	}
+
+	models := []modelEntry{}
+	if resp.Models != nil {
+		for _, m := range *resp.Models {
+			id := ""
+			if m.Id != nil {
+				id = *m.Id
+			}
+			nameVal := ""
+			if m.Name != nil {
+				nameVal = *m.Name
+			}
+			models = append(models, modelEntry{Id: id, Name: nameVal})
+		}
+	}
+
+	return models
+}
+
 // handleProvidersList lists all providers via GET /api/providers.
 func handleProvidersList(args []string) {
 	body, err := httpGet("/api/providers")
@@ -644,11 +677,8 @@ func handleProvidersUpdateInteractive() {
 	}
 
 	if effectiveType != "" && effectiveEndpoint != "" {
-		models, err := fetchAvailableModels(effectiveEndpoint, "", effectiveType)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not fetch available models: %v\n", err)
-			fmt.Println("You can enter a model name manually below.")
-		} else if len(models) > 0 {
+		models := queryModelsForProvider(name)
+		if len(models) > 0 {
 			fmt.Printf("\nAvailable models for this provider (%d found):\n", len(models))
 			for i, m := range models {
 				fmt.Printf("  %d. %s\n", i+1, m.Id)

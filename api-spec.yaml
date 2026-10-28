@@ -987,6 +987,9 @@ components:
           type: boolean
           default: true
           description: Whether to allow tool use in response
+        provider:
+          type: string
+          description: Optional provider name to override the workspace default
 
     AgentResponse:
       type: object

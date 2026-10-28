@@ -281,7 +281,7 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, se
 		Step:    intPtr(0),
 	})
 
-	go l.execute(ctx, task)
+	go l.execute(ctx, task, "")
 	return task, nil
 }
 
@@ -313,7 +313,7 @@ type AgentResponse struct {
 
 // SendMessage processes a chat message synchronously and returns a structured response.
 // This is the primary interface for the chat-first agent model.
-func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string) (*AgentResponse, error) {
+func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
 	taskID := uuid.New().String()
 
 	task := &Task{
@@ -329,7 +329,7 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 	l.mu.Unlock()
 
 	// Process the message synchronously via execute (blocks until completion).
-	l.execute(ctx, task)
+	l.execute(ctx, task, providerName)
 
 	// Build response.
 	resp := &AgentResponse{
@@ -349,8 +349,8 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 // a background task after processing the message. The response includes task_created
 // and task_id when applicable.
 func (l *Loop) SendMessageWithTask(ctx context.Context, sessionID string, message string, createTask bool) (*AgentResponse, error) {
-	// First, process the message normally.
-	resp, err := l.SendMessage(ctx, sessionID, message)
+	// First, process the message normally (no provider override).
+	resp, err := l.SendMessage(ctx, sessionID, message, "")
 	if err != nil {
 		return nil, err
 	}
@@ -458,13 +458,13 @@ func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]
 	})
 
 	// Execute synchronously (blocks until completion).
-	l.execute(ctx, task)
+	l.execute(ctx, task, "")
 
 	return task, nil
 }
 
 // execute runs the agent loop for a single task.
-func (l *Loop) execute(ctx context.Context, task *Task) {
+func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 	defer func() {
 		l.mu.Lock()
 		if task.Status == protocol.TaskStatusRunning || task.Status == protocol.TaskStatusPending {
@@ -600,7 +600,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// Try LLM-based multi-turn loop first; fall back to shell-only if no client.
 	if l.llmClient != nil {
-		task.Output = l.executeWithLLM(ctx, task, sandboxName)
+		task.Output = l.executeWithLLM(ctx, task, sandboxName, providerName)
 	} else {
 		// Legacy shell-only path: inject raw sources into prompt and run as a single command.
 		prompt := task.Prompt
@@ -670,7 +670,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 // executeWithLLM runs a multi-turn agent loop using the LLM client.
 // It builds context from session history + raw sources + skills, calls the LLM,
 // parses tool calls if present, executes them in the sandbox, and loops back.
-func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string) []byte {
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string, providerName string) []byte {
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
 
@@ -687,13 +687,28 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		// Build tools from active skills and pass to LLM
 		tools := l.buildTools()
 
+		// Resolve model/temperature/max_tokens — use provider override if specified.
+		model := l.Model(task.Workspace)
+		temp := l.Temperature(task.Workspace)
+		maxTokens := l.MaxTokens(task.Workspace)
+		if providerName != "" {
+			pc, err := l.config.System.ResolveProvider(providerName)
+			if err != nil {
+				log.Printf("agent: failed to resolve provider %q: %v; falling back to workspace defaults", providerName, err)
+			} else {
+				model = pc.Model
+				temp = pc.Temperature
+				maxTokens = pc.MaxTokens
+			}
+		}
+
 		// Use streaming: yield chunks in real-time via WebSocket, accumulate full text.
 		stream, err := l.llmClient.Stream(ctx, llm.CompletionRequest{
 			Messages:    messages,
 			Tools:       tools,
-			Model:       l.Model(task.Workspace),
-			Temperature:   l.Temperature(task.Workspace),
-			MaxTokens:   l.MaxTokens(task.Workspace),
+			Model:       model,
+			Temperature:   temp,
+			MaxTokens:   maxTokens,
 		})
 		if err != nil {
 			log.Printf("agent: LLM stream failed at turn %d: %v", turn, err)

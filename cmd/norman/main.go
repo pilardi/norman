@@ -14,11 +14,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	command := os.Args[1]
-	args := os.Args[2:]
-
 	// Check for -v/--verbose flag anywhere in args (before or after command)
 	verbose = isVerbose()
+
+	// Parse -p/--provider NAME from args (can appear before the command).
+	// We check os.Args[1:] to handle cases like "norman -p unsloth sessions open".
+	args, provider := parseProviderFlag(os.Args[1:])
+	if provider != "" {
+		selectedProvider = provider
+	}
+
+	command := args[0]
+	args = args[1:]
 
 	switch command {
 	case "config":
@@ -49,6 +56,9 @@ func printUsage() {
 // verbose controls whether debug output is printed to stderr.
 var verbose bool
 
+// selectedProvider overrides the default LLM provider for a session.
+var selectedProvider string
+
 // isVerbose checks if verbose/debug mode was requested.
 func isVerbose() bool {
 	for _, arg := range os.Args[1:] {
@@ -57,6 +67,21 @@ func isVerbose() bool {
 		}
 	}
 	return false
+}
+
+// parseProviderFlag extracts -p/--provider NAME from args and returns remaining args.
+func parseProviderFlag(args []string) ([]string, string) {
+	for i := 0; i < len(args)-1; i++ {
+		if (args[i] == "-p" || args[i] == "--provider") && i+1 < len(args) {
+			provider := args[i+1]
+			// Remove the flag and its value from args
+			remaining := make([]string, 0, len(args)-2)
+			remaining = append(remaining, args[:i]...)
+			remaining = append(remaining, args[i+2:]...)
+			return remaining, provider
+		}
+	}
+	return args, ""
 }
 
 // serverURL returns the configured server base URL.
