@@ -81,6 +81,8 @@ func handleProviders(args []string) {
 		}
 	case "delete", "del":
 		handleProvidersDelete(subArgs)
+	case "set-default", "sd":
+		handleProvidersSetDefault(subArgs)
 	case "help", "-h", "--help":
 		printprovidersHelp()
 		return
@@ -115,13 +117,17 @@ Subcommands:
   delete <name> (del)
       Remove a provider. Fails if it's the last remaining one.
 
+  set-default <name> (sd)
+      Set the default provider for sessions and CLI operations.
+
 Examples:
   norman providers add local --type ollama --endpoint http://localhost:11434 --model llama3
   norman providers add openai-default --type openai --endpoint https://api.openai.com/v1 --model gpt-4o --temp 0.7 --max-tokens 8192
   norman providers list
   norman providers get local
   norman providers update local --temp 0.5
-  norman providers delete old-provider`)
+  norman providers delete old-provider
+  norman providers set-default local`)
 }
 
 // handleProvidersAdd adds a new LLM provider via POST /api/providers.
@@ -560,6 +566,26 @@ func handleProvidersDelete(args []string) {
 	}
 
 	fmt.Printf("Provider '%s' removed.\n", name)
+}
+
+// handleProvidersSetDefault sets the default provider via config update.
+func handleProvidersSetDefault(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: provider name is required\nUsage: norman providers set-default <name>")
+		os.Exit(1)
+	}
+
+	name := args[0]
+	update := map[string]interface{}{
+		"default_provider": name,
+	}
+
+	if err := putConfig(update); err != nil {
+		fmt.Fprintf(os.Stderr, "Error setting default provider '%s': %v\n", name, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Default provider set to '%s'.\n", name)
 }
 
 // printprovidersSummary prints a formatted summary of a provider response.

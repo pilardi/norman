@@ -24,6 +24,10 @@ type SystemConfig struct {
 	// LLM provider configuration.
 	LlmProviders []ProviderConfig `yaml:"llm_providers"`
 
+	// DefaultProvider is the name of the provider used when no explicit provider is selected.
+	// If unset, falls back to the first provider in LlmProviders.
+	DefaultProvider string `yaml:"default_provider,omitempty"`
+
 	// ServerURL is the external-facing URL for the Norman API (e.g., https://norman.example.com).
 	// If set, it overrides the auto-derived http://host:port URL used in context files and agent communication.
 	ServerURL string `yaml:"server_url,omitempty"`

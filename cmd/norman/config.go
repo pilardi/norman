@@ -22,6 +22,7 @@ Usage: norman config [--set key=value | --json]
 Options:
   --set     Set a config value (e.g., --set server_port=9090)
             For providers use dot-path notation: --set providers.0.name=myprovider
+            Use --set default_provider=<name> to set the default provider.
   --json    Output as machine-readable JSON
 
 Config is managed by the server at ~/.config/norman/config.yaml.
@@ -73,6 +74,8 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			return
 		case "openshell_address":
 			update["openshell_address"] = val
+		case "default_provider":
+			update["default_provider"] = val
 		default:
 			// Check if it's a provider dot-path (e.g., "providers.0.name")
 			if strings.HasPrefix(key, "providers.") {
@@ -104,6 +107,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			"server_port":        cfg.ServerPort,
 			"host":               cfg.Host,
 			"server_url":         cfg.ServerURL,
+			"default_provider":     cfg.DefaultProvider,
 			"max_active_skills":  cfg.Skills.MaxActive,
 			"bell_enabled":       cfg.Notify.BellEnabled,
 			"rate_limit_per_min": cfg.Notify.RateLimitPerMin,
@@ -146,6 +150,9 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  server_url:       %s\n", cfg.ServerURL)
 	fmt.Printf("  server_port:      %d\n", cfg.ServerPort)
 	fmt.Printf("  host:             %s\n", cfg.Host)
+	if cfg.DefaultProvider != "" {
+		fmt.Printf("  default_provider: %s\n", cfg.DefaultProvider)
+	}
 	fmt.Printf("  max_active_skills: %d\n", cfg.Skills.MaxActive)
 	fmt.Printf("  bell_enabled:     %v\n", cfg.Notify.BellEnabled)
 	fmt.Printf("  rate_limit_per_min: %d\n", cfg.Notify.RateLimitPerMin)
