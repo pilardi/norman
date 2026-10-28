@@ -32,6 +32,7 @@ Welcome to the Norman documentation. This site is automatically generated from m
 | [Config Embedding Proposal](config-embedding-proposal.html) | Config embedding strategy |
 | [Roger Client Design](roger-client-design.html) | Roger client architecture |
 | [OpenShell Interaction](openshell-interaction.html) | OpenShell protocol design |
+| [Workspace Lifecycle Proposal](workspace-lifecycle-proposal.html) | Workspace lifecycle (stop, restore, archive, purge) |
 
 ## Project Links
 
