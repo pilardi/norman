@@ -340,7 +340,7 @@ type modelEntry struct {
 // fetchAvailableModels queries the provider's API to list available models.
 func fetchAvailableModels(endpoint, apiKey, providerType string) ([]modelEntry, error) {
 	switch strings.ToLower(providerType) {
-	case "openai", "anthropic", "gemini":
+	case "openai", "anthropic", "gemini", "llamacpp":
 		return fetchOpenAICompatibleModels(endpoint, apiKey)
 	case "ollama":
 		return fetchOllamaModels(endpoint)

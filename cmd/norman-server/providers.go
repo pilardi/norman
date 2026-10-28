@@ -351,9 +351,12 @@ func queryProviderModels(p *config.ProviderConfig) ([]protocol.AvailableModelEnt
 		entries = models
 
 	case "llamacpp":
-		// llama.cpp doesn't have a standard model listing endpoint;
-		// return empty list with a hint.
-		return nil, fmt.Errorf("llamacpp providers do not support model discovery — specify the model name manually")
+		// llama.cpp exposes an OpenAI-compatible /v1/models endpoint.
+		models, err := fetchOpenAIModels(p.Endpoint, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch models from %s: %w", p.Endpoint, err)
+		}
+		entries = models
 
 	default:
 		return nil, fmt.Errorf("unsupported provider type %q for model discovery", p.Type)
