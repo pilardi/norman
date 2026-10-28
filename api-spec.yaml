@@ -1421,6 +1421,9 @@ components:
         host:
           type: string
           description: Bind address (e.g., "127.0.0.1")
+        default_provider:
+          type: string
+          description: Name of the default LLM provider to use for sessions and CLI operations
         skills:
           $ref: "#/components/schemas/SkillsConfig"
         notify:

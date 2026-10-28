@@ -106,6 +106,12 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 			} else {
 				return fmt.Errorf("openshell_address must be a string")
 			}
+		case "default_provider":
+			if s, ok := v.(string); ok {
+				cfg.DefaultProvider = s
+			} else {
+				return fmt.Errorf("default_provider must be a string")
+			}
 		default:
 			// Handle provider dot-path keys (e.g., "providers.0.name", "providers.1.temperature")
 			if strings.HasPrefix(k, "providers.") {

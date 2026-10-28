@@ -44,10 +44,12 @@ func bootstrap() *server {
 		}
 	}
 
-	// Resolve selected provider: CLI flag > first configured provider (positional default).
+	// Resolve selected provider: CLI flag > configured default_provider > first in list.
 	var providerName string
 	if selectedProvider != "" && selectedProvider != "unknown" {
 		providerName = selectedProvider
+	} else if cfg.System.DefaultProvider != "" {
+		providerName = cfg.System.DefaultProvider
 	} else if len(cfg.System.LlmProviders) > 0 {
 		providerName = cfg.System.LlmProviders[0].Name
 	}
