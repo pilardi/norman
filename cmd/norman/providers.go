@@ -620,8 +620,23 @@ func handleProvidersUpdateInteractive() {
 	endpoint := promptWithCurrent("Endpoint URL", current["endpoint"])
 
 	var model string
-	if providerTypeStr != "" && endpoint != "" {
-		models, err := fetchAvailableModels(endpoint, "", providerTypeStr)
+
+	// Determine effective type/endpoint: use user input if provided, otherwise fall back to current values.
+	effectiveType := providerTypeStr
+	if effectiveType == "" {
+		if t, ok := current["type"].(string); ok && t != "" {
+			effectiveType = t
+		}
+	}
+	effectiveEndpoint := endpoint
+	if effectiveEndpoint == "" {
+		if e, ok := current["endpoint"].(string); ok && e != "" {
+			effectiveEndpoint = e
+		}
+	}
+
+	if effectiveType != "" && effectiveEndpoint != "" {
+		models, err := fetchAvailableModels(effectiveEndpoint, "", effectiveType)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not fetch available models: %v\n", err)
 			fmt.Println("You can enter a model name manually below.")
