@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	v1types "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
@@ -16,17 +17,20 @@ type Session struct {
 	provider        string
 	sandbox         string
 	namespace       string
-	sessionId string // The session ID; set at creation, never the sandbox name
+	sessionId   string // The session ID; set at creation, never the sandbox name
+	lastActivity *time.Time
 }
 
 // NewSession creates a new session bound to a specific sandbox and Norman API session.
 func NewSession(client *Client, provider, sandbox, sessionId string) *Session {
+	now := time.Now()
 	return &Session{
-		client:          client,
-		provider:        provider,
-		sandbox:         sandbox,
-		namespace:       "default",
-		sessionId: sessionId,
+		client:       client,
+		provider:     provider,
+		sandbox:      sandbox,
+		namespace:    "default",
+		sessionId:    sessionId,
+		lastActivity: &now,
 	}
 }
 
@@ -39,6 +43,11 @@ func (s *Session) SessionID() string {
 // Sandbox returns the OpenShell sandbox name for this session.
 func (s *Session) Sandbox() string {
 	return s.sandbox
+}
+
+// LastActivity returns the timestamp of the last activity, or nil if never set.
+func (s *Session) LastActivity() *time.Time {
+	return s.lastActivity
 }
 
 // Exec runs a command inside the sandbox and returns combined output.

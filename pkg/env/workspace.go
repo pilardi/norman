@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
@@ -13,6 +14,7 @@ import (
 
 // WorkspaceManager manages workspace-to-sandbox mappings with context file injection.
 type WorkspaceManager struct {
+	mu          sync.Mutex
 	client      *Client
 	serverURL   string
 	sessions    map[string]*Session // session ID -> session
@@ -224,6 +226,63 @@ func (m *WorkspaceManager) Sessions() map[string]*Session {
 		result[k] = v
 	}
 	return result
+}
+
+// GetIdleSince returns the time when the workspace was last active, or nil if never used.
+func (m *WorkspaceManager) GetIdleSince(workspace string) *time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if session, ok := m.sessions[workspace]; ok {
+		return session.LastActivity()
+	}
+	return nil
+}
+
+// IsIdle checks if a workspace has been idle for longer than the given threshold.
+func (m *WorkspaceManager) IsIdle(workspace string, threshold time.Duration) bool {
+	lastUsed := m.GetIdleSince(workspace)
+	if lastUsed == nil {
+		return false // never used is not "idle" in the auto-stop sense
+	}
+	return time.Since(*lastUsed) > threshold
+}
+
+// UpdateLastActivity updates the last activity timestamp for a workspace session.
+func (m *WorkspaceManager) UpdateLastActivity(workspace string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if session, ok := m.sessions[workspace]; ok {
+		now := time.Now()
+		session.lastActivity = &now
+	}
+}
+
+// StartIdleCleanupLoop starts a background goroutine that periodically checks
+// for idle workspaces and stops them after the given timeout. Returns a cancel func.
+func (m *WorkspaceManager) StartIdleCleanupLoop(timeout time.Duration, stopCh chan struct{}) {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				m.mu.Lock()
+				for name, session := range m.sessions {
+					if session.LastActivity() != nil && time.Since(*session.lastActivity) > timeout {
+						log.Printf("[env] Auto-stopping idle workspace '%s' (threshold: %v)", name, timeout)
+						delete(m.sessions, name)
+					}
+				}
+				m.mu.Unlock()
+
+			case <-stopCh:
+				return
+			}
+		}
+	}()
 }
 
 // DefinitionAsSystemPrompt converts a WorkspaceDefinition into a markdown block
