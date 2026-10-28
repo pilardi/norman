@@ -293,7 +293,10 @@ func handleChat(args []string) {
 		}
 
 		// POST to session messages endpoint (Phase 1).
-		body := map[string]string{"message": line}
+		body := map[string]interface{}{"message": line}
+		if selectedProvider != "" {
+			body["provider"] = selectedProvider
+		}
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
