@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // handleProviders implements the `norman provider` subcommands.
@@ -83,6 +86,8 @@ func handleProviders(args []string) {
 		handleProvidersDelete(subArgs)
 	case "set-default", "sd":
 		handleProvidersSetDefault(subArgs)
+	case "list-models", "lm":
+		handleProvidersListModels(subArgs)
 	case "help", "-h", "--help":
 		printprovidersHelp()
 		return
@@ -120,6 +125,9 @@ Subcommands:
   set-default <name> (sd)
       Set the default provider for sessions and CLI operations.
 
+  list-models <name> (lm)
+      List available models for a configured provider by querying its API endpoint.
+
 Examples:
   norman providers add local --type ollama --endpoint http://localhost:11434 --model llama3
   norman providers add openai-default --type openai --endpoint https://api.openai.com/v1 --model gpt-4o --temp 0.7 --max-tokens 8192
@@ -127,7 +135,8 @@ Examples:
   norman providers get local
   norman providers update local --temp 0.5
   norman providers delete old-provider
-  norman providers set-default local`)
+  norman providers set-default local
+  norman providers list-models local`)
 }
 
 // handleProvidersAdd adds a new LLM provider via POST /api/providers.
@@ -234,10 +243,36 @@ func handleProvidersAddInteractive() {
 		os.Exit(1)
 	}
 
-	model := prompt("Model (optional)")
+	apiKey := prompt("API key (optional)")
+
+	// After entering endpoint and API key, fetch available models from the provider.
+	models, err := fetchAvailableModels(endpoint, apiKey, providerType)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not fetch available models: %v\n", err)
+		fmt.Println("You can enter a model name manually below.")
+	}
+
+	var model string
+	if len(models) > 0 {
+		fmt.Printf("\nAvailable models for this provider (%d found):\n", len(models))
+		for i, m := range models {
+			fmt.Printf("  %d. %s\n", i+1, m.Id)
+		}
+		model = prompt("Select a model number (or press Enter to skip)")
+		if model != "" {
+			idx, err := strconv.Atoi(model)
+			if err != nil || idx < 1 || idx > len(models) {
+				fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", model)
+				os.Exit(1)
+			}
+			model = models[idx-1].Id
+		}
+	} else {
+		model = prompt("Model (optional)")
+	}
+
 	tempStr := prompt("Temperature (optional, e.g. 0.7)")
 	maxTokensStr := prompt("Max tokens (optional)")
-	apiKey := prompt("API key (optional)")
 	extra := prompt("Extra key=val (optional, empty to skip)")
 
 	// Build the request map
@@ -300,6 +335,123 @@ func handleProvidersAddInteractive() {
 
 	fmt.Printf("\nProvider '%s' created successfully.\n", name)
 	printprovidersSummary(resp)
+}
+
+// modelEntry represents a single available model for display.
+type modelEntry struct {
+	Id   string
+	Name string
+}
+
+// fetchAvailableModels queries the provider's API to list available models.
+func fetchAvailableModels(endpoint, apiKey, providerType string) ([]modelEntry, error) {
+	switch strings.ToLower(providerType) {
+	case "openai", "anthropic", "gemini", "llamacpp":
+		return fetchOpenAICompatibleModels(endpoint, apiKey)
+	case "ollama":
+		return fetchOllamaModels(endpoint)
+	default:
+		return nil, fmt.Errorf("model discovery not supported for type %q", providerType)
+	}
+}
+
+// fetchOpenAICompatibleModels queries an OpenAI-compatible endpoint's /v1/models.
+func fetchOpenAICompatibleModels(endpoint, apiKey string) ([]modelEntry, error) {
+	url := endpoint
+	if !strings.HasSuffix(url, "/v1") {
+		url = strings.TrimSuffix(url, "/") + "/v1"
+	}
+	url += "/models"
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse OpenAI-compatible response: {"object":"list","data":[{"id":"gpt-4o",...},...]}
+	var openaiResp struct {
+		Object string              `json:"object"`
+		Data   []map[string]any    `json:"data"`
+	}
+	if err := json.Unmarshal(body, &openaiResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	var entries []modelEntry
+	for _, m := range openaiResp.Data {
+		entry := modelEntry{}
+		if id, ok := m["id"].(string); ok {
+			entry.Id = id
+		}
+		if name, ok := m["name"].(string); ok {
+			entry.Name = name
+		} else if entry.Id != "" {
+			entry.Name = entry.Id
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+// fetchOllamaModels queries Ollama's /api/tags endpoint.
+func fetchOllamaModels(endpoint string) ([]modelEntry, error) {
+	url := strings.TrimSuffix(endpoint, "/") + "/api/tags"
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Ollama format: {"models":[{"name":"llama3.1:8b","size":...},...]}
+	var ollamaResp struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	var entries []modelEntry
+	for _, m := range ollamaResp.Models {
+		entry := modelEntry{}
+		if name, ok := m["name"].(string); ok {
+			entry.Id = name
+			entry.Name = name
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
 }
 
 // handleProvidersList lists all providers via GET /api/providers.
@@ -470,9 +622,50 @@ func handleProvidersUpdateInteractive() {
 	validTypes := []string{"openai", "anthropic", "ollama", "gemini", "llamacpp"}
 	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
 
-	providerType := promptWithCurrent("Provider type", current["type"])
+	providerTypeStr := promptWithCurrent("Provider type", current["type"])
 	endpoint := promptWithCurrent("Endpoint URL", current["endpoint"])
-	model := promptWithCurrent("Model", current["model"])
+
+	var model string
+
+	// Determine effective type/endpoint: use user input if provided, otherwise fall back to current values.
+	effectiveType := providerTypeStr
+	if effectiveType == "" {
+		if t, ok := current["type"].(string); ok && t != "" {
+			effectiveType = t
+		}
+	}
+	effectiveEndpoint := endpoint
+	if effectiveEndpoint == "" {
+		if e, ok := current["endpoint"].(string); ok && e != "" {
+			effectiveEndpoint = e
+		}
+	}
+
+	if effectiveType != "" && effectiveEndpoint != "" {
+		models, err := fetchAvailableModels(effectiveEndpoint, "", effectiveType)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not fetch available models: %v\n", err)
+			fmt.Println("You can enter a model name manually below.")
+		} else if len(models) > 0 {
+			fmt.Printf("\nAvailable models for this provider (%d found):\n", len(models))
+			for i, m := range models {
+				fmt.Printf("  %d. %s\n", i+1, m.Id)
+			}
+			model = promptWithCurrent("Select a model number (or press Enter to keep current)", current["model"])
+			if model != "" {
+				idx, err := strconv.Atoi(model)
+				if err != nil || idx < 1 || idx > len(models) {
+					fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", model)
+					os.Exit(1)
+				}
+				model = models[idx-1].Id
+			}
+		} else {
+			model = promptWithCurrent("Model", current["model"])
+		}
+	} else {
+		model = promptWithCurrent("Model", current["model"])
+	}
 
 	tempVal := current["temperature"]
 	tempStr := promptWithCurrent("Temperature", fmt.Sprintf("%.2f", tempVal))
@@ -483,8 +676,8 @@ func handleProvidersUpdateInteractive() {
 	// Build the request map (only non-empty fields)
 	req := make(map[string]interface{})
 
-	if providerType != "" {
-		req["type"] = providerType
+	if providerTypeStr != "" {
+		req["type"] = providerTypeStr
 	}
 	if endpoint != "" {
 		req["endpoint"] = endpoint
@@ -566,6 +759,70 @@ func handleProvidersDelete(args []string) {
 	}
 
 	fmt.Printf("Provider '%s' removed.\n", name)
+}
+
+// handleProvidersListModels lists available models for a configured provider.
+func handleProvidersListModels(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: provider name is required")
+		fmt.Println("Usage: norman providers list-models <name>")
+		os.Exit(1)
+	}
+
+	name := args[0]
+
+	// Fetch provider config to get type and endpoint for model discovery.
+	body, err := httpGet("/api/providers/" + urlPathEscape(name))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching provider '%s': %v\n", name, err)
+		os.Exit(1)
+	}
+
+	var current map[string]interface{}
+	if err := json.Unmarshal(body, &current); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing provider data: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Extract type and endpoint.
+	providerTypeStr := ""
+	if t, ok := current["type"].(string); ok {
+		providerTypeStr = t
+	}
+	endpoint := ""
+	if e, ok := current["endpoint"].(string); ok {
+		endpoint = e
+	}
+
+	if providerTypeStr == "" || endpoint == "" {
+		fmt.Fprintf(os.Stderr, "Error: provider '%s' has no type or endpoint configured\n", name)
+		os.Exit(1)
+	}
+
+	// Fetch available models.
+	models, err := fetchAvailableModels(endpoint, "", providerTypeStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not fetch available models for '%s': %v\n", name, err)
+		fmt.Println("You may need to configure the correct endpoint or API key.")
+		return
+	}
+
+	if len(models) == 0 {
+		fmt.Printf("\nNo models found for provider '%s'.\n", name)
+		return
+	}
+
+	fmt.Printf("\nAvailable models for provider '%s' (%d found):\n\n", name, len(models))
+	fmt.Printf("%-4s %-30s %s\n", "#", "ID", "Name")
+	fmt.Println(strings.Repeat("-", 70))
+	for i, m := range models {
+		nameField := m.Name
+		if nameField == "" {
+			nameField = "-"
+		}
+		fmt.Printf("%-4d %-30s %s\n", i+1, m.Id, nameField)
+	}
+	fmt.Println()
 }
 
 // handleProvidersSetDefault sets the default provider via config update.

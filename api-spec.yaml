@@ -786,6 +786,29 @@ paths:
         "404":
           description: Provider not found
 
+  /api/providers/{name}/models:
+    get:
+      tags: [provider]
+      summary: List available models for a provider (queries the provider's API)
+      operationId: listProviderModels
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of available models from the provider's API
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailableModelsResponse"
+        "404":
+          description: Provider not found
+        "500":
+          description: Failed to query provider's model list endpoint
+
 components:
   schemas:
     WorkspaceCreateRequest:
@@ -1640,3 +1663,28 @@ components:
           type: object
           additionalProperties: true
           description: Type-specific fields (e.g., cache_size for llamacpp)
+
+    AvailableModelEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Model identifier (e.g., "gpt-4o", "llama3.1-8b")
+        name:
+          type: string
+          description: Human-readable model name
+        owned_by:
+          type: string
+          nullable: true
+          description: Owner/creator of the model (e.g., "openai", "meta")
+
+    AvailableModelsResponse:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailableModelEntry"
+        provider_name:
+          type: string
+          description: Name of the provider queried
