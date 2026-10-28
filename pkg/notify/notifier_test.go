@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -147,12 +148,121 @@ func TestAskUserBlockingNoWS(t *testing.T) {
 	n := New(nil, false, "", 10) // nil WS hub
 
 	// With nil hub, the blocking call will timeout after 60s.
-	// For this test we just verify it doesn't panic.
+	// Use a context with timeout slightly longer than the internal 60s to capture the actual error.
+	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		_, err := n.AskUserBlocking("test question")
+		done <- err
 	}()
-	_, err := n.AskUserBlocking("test question")
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("expected timeout error with nil WS hub")
+		}
+	case <-ctx.Done():
+		t.Fatal("test timed out waiting for AskUserBlocking")
+	}
+}
+
+func TestPush(t *testing.T) {
+	wh := &mockWSHub{}
+	n := New(wh, false, "", 10)
+
+	err := n.Push("Test Push", "This is a push notification")
+	if err != nil {
+		t.Fatalf("expected no error: %v", err)
+	}
+
+	if len(wh.events) != 1 {
+		t.Errorf("expected 1 event, got %d", len(wh.events))
+	}
+
+	event := wh.events[0]
+	if event.Event != protocol.Notification {
+		t.Errorf("expected event type Notification, got %v", event.Event)
+	}
+	if event.Priority == nil || *event.Priority != protocol.WebSocketEventPriorityNormal {
+		t.Errorf("expected normal priority")
+	}
+}
+
+func TestPushRateLimit(t *testing.T) {
+	wh := &mockWSHub{}
+	n := New(wh, false, "", 2) // limit of 2/min
+
+	err := n.Push("push 1", "msg 1")
+	if err != nil {
+		t.Fatalf("first push failed: %v", err)
+	}
+
+	err = n.Push("push 2", "msg 2")
+	if err != nil {
+		t.Fatalf("second push failed: %v", err)
+	}
+
+	// Third should be rate-limited
+	err = n.Push("push 3", "msg 3")
 	if err == nil {
-		t.Error("expected timeout error with nil WS hub")
+		t.Error("expected rate limit error on third push")
+	}
+}
+
+func TestPushNilWSHub(t *testing.T) {
+	n := New(nil, false, "", 10) // nil WS hub
+
+	err := n.Push("push", "msg")
+	if err != nil {
+		t.Fatalf("expected no error with nil WS hub: %v", err)
+	}
+}
+
+func TestAskUser(t *testing.T) {
+	wh := &mockWSHub{}
+	n := New(wh, false, "", 10)
+
+	respCh := make(chan string, 1)
+	respCh <- "yes, proceed"
+
+	result, err := n.AskUser("Are you sure?", "task-789", respCh)
+	if err != nil {
+		t.Fatalf("expected no error: %v", err)
+	}
+	if result != "yes, proceed" {
+		t.Errorf("unexpected result: %q", result)
+	}
+
+	// Verify the event was broadcast
+	if len(wh.events) != 1 {
+		t.Errorf("expected 1 event, got %d", len(wh.events))
+	}
+}
+
+func TestAskUserTimeout(t *testing.T) {
+	wh := &mockWSHub{}
+	n := New(wh, false, "", 10)
+
+	respCh := make(chan string, 1) // no one sends to this channel
+
+	// Internal timeout is 60s; use a context that exceeds it to capture the actual error.
+	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := n.AskUser("timeout question", "task-999", respCh)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("expected timeout error")
+		}
+	case <-ctx.Done():
+		t.Fatal("test timed out waiting for AskUser")
 	}
 }
