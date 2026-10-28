@@ -86,6 +86,8 @@ func handleProviders(args []string) {
 		handleProvidersDelete(subArgs)
 	case "set-default", "sd":
 		handleProvidersSetDefault(subArgs)
+	case "list-models", "lm":
+		handleProvidersListModels(subArgs)
 	case "help", "-h", "--help":
 		printprovidersHelp()
 		return
@@ -123,6 +125,9 @@ Subcommands:
   set-default <name> (sd)
       Set the default provider for sessions and CLI operations.
 
+  list-models <name> (lm)
+      List available models for a configured provider by querying its API endpoint.
+
 Examples:
   norman providers add local --type ollama --endpoint http://localhost:11434 --model llama3
   norman providers add openai-default --type openai --endpoint https://api.openai.com/v1 --model gpt-4o --temp 0.7 --max-tokens 8192
@@ -130,7 +135,8 @@ Examples:
   norman providers get local
   norman providers update local --temp 0.5
   norman providers delete old-provider
-  norman providers set-default local`)
+  norman providers set-default local
+  norman providers list-models local`)
 }
 
 // handleProvidersAdd adds a new LLM provider via POST /api/providers.
@@ -753,6 +759,70 @@ func handleProvidersDelete(args []string) {
 	}
 
 	fmt.Printf("Provider '%s' removed.\n", name)
+}
+
+// handleProvidersListModels lists available models for a configured provider.
+func handleProvidersListModels(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: provider name is required")
+		fmt.Println("Usage: norman providers list-models <name>")
+		os.Exit(1)
+	}
+
+	name := args[0]
+
+	// Fetch provider config to get type and endpoint for model discovery.
+	body, err := httpGet("/api/providers/" + urlPathEscape(name))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching provider '%s': %v\n", name, err)
+		os.Exit(1)
+	}
+
+	var current map[string]interface{}
+	if err := json.Unmarshal(body, &current); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing provider data: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Extract type and endpoint.
+	providerTypeStr := ""
+	if t, ok := current["type"].(string); ok {
+		providerTypeStr = t
+	}
+	endpoint := ""
+	if e, ok := current["endpoint"].(string); ok {
+		endpoint = e
+	}
+
+	if providerTypeStr == "" || endpoint == "" {
+		fmt.Fprintf(os.Stderr, "Error: provider '%s' has no type or endpoint configured\n", name)
+		os.Exit(1)
+	}
+
+	// Fetch available models.
+	models, err := fetchAvailableModels(endpoint, "", providerTypeStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not fetch available models for '%s': %v\n", name, err)
+		fmt.Println("You may need to configure the correct endpoint or API key.")
+		return
+	}
+
+	if len(models) == 0 {
+		fmt.Printf("\nNo models found for provider '%s'.\n", name)
+		return
+	}
+
+	fmt.Printf("\nAvailable models for provider '%s' (%d found):\n\n", name, len(models))
+	fmt.Printf("%-4s %-30s %s\n", "#", "ID", "Name")
+	fmt.Println(strings.Repeat("-", 70))
+	for i, m := range models {
+		nameField := m.Name
+		if nameField == "" {
+			nameField = "-"
+		}
+		fmt.Printf("%-4d %-30s %s\n", i+1, m.Id, nameField)
+	}
+	fmt.Println()
 }
 
 // handleProvidersSetDefault sets the default provider via config update.
