@@ -58,6 +58,9 @@ func (s *server) CreateSession(c echo.Context) error {
 		log.Printf("[sessions] failed to ensure sandbox for workspace %s: %v", req.WorkspaceId, err)
 	}
 
+	// Update last activity timestamp
+	s.workspaceManager.UpdateLastActivity(req.WorkspaceId)
+
 	s.wsHub.BroadcastSession(session.Id.String(), protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session created for workspace " + req.WorkspaceId),
@@ -145,7 +148,35 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Update last activity timestamp for the session's workspace
+	s.updateWorkspaceActivity(id)
+
 	return c.JSON(http.StatusOK, resp)
+}
+
+// updateWorkspaceActivity updates the last activity timestamp for a session's workspace.
+func (s *server) updateWorkspaceActivity(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Look up the session to find its workspace ID
+	for _, ws := range s.workspaces {
+		if ws.Id != nil && ws.Id.String() == sessionID {
+			// Session belongs directly to this workspace
+			if ws.Name != nil {
+				s.workspaceManager.UpdateLastActivity(*ws.Name)
+			}
+			return
+		}
+	}
+
+	// Fallback: check sessions store for workspace_id mapping
+	data, err := s.store.LoadSession(sessionID)
+	if err == nil {
+		if wid, ok := data["workspace_id"].(string); ok && wid != "" {
+			s.workspaceManager.UpdateLastActivity(wid)
+		}
+	}
 }
 
 // HealthCheck returns service health with scheduler status.
