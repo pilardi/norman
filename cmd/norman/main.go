@@ -14,18 +14,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	command := os.Args[1]
-	args := os.Args[2:]
-
 	// Check for -v/--verbose flag anywhere in args (before or after command)
 	verbose = isVerbose()
 
 	// Parse -p/--provider NAME from args (can appear before the command).
 	// We check os.Args[1:] to handle cases like "norman -p unsloth sessions open".
-	_, provider := parseProviderFlag(os.Args[1:])
+	args, provider := parseProviderFlag(os.Args[1:])
 	if provider != "" {
 		selectedProvider = provider
 	}
+
+	command := args[0]
+	args = args[1:]
 
 	switch command {
 	case "config":
