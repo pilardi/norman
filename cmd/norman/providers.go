@@ -12,7 +12,19 @@ import (
 // handleProviders implements the `norman provider` subcommands.
 // Usage: norman providers add <name> --type <type> --endpoint <url> [flags...]
 //        norman providers list
-// parseExtra parses "key=val,key2=val2" into a map[string]string.
+// reservedExtraKeys are struct field names that must not appear in the extra map.
+var reservedExtraKeys = map[string]struct{}{
+	"name":           {},
+	"type":           {},
+	"endpoint":       {},
+	"model":          {},
+	"temperature":    {},
+	"max_tokens":     {},
+	"api_key_masked": {},
+}
+
+// parseExtra parses "key=val,key2=val2" into a map[string]interface{}, filtering
+// out keys that conflict with struct fields (e.g. "name", "type").
 func parseExtra(s string) map[string]interface{} {
 	result := make(map[string]interface{})
 	pairs := strings.Split(s, ",")
@@ -23,12 +35,17 @@ func parseExtra(s string) map[string]interface{} {
 		}
 		idx := strings.Index(pair, "=")
 		if idx == -1 {
-			result[pair] = true
+			key := strings.TrimSpace(pair)
+			if _, ok := reservedExtraKeys[key]; !ok {
+				result[key] = true
+			}
 		} else {
 			key := strings.TrimSpace(pair[:idx])
 			val := strings.TrimSpace(pair[idx+1:])
 			if key != "" {
-				result[key] = val
+				if _, ok := reservedExtraKeys[key]; !ok {
+					result[key] = val
+				}
 			}
 		}
 	}
