@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/norman/norman/pkg/protocol"
 )
 
 // handleProviders implements the `norman provider` subcommands.
@@ -771,40 +773,33 @@ func handleProvidersListModels(args []string) {
 
 	name := args[0]
 
-	// Fetch provider config to get type and endpoint for model discovery.
-	body, err := httpGet("/api/providers/" + urlPathEscape(name))
+	// Query the server's /api/providers/{name}/models endpoint which has access
+	// to the stored API key. This avoids the "empty key" problem of direct queries.
+	body, err := httpGet("/api/providers/" + urlPathEscape(name) + "/models")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching provider '%s': %v\n", name, err)
+		fmt.Fprintf(os.Stderr, "Error fetching models for provider '%s': %v\n", name, err)
 		os.Exit(1)
 	}
 
-	var current map[string]interface{}
-	if err := json.Unmarshal(body, &current); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing provider data: %v\n", err)
+	var resp protocol.AvailableModelsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing model response: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Extract type and endpoint.
-	providerTypeStr := ""
-	if t, ok := current["type"].(string); ok {
-		providerTypeStr = t
-	}
-	endpoint := ""
-	if e, ok := current["endpoint"].(string); ok {
-		endpoint = e
-	}
-
-	if providerTypeStr == "" || endpoint == "" {
-		fmt.Fprintf(os.Stderr, "Error: provider '%s' has no type or endpoint configured\n", name)
-		os.Exit(1)
-	}
-
-	// Fetch available models.
-	models, err := fetchAvailableModels(endpoint, "", providerTypeStr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not fetch available models for '%s': %v\n", name, err)
-		fmt.Println("You may need to configure the correct endpoint or API key.")
-		return
+	models := []modelEntry{}
+	if resp.Models != nil {
+		for _, m := range *resp.Models {
+			id := ""
+			if m.Id != nil {
+				id = *m.Id
+			}
+			nameVal := ""
+			if m.Name != nil {
+				nameVal = *m.Name
+			}
+			models = append(models, modelEntry{Id: id, Name: nameVal})
+		}
 	}
 
 	if len(models) == 0 {
