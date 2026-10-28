@@ -12,13 +12,20 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
-// ListWorkspaces returns all registered workspaces.
-func (s *server) ListWorkspaces(c echo.Context) error {
+// ListWorkspaces returns all registered workspaces (optionally filtered by status).
+func (s *server) ListWorkspaces(c echo.Context, params protocol.ListWorkspacesParams) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := make([]*protocol.Workspace, 0, len(s.workspaces))
 	for _, ws := range s.workspaces {
+		// Apply status filter if provided
+		if params.Status != nil {
+			filterStatus := protocol.WorkspaceStatus(*params.Status)
+			if ws.Status == nil || *ws.Status != filterStatus {
+				continue
+			}
+		}
 		result = append(result, ws)
 	}
 	return c.JSON(http.StatusOK, result)
@@ -191,4 +198,119 @@ func (s *server) GetWorkspace(c echo.Context, name string) error {
 	}
 
 	return c.JSON(http.StatusOK, ws)
+}
+
+// StopWorkspace stops a workspace (frees the sandbox but keeps data).
+func (s *server) StopWorkspace(c echo.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ws, ok := s.workspaces[name]
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	// Transition: active → stopped
+	currentStatus := ws.Status
+	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusStopped ||
+		(currentStatus != nil && *currentStatus == protocol.WorkspaceStatusArchived) {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"error": "workspace is already stopped or archived",
+		})
+	}
+
+	stopped := protocol.WorkspaceStatusStopped
+	ws.Status = &stopped
+	now := time.Now()
+	ws.LastUsed = &now
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Workspace stopped: " + name),
+	})
+
+	return c.JSON(http.StatusOK, ws)
+}
+
+// RestoreWorkspace restores a stopped or archived workspace to active.
+func (s *server) RestoreWorkspace(c echo.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ws, ok := s.workspaces[name]
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	currentStatus := ws.Status
+	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusActive {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"error": "workspace is already active",
+		})
+	}
+
+	active := protocol.WorkspaceStatusActive
+	ws.Status = &active
+	now := time.Now()
+	ws.LastUsed = &now
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Workspace restored to active: " + name),
+	})
+
+	return c.JSON(http.StatusOK, ws)
+}
+
+// ArchiveWorkspace archives a workspace (immutable snapshot, frees sandbox).
+func (s *server) ArchiveWorkspace(c echo.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ws, ok := s.workspaces[name]
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	currentStatus := ws.Status
+	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusArchived {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"error": "workspace is already archived",
+		})
+	}
+
+	archived := protocol.WorkspaceStatusArchived
+	ws.Status = &archived
+	now := time.Now()
+	ws.LastUsed = &now
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Workspace archived: " + name),
+	})
+
+	return c.JSON(http.StatusOK, ws)
+}
+
+// PurgeWorkspace permanently deletes a workspace and all its traces.
+func (s *server) PurgeWorkspace(c echo.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.workspaces[name]; !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	delete(s.workspaces, name)
+
+	if err := s.store.DeleteWorkspace(name); err != nil {
+		log.Printf("server: failed to delete workspace %s from disk: %v", name, err)
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.TaskProgress,
+		Message: strPtr("Workspace purged: " + name),
+	})
+
+	return c.NoContent(http.StatusOK)
 }

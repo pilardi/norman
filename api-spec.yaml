@@ -54,8 +54,21 @@ paths:
 
     get:
       tags: [workspace]
-      summary: List all workspaces
+      summary: List all workspaces (optionally filtered by status)
       operationId: listWorkspaces
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, stopped, archived]
+          description: Filter results by lifecycle state
+        - name: idle_since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Return workspaces that have been idle since this timestamp (RFC3339)
       responses:
         "200":
           description: List of workspaces
@@ -128,6 +141,114 @@ paths:
           description: Workspace deleted
         "404":
           description: Workspace not found
+
+  /api/workspaces/{name}/stop:
+    post:
+      tags: [workspace]
+      summary: Stop a workspace (free sandbox, keep data)
+      operationId: stopWorkspace
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StopRequest"
+      responses:
+        "200":
+          description: Workspace stopped successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: Workspace not found
+        "409":
+          description: Workspace is already stopped or archived
+
+  /api/workspaces/{name}/restore:
+    post:
+      tags: [workspace]
+      summary: Restore a stopped/archived workspace to active
+      operationId: restoreWorkspace
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreRequest"
+      responses:
+        "200":
+          description: Workspace restored to active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: Workspace not found
+        "409":
+          description: Workspace is already active
+
+  /api/workspaces/{name}/archive:
+    post:
+      tags: [workspace]
+      summary: Archive a workspace (immutable snapshot, free sandbox)
+      operationId: archiveWorkspace
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveRequest"
+      responses:
+        "200":
+          description: Workspace archived successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: Workspace not found
+        "409":
+          description: Workspace is already archived
+
+  /api/workspaces/{name}/purge:
+    delete:
+      tags: [workspace]
+      summary: Permanently purge a workspace (deletes all traces)
+      operationId: purgeWorkspace
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurgeRequest"
+      responses:
+        "204":
+          description: Workspace purged successfully
+        "404":
+          description: Workspace not found
+        "400":
+          description: Confirmation not provided (confirm must be true)
 
   /api/sessions:
     get:
@@ -892,7 +1013,48 @@ components:
           format: date-time
         status:
           type: string
-          enum: [active, archived]
+          enum: [active, stopped, archived]
+          description: >
+            Lifecycle state of the workspace. "active" = running sandbox;
+            "stopped" = sandbox freed but data preserved; "archived" = immutable read-only snapshot.
+        last_used:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the last activity (session start, message sent, task created)
+
+    # --- Workspace Lifecycle Transitions ---
+
+    StopRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Optional reason for stopping (e.g., "idle timeout", "manual")
+
+    RestoreRequest:
+      type: object
+      properties:
+        recreate_sandbox:
+          type: boolean
+          default: true
+          description: Whether to recreate the OpenShell sandbox on restore
+
+    ArchiveRequest:
+      type: object
+      properties:
+        snapshot_wiki:
+          type: boolean
+          default: true
+          description: Whether to create a markdown/JSON snapshot of wiki entries before archiving
+
+    PurgeRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm:
+          type: boolean
+          description: Explicit confirmation field (must be true to proceed)
 
     SessionCreateRequest:
       type: object
