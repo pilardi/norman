@@ -344,7 +344,11 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 // closeWorkspaceSessions finds and deletes all sessions associated with a workspace.
 func (s *server) closeWorkspaceSessions(workspaceName string) {
 	// Match sessions by sandbox name pattern: "ws-" + workspace_name_without_dashes[:15]
-	pattern := "ws-" + strings.ReplaceAll(workspaceName, "-", "")[:15]
+	cleanName := strings.ReplaceAll(workspaceName, "-", "")
+	if len(cleanName) > 15 {
+		cleanName = cleanName[:15]
+	}
+	pattern := "ws-" + cleanName
 
 	for id, session := range s.workspaceManager.Sessions() {
 		if strings.HasPrefix(session.Sandbox(), pattern) {

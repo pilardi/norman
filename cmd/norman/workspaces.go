@@ -256,10 +256,17 @@ func handleWorkspacePurge(args []string) {
 		"confirm": true,
 	}
 
+	// Use POST with JSON body since the DELETE handler expects a body via Bind()
 	body, err := httpPostJSON("/api/workspaces/"+name+"/purge", reqBody)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error purging workspace '%s': %v\n", name, err)
 		os.Exit(1)
+	}
+
+	// Purge returns 204 No Content (empty body) on success
+	if len(body) == 0 {
+		fmt.Printf("Workspace '%s' purged successfully.\n", name)
+		return
 	}
 
 	var ws map[string]interface{}

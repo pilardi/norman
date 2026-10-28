@@ -123,7 +123,7 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	e.POST("/api/workspaces/:name/archive", func(c echo.Context) error {
 		return srv.ArchiveWorkspace(c, c.Param("name"))
 	})
-	e.DELETE("/api/workspaces/:name/purge", func(c echo.Context) error {
+	e.POST("/api/workspaces/:name/purge", func(c echo.Context) error {
 		var req protocol.PurgeRequest
 		if err := c.Bind(&req); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
