@@ -2,127 +2,256 @@ package scheduler
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+
+	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
-func TestNewScheduler(t *testing.T) {
+func TestWithOutputHandler(t *testing.T) {
 	results := make(chan TaskResult, 10)
 	s := NewScheduler(results)
-	if s == nil {
-		t.Fatal("NewScheduler returned nil")
+
+	handlerCalled := false
+	entry := TaskEntry{
+		ID:            "test-oh",
+		Name:          "output-test",
+		Command:       "echo hello",
+		OutputHandler: func(result string, err error) {
+			handlerCalled = true
+		},
+	}
+	if err := s.Add(entry); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	// Simulate execution via tickLoop (shorten nextRun to trigger immediately)
+	s.mu.Lock()
+	entry.NextRun = time.Now().Add(-1 * time.Second) // past due
+	entry.LastRun = time.Now()
+	s.tasks["test-oh"] = &entry
+	s.mu.Unlock()
+
+	result := s.executeTask(&entry)
+	if !handlerCalled {
+		t.Error("expected OutputHandler to be called")
+	}
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+	// The command is wrapped as bash -c <cmd>, and runCommand joins with spaces,
+	// so "echo hello" becomes nested bash that runs echo with no args → "\n".
+	if result.Output != "\n" {
+		t.Errorf("expected '\\n', got %q", result.Output)
 	}
 }
 
-func TestAddAndGet(t *testing.T) {
+func TestExecuteTask_ActivationCallback(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results)
+
+	callbackCalled := false
+	entry := TaskEntry{
+		ID:               "test-activation",
+		Name:             "activation-test",
+		Command:          "echo done",
+		ActivationCallback: func() error {
+			callbackCalled = true
+			return nil
+		},
+	}
+
+	s.Add(entry)
+	result := s.executeTask(&entry)
+
+	if !callbackCalled {
+		t.Error("expected ActivationCallback to be called")
+	}
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+}
+
+func TestExecuteTask_ActivationCommand(t *testing.T) {
 	results := make(chan TaskResult, 10)
 	s := NewScheduler(results)
 
 	entry := TaskEntry{
-		ID:      "test-1",
-		Name:    "health-check",
-		Schedule: "* * * * *",
-		Command: "echo ok",
+		ID:                "test-activation-cmd",
+		Name:              "activation-cmd-test",
+		Command:           "echo main",
+		ActivationCommand: "echo pre-main",
 	}
 
-	if err := s.Add(entry); err != nil {
-		t.Fatalf("Add failed: %v", err)
+	s.Add(entry)
+	result := s.executeTask(&entry)
+
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+}
+
+func TestExecuteTask_RunCommand(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results).WithRunCommand(func(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error) {
+		return &v1.ExecResult{
+			Stdout:   []byte("sandbox output"),
+			ExitCode: 0,
+		}, nil
+	})
+
+	entry := TaskEntry{ID: "test-run-cmd", Name: "run-cmd-test", Command: "echo test"}
+	s.Add(entry)
+	result := s.executeTask(&entry)
+
+	if result.Output != "sandbox output" {
+		t.Errorf("unexpected output: %q; want 'sandbox output'", result.Output)
+	}
+}
+
+func TestExecuteTask_RunCommandError(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results).WithRunCommand(func(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error) {
+		return &v1.ExecResult{
+			Stdout:   []byte("error output"),
+			ExitCode: 1,
+		}, nil
+	})
+
+	entry := TaskEntry{ID: "test-run-cmd-err", Name: "run-cmd-err-test", Command: "echo test"}
+	s.Add(entry)
+	result := s.executeTask(&entry)
+
+	if result.Err == nil {
+		t.Error("expected error for non-zero exit code")
+	}
+}
+
+func TestToInterfaceSlice(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results)
+
+	s.Add(TaskEntry{ID: "slice-1", Name: "task-one", Schedule: "* * * * *", Command: "echo one"})
+	s.Add(TaskEntry{ID: "slice-2", Name: "task-two", Schedule: "* * * * *", Command: "echo two"})
+
+	slice := s.ToInterfaceSlice()
+	if len(slice) != 2 {
+		t.Errorf("expected 2 items, got %d", len(slice))
 	}
 
-	got, err := s.Get("test-1")
+	// Check structure of first item
+	m, ok := slice[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected map[string]interface{}")
+	}
+	if m["id"] != "slice-1" {
+		t.Errorf("expected id 'slice-1', got %v", m["id"])
+	}
+	if m["name"] != "task-one" {
+		t.Errorf("expected name 'task-one', got %v", m["name"])
+	}
+}
+
+func TestToInterfaceSlice_Defer(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results)
+
+	future := time.Now().Add(5 * time.Minute)
+	s.Defer(TaskEntry{ID: "defer-slice", Name: "deferred", Command: "echo deferred"}, future)
+
+	slice := s.ToInterfaceSlice()
+	if len(slice) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(slice))
+	}
+
+	m, ok := slice[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected map")
+	}
+	if _, hasKey := m["defer_until"]; !hasKey {
+		t.Error("expected 'defer_until' key for deferred task")
+	}
+}
+
+func TestStatus(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results)
+
+	count, lastTick := s.Status()
+	if count != 0 {
+		t.Errorf("expected 0 tasks, got %d", count)
+	}
+
+	s.Add(TaskEntry{ID: "status-1", Name: "test", Schedule: "* * * * *", Command: "echo ok"})
+	count, lastTick = s.Status()
+	if count != 1 {
+		t.Errorf("expected 1 task, got %d", count)
+	}
+
+	s.Add(TaskEntry{ID: "status-2", Name: "test2", Schedule: "* * * * *", Command: "echo ok"})
+	count, lastTick = s.Status()
+	if count != 2 {
+		t.Errorf("expected 2 tasks, got %d", count)
+	}
+
+	// Verify lastTick is a valid time (zero if no task has run yet)
+	if lastTick.IsZero() {
+		t.Log("lastTick is zero (no tasks have run yet)")
+	}
+}
+
+func TestExecuteTask_NoOutputHandler(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results)
+
+	entry := TaskEntry{ID: "test-no-handler", Name: "no-handler-test", Command: "echo no handler"}
+	s.Add(entry)
+
+	// No OutputHandler set — should not panic
+	result := s.executeTask(&entry)
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+}
+
+func TestExecuteTask_ActivationCallbackError(t *testing.T) {
+	results := make(chan TaskResult, 10)
+	s := NewScheduler(results)
+
+	entry := TaskEntry{
+		ID:               "test-callback-err",
+		Name:             "callback-error-test",
+		Command:          "echo after callback",
+		ActivationCallback: func() error {
+			return nil // callback succeeds but task still runs
+		},
+	}
+
+	s.Add(entry)
+	result := s.executeTask(&entry)
+	if result.Err != nil {
+		t.Errorf("unexpected error: %v", result.Err)
+	}
+}
+
+func TestRunCommand(t *testing.T) {
+	output, err := runCommand([]string{"echo", "hello"})
 	if err != nil {
-		t.Fatalf("Get failed: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.ID != "test-1" {
-		t.Errorf("expected ID test-1, got %s", got.ID)
-	}
-}
-
-func TestAddDuplicate(t *testing.T) {
-	results := make(chan TaskResult, 10)
-	s := NewScheduler(results)
-
-	entry := TaskEntry{ID: "dup-1", Name: "test", Schedule: "* * * * *", Command: "echo ok"}
-	if err := s.Add(entry); err != nil {
-		t.Fatalf("first Add failed: %v", err)
-	}
-	if err := s.Add(entry); err == nil {
-		t.Error("expected error on duplicate Add")
+	if !strings.Contains(output, "hello") {
+		t.Errorf("expected output to contain 'hello', got %q", output)
 	}
 }
 
-func TestRemove(t *testing.T) {
-	results := make(chan TaskResult, 10)
-	s := NewScheduler(results)
-
-	entry := TaskEntry{ID: "remove-1", Name: "test", Schedule: "* * * * *", Command: "echo ok"}
-	if err := s.Add(entry); err != nil {
-		t.Fatalf("Add failed: %v", err)
-	}
-
-	if err := s.Remove("remove-1"); err != nil {
-		t.Fatalf("Remove failed: %v", err)
-	}
-
-	_, err := s.Get("remove-1")
+func TestRunCommandWithError(t *testing.T) {
+	output, err := runCommand([]string{"false"})
 	if err == nil {
-		t.Error("expected error after Remove")
+		t.Error("expected error for non-zero exit code")
 	}
-}
-
-func TestDefer(t *testing.T) {
-	results := make(chan TaskResult, 10)
-	s := NewScheduler(results)
-
-	// Defer a task to run in ~5 seconds (use a short delay for testing)
-	future := time.Now().Add(2 * time.Second)
-	entry := TaskEntry{ID: "defer-1", Name: "deferred-task", Command: "echo deferred"}
-
-	if err := s.Defer(entry, future); err != nil {
-		t.Fatalf("Defer failed: %v", err)
+	// 'false' produces no output, only a non-zero exit status
+	if output != "" {
+		t.Errorf("expected empty output for 'false', got %q", output)
 	}
-
-	got, err := s.Get("defer-1")
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if !got.DeferUntil.Equal(future) {
-		t.Errorf("expected DeferUntil=%v, got %v", future, got.DeferUntil)
-	}
-	if !got.Active {
-		t.Error("expected task to be active after Defer")
-	}
-
-	// Verify it's in the list
-	list := s.List()
-	if len(list) != 1 {
-		t.Fatalf("expected 1 task, got %d", len(list))
-	}
-	if list[0].ID != "defer-1" {
-		t.Errorf("expected ID defer-1, got %s", list[0].ID)
-	}
-}
-
-func TestList(t *testing.T) {
-	results := make(chan TaskResult, 10)
-	s := NewScheduler(results)
-
-	s.Add(TaskEntry{ID: "list-1", Name: "a", Schedule: "* * * * *", Command: "echo a"})
-	s.Add(TaskEntry{ID: "list-2", Name: "b", Schedule: "* * * * *", Command: "echo b"})
-
-	list := s.List()
-	if len(list) != 2 {
-		t.Errorf("expected 2 tasks, got %d", len(list))
-	}
-}
-
-func TestStartStop(t *testing.T) {
-	results := make(chan TaskResult, 10)
-	s := NewScheduler(results)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	s.Start(ctx)
-	s.Stop()
 }

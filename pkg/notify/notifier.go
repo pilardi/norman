@@ -195,12 +195,12 @@ func (n *Notifier) AskUserBlocking(question string) (string, error) {
 // This is the agent-initiated notification tool — equivalent to Notify(Notification)
 // but accepts typed string arguments for direct LLM tool calls.
 func (n *Notifier) Push(title string, body string) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
 	if !n.consumeToken() {
 		return fmt.Errorf("rate limit exceeded: max %d notifications/minute", n.rateLimit)
 	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
 
 	notification := Notification{
 		Title:     title,

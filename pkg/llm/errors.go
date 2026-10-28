@@ -1,7 +1,10 @@
 // Package llm provides typed error types for provider-specific failures.
 package llm
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrRateLimit is returned when the API reports a rate-limit or quota-exceeded response.
 var ErrRateLimit = &LLMError{Code: "rate_limit", Message: "API rate limit exceeded"}
@@ -32,24 +35,33 @@ func (e *LLMError) Unwrap() error {
 
 // IsRateLimit checks whether the given error is a rate-limit error.
 func IsRateLimit(err error) bool {
-	if lerr, ok := err.(*LLMError); ok && lerr.Code == "rate_limit" {
-		return true
+	for err != nil {
+		if lerr, ok := err.(*LLMError); ok && lerr.Code == "rate_limit" {
+			return true
+		}
+		err = errors.Unwrap(err)
 	}
 	return false
 }
 
 // IsContextWindow checks whether the given error is a context-window error.
 func IsContextWindow(err error) bool {
-	if lerr, ok := err.(*LLMError); ok && lerr.Code == "context_window" {
-		return true
+	for err != nil {
+		if lerr, ok := err.(*LLMError); ok && lerr.Code == "context_window" {
+			return true
+		}
+		err = errors.Unwrap(err)
 	}
 	return false
 }
 
 // IsProviderDown checks whether the given error indicates the provider is down.
 func IsProviderDown(err error) bool {
-	if lerr, ok := err.(*LLMError); ok && lerr.Code == "provider_down" {
-		return true
+	for err != nil {
+		if lerr, ok := err.(*LLMError); ok && lerr.Code == "provider_down" {
+			return true
+		}
+		err = errors.Unwrap(err)
 	}
 	return false
 }
