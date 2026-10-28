@@ -129,6 +129,7 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 	var req struct {
 		Message     string `json:"message"`
 		AttachTools bool   `json:"attach_tools"`
+		Provider    string `json:"provider"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -139,7 +140,7 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 	}
 
 	ctx := c.Request().Context()
-	resp, err := s.loop.SendMessage(ctx, id, req.Message)
+	resp, err := s.loop.SendMessage(ctx, id, req.Message, req.Provider)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
