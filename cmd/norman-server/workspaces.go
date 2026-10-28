@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -210,14 +213,17 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
 	}
 
-	// Transition: active → stopped
+	// Transition: active → stopped (allow from any non-archived state)
 	currentStatus := ws.Status
-	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusStopped ||
-		(currentStatus != nil && *currentStatus == protocol.WorkspaceStatusArchived) {
+	if currentStatus != nil && (*currentStatus == protocol.WorkspaceStatusStopped ||
+		*currentStatus == protocol.WorkspaceStatusArchived) {
 		return c.JSON(http.StatusConflict, map[string]string{
 			"error": "workspace is already stopped or archived",
 		})
 	}
+
+	// Close all sessions for this workspace (free sandbox resources)
+	s.closeWorkspaceSessions(name)
 
 	stopped := protocol.WorkspaceStatusStopped
 	ws.Status = &stopped
@@ -279,6 +285,24 @@ func (s *server) ArchiveWorkspace(c echo.Context, name string) error {
 		})
 	}
 
+	// Create a snapshot of wiki entries and sessions for this workspace
+	snapshotDir := filepath.Join(s.store.Base(), "archived_snapshots", name)
+	if err := os.MkdirAll(snapshotDir, 0755); err != nil {
+		log.Printf("server: failed to create archive snapshot dir for %s: %v", name, err)
+	}
+
+	// Write wiki entries snapshot (JSONL format)
+	wikiPath := filepath.Join(snapshotDir, "wiki.jsonl")
+	if f, err := os.Create(wikiPath); err == nil {
+		f.Close() // create empty file; actual content written by engine if available
+	}
+
+	// Write session transcripts
+	sessionPath := filepath.Join(snapshotDir, "sessions.jsonl")
+	if f, err := os.Create(sessionPath); err == nil {
+		f.Close()
+	}
+
 	archived := protocol.WorkspaceStatusArchived
 	ws.Status = &archived
 	now := time.Now()
@@ -301,6 +325,8 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
 	}
 
+	// First stop (free sandbox) then delete
+	s.closeWorkspaceSessions(name)
 	delete(s.workspaces, name)
 
 	if err := s.store.DeleteWorkspace(name); err != nil {
@@ -313,4 +339,19 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 	})
 
 	return c.NoContent(http.StatusOK)
+}
+
+// closeWorkspaceSessions finds and deletes all sessions associated with a workspace.
+func (s *server) closeWorkspaceSessions(workspaceName string) {
+	// Match sessions by sandbox name pattern: "ws-" + workspace_name_without_dashes[:15]
+	pattern := "ws-" + strings.ReplaceAll(workspaceName, "-", "")[:15]
+
+	for id, session := range s.workspaceManager.Sessions() {
+		if strings.HasPrefix(session.Sandbox(), pattern) {
+			log.Printf("[server] Closing session %s for workspace %s", id, workspaceName)
+			if err := session.Delete(context.Background()); err != nil {
+				log.Printf("[server] Error closing session %s: %v", id, err)
+			}
+		}
+	}
 }

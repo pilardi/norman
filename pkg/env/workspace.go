@@ -217,6 +217,15 @@ func (m *WorkspaceManager) GetDefinition(workspace string) *WorkspaceDefinition 
 	return m.definitions[workspace]
 }
 
+// Sessions returns a copy of the session map for iteration by external callers.
+func (m *WorkspaceManager) Sessions() map[string]*Session {
+	result := make(map[string]*Session, len(m.sessions))
+	for k, v := range m.sessions {
+		result[k] = v
+	}
+	return result
+}
+
 // DefinitionAsSystemPrompt converts a WorkspaceDefinition into a markdown block
 // suitable for injection into the LLM's system prompt. Returns empty string if no definition exists.
 func (w *WorkspaceDefinition) AsSystemPrompt() string {
