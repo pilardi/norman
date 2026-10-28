@@ -131,10 +131,20 @@ func handleProvidersAdd(args []string) {
 			req["model"] = args[i+1]
 			i++
 		} else if args[i] == "--temp" && i+1 < len(args) {
-			req["temperature"] = args[i+1]
+			tempVal, err := strconv.ParseFloat(args[i+1], 64)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", args[i+1], err)
+				os.Exit(1)
+			}
+			req["temperature"] = tempVal
 			i++
 		} else if args[i] == "--max-tokens" && i+1 < len(args) {
-			req["max_tokens"] = args[i+1]
+			tokensVal, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", args[i+1], err)
+				os.Exit(1)
+			}
+			req["max_tokens"] = tokensVal
 			i++
 		} else if args[i] == "--api-key" && i+1 < len(args) {
 			req["api_key"] = args[i+1]
@@ -346,10 +356,20 @@ func handleProvidersUpdate(args []string) {
 			req["model"] = args[i+1]
 			i++
 		} else if args[i] == "--temp" && i+1 < len(args) {
-			req["temperature"] = args[i+1]
+			tempVal, err := strconv.ParseFloat(args[i+1], 64)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", args[i+1], err)
+				os.Exit(1)
+			}
+			req["temperature"] = tempVal
 			i++
 		} else if args[i] == "--max-tokens" && i+1 < len(args) {
-			req["max_tokens"] = args[i+1]
+			tokensVal, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", args[i+1], err)
+				os.Exit(1)
+			}
+			req["max_tokens"] = tokensVal
 			i++
 		} else if args[i] == "--api-key" && i+1 < len(args) {
 			req["api_key"] = args[i+1]
@@ -375,7 +395,7 @@ func handleProvidersUpdate(args []string) {
 	}
 
 	url := "/api/providers/" + urlPathEscape(name)
-	body, err := httpPostJSON(url, req)
+	body, err := httpPutJSON(url, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
 		os.Exit(1)
@@ -492,7 +512,7 @@ func handleProvidersUpdateInteractive() {
 	}
 
 	url := "/api/providers/" + urlPathEscape(name)
-	body, err = httpPostJSON(url, req)
+	body, err = httpPutJSON(url, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
 		os.Exit(1)

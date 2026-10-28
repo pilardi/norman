@@ -119,3 +119,35 @@ func httpDelete(path string) error {
 	}
 	return nil
 }
+
+// httpPutJSON performs a PUT request with JSON body and returns the response body.
+func httpPutJSON(path string, body interface{}) ([]byte, error) {
+	url := serverURL() + path
+	if verbose {
+		logRequest("PUT", url)
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), "PUT", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("PUT %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return io.ReadAll(resp.Body)
+}
