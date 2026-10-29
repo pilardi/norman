@@ -23,7 +23,8 @@ func shortID(id string) string {
 
 func handleSessions(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Args().Len() == 0 {
-		return printSessionHelp()
+		fmt.Println(sessionHelpText)
+		return nil
 	}
 
 	subcommand := cmd.Args().First()
@@ -46,12 +47,6 @@ func handleSessions(ctx context.Context, cmd *cli.Command) error {
 	default:
 		return fmt.Errorf("unknown sessions subcommand: %s\n\n%s", subcommand, sessionHelpText)
 	}
-}
-
-// printSessionHelp displays help for the sessions subcommand.
-func printSessionHelp() error {
-	fmt.Println(sessionHelpText)
-	return nil
 }
 
 const sessionHelpText = `sessions — Manage chat sessions
