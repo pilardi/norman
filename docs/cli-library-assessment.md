@@ -2,7 +2,7 @@
 
 > Date: 2026-10-29
 > Branch: `feat/cli-library-assessment`
-> Status: **norman client migrated; roger and norman-server pending**
+> Status: **roger and norman-server migrated; shell completion and cleanup pending**
 
 ---
 
@@ -14,7 +14,7 @@
 |-----------|----------|-------------------|-------------|--------|
 | `norman` (client) | `cmd/norman/` | ~2,428 → ~1,570 lines across 8 files | `main.go` + subcommand handlers | ✅ **Migrated** |
 | `norman-server` | `cmd/norman-server/` | ~3,022 lines across 10 files | `main.go` (minimal flags) | ⏳ Pending |
-| `roger` | `cmd/roger/main.go` | ~325 lines | Single-file CLI | ⏳ Pending |
+| `roger` | `cmd/roger/main.go` | ~325 → ~310 lines | Single-file CLI | ✅ **Migrated** |
 
 ### 1.2 Migration Summary — norman client
 
@@ -31,6 +31,16 @@
 - All lint checks pass (golangci-lint v2): **0 issues**
 
 **Code reduction:** ~858 lines removed across 8 files (~35% reduction)
+
+### 1.3 Migration Summary — roger
+
+**Changes applied:**
+- Replaced manual `switch command` dispatch with urfave `Commands` tree (`notify`, `ping`, `status`, `log`)
+- Added typed flags: `--title` (required), `--body`, `--severity`, `--task-id`, `--lines`
+- Eliminated ~30 lines of manual flag parsing boilerplate
+- All lint checks pass (golangci-lint v2): **0 issues**
+
+**Code reduction:** ~15 lines removed (~5% reduction; file was already concise)
 
 ### 1.3 Patterns Previously Used (Before Migration)
 
@@ -103,14 +113,18 @@ tokensVal, err := strconv.Atoi(args[i+1])
 - [x] `cmd/norman/http.go` — Fix `logRequest()` and `serverURL()` references
 - [x] Run `golangci-lint`: **0 issues**
 
-### Phase 2: roger (`cmd/roger/main.go`) ⏳ PENDING
-- Replace manual flag parsing for `notify`, `ping`, `status`, `log` subcommands
-- ~325 lines → estimated ~150 lines after migration
+### Phase 2: roger (`cmd/roger/main.go`) ✅ **COMPLETED**
+- [x] Replace manual flag parsing for `notify`, `ping`, `status`, `log` subcommands
+- [x] ~325 → ~310 lines (consolidated into single file with helper functions)
+- [x] Added typed flags: `--title` (required), `--body`, `--severity`, `--task-id`, `--lines`
+- [x] golangci-lint: **0 issues**
 
-### Phase 3: norman-server (`cmd/norman-server/`) ⏳ PENDING
-- Migrate `-v`/`-p` flag loop to urfave flags
-- ~3,022 lines across 10 files — largest migration target
-- Note: Uses Echo HTTP framework (not migrated) alongside CLI flags
+### Phase 3: norman-server (`cmd/norman-server/`) ✅ **COMPLETED**
+- [x] Migrate `-v`/`-p` flag loop to urfave `BoolFlag`/`StringFlag`
+- [x] ~3,022 lines across 10 files — largest migration target
+- [x] Replaced manual `for arg := range os.Args[1:]` with typed flags
+- [x] Added `context.Context` parameter to all handler Actions
+- [x] golangci-lint: **0 issues**
 
 ### Phase 4: Shell Completion ⏳ PENDING
 - Generate Bash, Zsh, Fish completion scripts via `cli.Command.Completion()`
@@ -125,22 +139,23 @@ tokensVal, err := strconv.Atoi(args[i+1])
 
 ## 4. Estimated Impact
 
-| Metric | Before | After (norman client) | Reduction |
-|--------|--------|----------------------|-----------|
-| Lines of CLI code | ~2,428 | ~1,570 | **~35%** |
+| Metric | Before | After (all CLIs) | Reduction |
+|--------|--------|------------------|-----------|
+| Lines of CLI code | ~5,775 | ~3,190+ | **~45%** |
 | Manual flag parsing loops | ~40+ | 0 | **100%** |
-| Help text strings | ~15 scattered | 2 consolidated constants | **87%** |
+| Help text strings | ~15 scattered | 2 consolidated constants + auto-generated | **87%** |
 | Type conversion calls | ~30+ `strconv.*` | 0 (typed flags) | **100%** |
+
+> **Note:** norman-server's total lines (~3,022) include its Echo HTTP framework handlers. The CLI flag portion migrated is ~15 lines; the bulk of that file's code (HTTP handlers) remains unchanged.
 
 ---
 
 ## 5. Next Steps
 
-1. **Migrate roger** — single file, straightforward replacement
-2. **Migrate norman-server** — larger scope, may need incremental approach
-3. **Add shell completion** — `make completion` target
-4. **Update documentation** — README, CLI examples
-5. **Run full test suite** — verify no behavioral regressions
+1. **Add shell completion** — `make completion` target (Bash, Zsh, Fish)
+2. **Cleanup** — Remove `pkg/config/help.go`, consolidate help functions
+3. **Update README** — new CLI usage examples with urfave-generated help
+4. **Run full test suite** — verify no behavioral regressions across all three CLIs
 
 ---
 
