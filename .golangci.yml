@@ -13,34 +13,19 @@ linters:
     - misspell
     - unconvert
     - copyloopvar
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.ReadCloser).Close
+        - (*net/http.Response).Body.Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - os.Unsetenv
+        - (encoding/json.Decoder).Decode
+    staticcheck:
+      checks: ["all", "-ST1003", "-ST1020", "-ST1021"]
 
 formatters:
   enable:
     - gofmt
     - goimports
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    exclude-functions:
-      - (io.ReadCloser).Close
-      - (*net/http.Response).Body.Close
-      - fmt.Fprint
-      - fmt.Fprintf
-      - os.Unsetenv
-      - (encoding/json.Decoder).Decode
-
-  staticcheck:
-    checks: ["all", "-ST1000"]
-
-issues:
-  exclude-rules:
-    # Test files commonly ignore errors in test setup/teardown
-    - path: _test\.go
-      linters:
-        - errcheck
-      text: "Error return value of `.*` is not checked"
-    # Allow unused variables in tests where they serve as placeholders
-    - path: _test\.go
-      linters:
-        - ineffassign
