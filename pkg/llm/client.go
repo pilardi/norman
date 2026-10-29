@@ -17,23 +17,23 @@ import (
 
 // Client implements the LLM interface for OpenAI-compatible endpoints.
 type Client struct {
-	BaseURL    string
-	APIKey     string
-	Model      string
-	Temperature  float64
-	MaxTokens  int
-	HTTPClient *http.Client
-	Timeout    time.Duration
+	BaseURL     string
+	APIKey      string
+	Model       string
+	Temperature float64
+	MaxTokens   int
+	HTTPClient  *http.Client
+	Timeout     time.Duration
 }
 
 // NewClient creates a client configured from the system config.
 // Deprecated: use NewClientWithProvider for provider-specific configuration.
 func NewClient(cfg *config.SystemConfig) *Client {
 	return &Client{
-		BaseURL:   cfg.OpenShell.Address, // resolved gateway; for MVP, this is the endpoint base
-		Model:     "",                    // empty = no default model (use provider config instead)
-		Temperature: 0,                   // zero = use provider default
-		MaxTokens: 0,                    // zero = use provider default
+		BaseURL:     cfg.OpenShell.Address, // resolved gateway; for MVP, this is the endpoint base
+		Model:       "",                    // empty = no default model (use provider config instead)
+		Temperature: 0,                     // zero = use provider default
+		MaxTokens:   0,                     // zero = use provider default
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -44,11 +44,11 @@ func NewClient(cfg *config.SystemConfig) *Client {
 // NewClientWithProvider creates a client configured from a specific provider config.
 func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
 	return &Client{
-		BaseURL:    provCfg.Endpoint,
-		Model:      provCfg.Model,
-		Temperature:  provCfg.Temperature,
-		MaxTokens:  provCfg.MaxTokens,
-		APIKey:     provCfg.ApiKey,
+		BaseURL:     provCfg.Endpoint,
+		Model:       provCfg.Model,
+		Temperature: provCfg.Temperature,
+		MaxTokens:   provCfg.MaxTokens,
+		APIKey:      provCfg.ApiKey,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -59,9 +59,9 @@ func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
 // NewClientWithConfig creates a client from a specific workspace config.
 func NewClientWithConfig(cfg *config.WorkspaceConfig) *Client {
 	return &Client{
-		Model:      cfg.Model,
+		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
-		MaxTokens:  cfg.MaxTokens,
+		MaxTokens:   cfg.MaxTokens,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -97,7 +97,7 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (*Completi
 	if err != nil {
 		return nil, wrapError(ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -151,7 +151,7 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 	if err != nil {
 		return nil, wrapError(ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -167,11 +167,11 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 // ProviderInfo returns metadata about the underlying provider.
 func (c *Client) ProviderInfo() ProviderMetadata {
 	return ProviderMetadata{
-		Name:           ProviderOpenAI,
-		SupportsTools:  true,
-		SupportsStream: true,
+		Name:             ProviderOpenAI,
+		SupportsTools:    true,
+		SupportsStream:   true,
 		MaxTokensPerCall: c.MaxTokens,
-		BatchSupport:   false, // OpenAI batch API is separate; not exposed here at MVP
+		BatchSupport:     false, // OpenAI batch API is separate; not exposed here at MVP
 	}
 }
 
@@ -180,7 +180,6 @@ func (c *Client) ProviderInfo() ProviderMetadata {
 type sseStreamReader struct {
 	resp *http.Response
 	done chan struct{}
-	buf  []byte
 }
 
 func (s *sseStreamReader) Next() (Chunk, error) {
@@ -222,7 +221,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 }
 
 func (s *sseStreamReader) Close() error {
-	s.resp.Body.Close()
+	_ = s.resp.Body.Close()
 	close(s.done)
 	return nil
 }
@@ -242,7 +241,7 @@ func readSSELine(r io.Reader) (string, error) {
 
 func buildRequestBody(req CompletionRequest) map[string]interface{} {
 	body := map[string]interface{}{
-		"model":     req.Model,
+		"model":       req.Model,
 		"temperature": req.Temperature,
 		"max_tokens":  req.MaxTokens,
 		"messages":    messagesToMap(req.Messages),
@@ -286,7 +285,7 @@ func toolsToJSON(tools []Tool) []map[string]interface{} {
 	result := make([]map[string]interface{}, len(tools))
 	for i, t := range tools {
 		result[i] = map[string]interface{}{
-			"type":        "function",
+			"type": "function",
 			"function": map[string]interface{}{
 				"name":        t.Name,
 				"description": t.Description,

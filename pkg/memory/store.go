@@ -82,7 +82,7 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename session archive: %w", err)
 	}
 	return nil
@@ -104,7 +104,7 @@ func (s *Store) saveFile(path string, data map[string]interface{}) error {
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp) // clean up on failure
+		_ = os.Remove(tmp) // clean up on failure
 		return fmt.Errorf("rename task file: %w", err)
 	}
 
@@ -212,7 +212,7 @@ func (s *Store) SaveSession(sessionID string, data map[string]interface{}) error
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename session file: %w", err)
 	}
 
@@ -331,7 +331,7 @@ func (s *Store) SaveTranscript(sessionID string, entries []map[string]interface{
 		return fmt.Errorf("write transcript: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename transcript: %w", err)
 	}
 
@@ -419,10 +419,10 @@ func (s *Store) SavePlan(planID string, content string) error {
 	path := filepath.Join(dir, planID+".json")
 
 	data := map[string]interface{}{
-		"id":          planID,
-		"content":     content,
-		"created_at":  time.Now().Format(time.RFC3339),
-		"updated_at":  time.Now().Format(time.RFC3339),
+		"id":         planID,
+		"content":    content,
+		"created_at": time.Now().Format(time.RFC3339),
+		"updated_at": time.Now().Format(time.RFC3339),
 	}
 
 	contentBytes, err := json.MarshalIndent(data, "", "  ")
@@ -436,7 +436,7 @@ func (s *Store) SavePlan(planID string, content string) error {
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename plan file: %w", err)
 	}
 
@@ -554,7 +554,7 @@ func (s *Store) SaveWorkspace(name string, ws interface{}) error {
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename workspace file: %w", err)
 	}
 
@@ -674,7 +674,7 @@ func (s *Store) PersistTurn(taskID string, turn map[string]interface{}) error {
 		return fmt.Errorf("open turns file: %w", err)
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("write turn entry: %w", err)
 	}
 	if err := f.Close(); err != nil {
@@ -746,12 +746,12 @@ func (s *Store) PersistToolCallResult(taskID string, name string, args string, o
 	path := filepath.Join(dir, taskID+".jsonl")
 
 	entry := map[string]interface{}{
-		"type":       "tool_call_result",
-		"name":       name,
-		"arguments":  args,
-		"output":     output,
-		"exit_code":  exitCode,
-		"timestamp":  time.Now().Format(time.RFC3339),
+		"type":      "tool_call_result",
+		"name":      name,
+		"arguments": args,
+		"output":    output,
+		"exit_code": exitCode,
+		"timestamp": time.Now().Format(time.RFC3339),
 	}
 
 	line, err := json.Marshal(entry)
@@ -765,7 +765,7 @@ func (s *Store) PersistToolCallResult(taskID string, name string, args string, o
 		return fmt.Errorf("open tool results file: %w", err)
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("write tool result entry: %w", err)
 	}
 	if err := f.Close(); err != nil {
@@ -895,7 +895,7 @@ func (s *Store) SaveScheduledTasks(entries []interface{}) error {
 		return fmt.Errorf("write scheduled tasks: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename scheduled tasks: %w", err)
 	}
 

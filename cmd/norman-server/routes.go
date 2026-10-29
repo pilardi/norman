@@ -21,16 +21,21 @@ func registerRoutes(e *echo.Echo, srv *server) {
 
 	// Conditional logging: only log requests when verbose mode is enabled.
 	if srv.cfg.System.Logging.Verbose {
-		e.Use(middleware.Logger())
+		e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+			LogStatus:  true,
+			LogLatency: true,
+			LogMethod:  true,
+			LogURI:     true,
+		}))
 	}
 
 	// Health check endpoint — includes scheduler status (Phase 4).
 	e.GET("/health", func(c echo.Context) error {
 		taskCount, lastTick := srv.scheduler.Status()
 		resp := map[string]interface{}{
-			"status":       "ok",
+			"status":          "ok",
 			"scheduler_tasks": taskCount,
-			"last_tick":   lastTick.Format(time.RFC3339),
+			"last_tick":       lastTick.Format(time.RFC3339),
 		}
 		return c.JSON(http.StatusOK, resp)
 	})
@@ -81,7 +86,7 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	e.GET("/api/sessions/:id/history", func(c echo.Context) error {
 		var params protocol.SessionHistoryParams
 		if q := c.QueryParam("limit"); q != "" {
-			fmt.Sscanf(q, "%d", &params.Limit)
+			_, _ = fmt.Sscanf(q, "%d", &params.Limit)
 		}
 		return srv.SessionHistory(c, c.Param("id"), params)
 	})

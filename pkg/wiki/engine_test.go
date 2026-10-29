@@ -114,9 +114,9 @@ func TestEngineList(t *testing.T) {
 		t.Fatalf("NewEngine: %v", err)
 	}
 
-	engine.Create(&WikiEntry{Title: "Alpha", Type: EntryTypeEntity, Content: "a"})
-	engine.Create(&WikiEntry{Title: "Beta", Type: EntryTypeTrend, Content: "b"})
-	engine.Create(&WikiEntry{Title: "Gamma", Type: EntryTypeTask, Content: "c"})
+	_ = engine.Create(&WikiEntry{Title: "Alpha", Type: EntryTypeEntity, Content: "a"})
+	_ = engine.Create(&WikiEntry{Title: "Beta", Type: EntryTypeTrend, Content: "b"})
+	_ = engine.Create(&WikiEntry{Title: "Gamma", Type: EntryTypeTask, Content: "c"})
 
 	all, err := engine.List(nil)
 	if err != nil {
@@ -142,9 +142,9 @@ func TestEngineListWithTags(t *testing.T) {
 		t.Fatalf("NewEngine: %v", err)
 	}
 
-	engine.Create(&WikiEntry{Title: "A", Type: EntryTypeEntity, Tags: []string{"x", "y"}})
-	engine.Create(&WikiEntry{Title: "B", Type: EntryTypeEntity, Tags: []string{"x"}})
-	engine.Create(&WikiEntry{Title: "C", Type: EntryTypeEntity})
+	_ = engine.Create(&WikiEntry{Title: "A", Type: EntryTypeEntity, Tags: []string{"x", "y"}})
+	_ = engine.Create(&WikiEntry{Title: "B", Type: EntryTypeEntity, Tags: []string{"x"}})
+	_ = engine.Create(&WikiEntry{Title: "C", Type: EntryTypeEntity})
 
 	filtered, err := engine.List(&Filter{Tags: []string{"x"}})
 	if err != nil {
@@ -164,8 +164,8 @@ func TestEnginePruneStale(t *testing.T) {
 
 	now := time.Now().UTC()
 	oldTrend := now.Add(-31 * 24 * time.Hour)
-	engine.Create(&WikiEntry{Title: "Old Trend", Type: EntryTypeTrend, Updated: oldTrend})
-	engine.Create(&WikiEntry{Title: "Recent Trend", Type: EntryTypeTrend, Updated: now})
+	_ = engine.Create(&WikiEntry{Title: "Old Trend", Type: EntryTypeTrend, Updated: oldTrend})
+	_ = engine.Create(&WikiEntry{Title: "Recent Trend", Type: EntryTypeTrend, Updated: now})
 
 	removed := engine.PruneStale()
 	if removed != 1 {
@@ -188,9 +188,9 @@ func TestEngineStats(t *testing.T) {
 		t.Fatalf("NewEngine: %v", err)
 	}
 
-	engine.Create(&WikiEntry{Title: "E1", Type: EntryTypeEntity, Content: "x"})
-	engine.Create(&WikiEntry{Title: "E2", Type: EntryTypeEntity, Content: "y"})
-	engine.Create(&WikiEntry{Title: "S1", Type: EntryTypeSource, Content: "z"})
+	_ = engine.Create(&WikiEntry{Title: "E1", Type: EntryTypeEntity, Content: "x"})
+	_ = engine.Create(&WikiEntry{Title: "E2", Type: EntryTypeEntity, Content: "y"})
+	_ = engine.Create(&WikiEntry{Title: "S1", Type: EntryTypeSource, Content: "z"})
 
 	stats := engine.Stats()
 	if stats[EntryTypeEntity] != 2 {
@@ -222,8 +222,8 @@ func TestFilterStale(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	engine.Create(&WikiEntry{Title: "Stale", Type: EntryTypeTrend, Updated: now.Add(-31 * 24 * time.Hour)})
-	engine.Create(&WikiEntry{Title: "Fresh", Type: EntryTypeTrend, Updated: now})
+	_ = engine.Create(&WikiEntry{Title: "Stale", Type: EntryTypeTrend, Updated: now.Add(-31 * 24 * time.Hour)})
+	_ = engine.Create(&WikiEntry{Title: "Fresh", Type: EntryTypeTrend, Updated: now})
 
 	staleOnly, err := engine.List(&Filter{Stale: true})
 	if err != nil {
@@ -332,7 +332,7 @@ func TestEngineGitDiff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GitDiff: %v", err)
 	}
-	if diff == nil || len(diff) == 0 {
+	if len(diff) == 0 {
 		t.Error("expected non-empty diff output")
 	}
 }

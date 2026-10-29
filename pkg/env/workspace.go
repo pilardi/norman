@@ -17,14 +17,14 @@ type WorkspaceManager struct {
 	mu          sync.Mutex
 	client      *Client
 	serverURL   string
-	sessions    map[string]*Session // session ID -> session
+	sessions    map[string]*Session             // session ID -> session
 	definitions map[string]*WorkspaceDefinition // workspace name -> definition (lazy-loaded)
 }
 
 const (
-	maxRetries = 3
-	baseBackoff     = 1 * time.Second
-	maxBackoff      = 8 * time.Second
+	maxRetries  = 3
+	baseBackoff = 1 * time.Second
+	maxBackoff  = 8 * time.Second
 )
 
 // WorkspaceDefinition describes the identity and purpose of a workspace.
@@ -32,7 +32,7 @@ const (
 // what domain it is operating in, rather than just seeing a file tree.
 type WorkspaceDefinition struct {
 	Name    string   `json:"name"`
-	Purpose string   `json:"purpose"` // High-level description of what this workspace addresses
+	Purpose string   `json:"purpose"`         // High-level description of what this workspace addresses
 	Scope   []string `json:"scope,omitempty"` // Subsystems/repos/services covered
 	Tags    []string `json:"tags,omitempty"`  // Keywords for skill activation matching
 }

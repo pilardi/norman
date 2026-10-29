@@ -114,4 +114,15 @@ See `docs/memory-proposal.md` for the full proposal:
 
 ---
 
+## 10. Build & Lint Process
+
+- **golangci-lint v2** is integrated into both local `make build` and GitHub Actions CI (`/.github/workflows/go.yml`).
+- Config: `.golangci.yml` (v2 schema). Linters enabled: `errcheck`, `ineffassign`, `staticcheck`, `govet`, `unused`, `misspell`, `unconvert`, `copyloopvar`. Formatters: `gofmt`, `goimports`.
+- CI uses `golangci/golangci-lint-action@v7` with `version: v2.15.0`.
+- `make lint` runs `golangci-lint run ./...`; `make build` depends on `lint`.
+- Pre-existing staticcheck naming conventions (`ST1003`, `ST1020`, `ST1021`) are excluded via `linters.settings.staticcheck.checks`.
+- **Rule:** Always run `golangci-lint run ./...` before committing. CI will fail if any lint issues exist.
+
+---
+
 *This is an MVP v1.0 release. The core engine, index builder, and journal are wired into the agent loop. Further refinements will be made based on observed agent behavior during development.*

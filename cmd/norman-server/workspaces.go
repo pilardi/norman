@@ -235,11 +235,11 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 	} else {
 		wikiPath := filepath.Join(snapshotDir, "wiki.jsonl")
 		if f, err := os.Create(wikiPath); err == nil {
-			f.Close()
+			_ = f.Close()
 		}
 		sessionPath := filepath.Join(snapshotDir, "sessions.jsonl")
 		if f, err := os.Create(sessionPath); err == nil {
-			f.Close()
+			_ = f.Close()
 		}
 	}
 
@@ -345,7 +345,7 @@ func isValidWorkspaceName(name string) bool {
 		return false
 	}
 	for _, r := range name {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+		if r < 'a' || r > 'z' || r < 'A' || r > 'Z' || r < '0' || r > '9' || r != '_' && r != '-' {
 			return false
 		}
 	}

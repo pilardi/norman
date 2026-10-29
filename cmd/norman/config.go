@@ -107,7 +107,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			"server_port":        cfg.ServerPort,
 			"host":               cfg.Host,
 			"server_url":         cfg.ServerURL,
-			"default_provider":     cfg.DefaultProvider,
+			"default_provider":   cfg.DefaultProvider,
 			"max_active_skills":  cfg.Skills.MaxActive,
 			"bell_enabled":       cfg.Notify.BellEnabled,
 			"rate_limit_per_min": cfg.Notify.RateLimitPerMin,
@@ -119,11 +119,11 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			providers := make([]map[string]interface{}, len(cfg.LlmProviders))
 			for i, p := range cfg.LlmProviders {
 				prov := map[string]interface{}{
-					"name":      p.Name,
-					"type":      p.Type,
-					"endpoint":  p.Endpoint,
-					"model":     p.Model,
-					"temp":      p.Temperature,
+					"name":       p.Name,
+					"type":       p.Type,
+					"endpoint":   p.Endpoint,
+					"model":      p.Model,
+					"temp":       p.Temperature,
 					"max_tokens": p.MaxTokens,
 				}
 				if len(p.Extra) > 0 {
@@ -189,7 +189,7 @@ func getConfig() (*config.SystemConfig, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("GET /api/config: %w", err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -224,7 +224,7 @@ func putConfig(updates map[string]interface{}) error {
 	if err != nil {
 		return fmt.Errorf("PUT /api/config: %w", err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		data, _ := io.ReadAll(resp.Body)

@@ -22,7 +22,7 @@ func ProviderValidator(p *config.ProviderConfig) []string {
 		errors = append(errors, "name is required")
 	}
 	if p.Type == "" {
-		errors = append(errors, fmt.Sprintf("type is required"))
+		errors = append(errors, "type is required")
 	} else if !isValidProviderType(p.Type) {
 		errors = append(errors, fmt.Sprintf("invalid type %q; must be one of: openai, anthropic, ollama, gemini, llamacpp", p.Type))
 	}
@@ -77,7 +77,7 @@ func toProviderResponse(p *config.ProviderConfig) *protocol.ProviderResponse {
 		Type:         (*protocol.ProviderResponseType)(strPtr(strings.ToLower(p.Type))),
 		Endpoint:     strPtr(p.Endpoint),
 		Model:        strPtr(p.Model),
-		Temperature:    float32Ptr(p.Temperature),
+		Temperature:  float32Ptr(p.Temperature),
 		MaxTokens:    intPtr(p.MaxTokens),
 		ApiKeyMasked: boolPtr(maskApiKey(p.ApiKey)),
 	}
@@ -91,11 +91,6 @@ func toProviderResponse(p *config.ProviderConfig) *protocol.ProviderResponse {
 func float32Ptr(f float64) *float32 {
 	v := float32(f)
 	return &v
-}
-
-// float64Ptr is a helper to create a *float64.
-func float64Ptr(f float64) *float64 {
-	return &f
 }
 
 // boolPtr is a helper to create a *bool.
@@ -143,13 +138,13 @@ func (s *server) CreateProvider(c echo.Context) error {
 
 	// Build the provider config.
 	prov := config.ProviderConfig{
-		Name:      req.Name,
-		Type:      string(req.Type),
-		Endpoint:  req.Endpoint,
-		Model:     derefString(req.Model),
+		Name:        req.Name,
+		Type:        string(req.Type),
+		Endpoint:    req.Endpoint,
+		Model:       derefString(req.Model),
 		Temperature: derefFloat32(req.Temperature),
-		MaxTokens: derefInt(req.MaxTokens),
-		ApiKey:    derefString(req.ApiKey),
+		MaxTokens:   derefInt(req.MaxTokens),
+		ApiKey:      derefString(req.ApiKey),
 	}
 
 	if req.Extra != nil {
@@ -223,19 +218,19 @@ func (s *server) UpdateProvider(c echo.Context, name string) error {
 		prov.Type = string(*req.Type)
 	}
 	if req.Endpoint != nil {
-		prov.Endpoint = string(*req.Endpoint)
+		prov.Endpoint = *req.Endpoint
 	}
 	if req.Model != nil {
-		prov.Model = string(*req.Model)
+		prov.Model = *req.Model
 	}
 	if req.Temperature != nil {
 		prov.Temperature = float64(*req.Temperature)
 	}
 	if req.MaxTokens != nil {
-		prov.MaxTokens = int(*req.MaxTokens)
+		prov.MaxTokens = *req.MaxTokens
 	}
 	if req.ApiKey != nil {
-		prov.ApiKey = string(*req.ApiKey)
+		prov.ApiKey = *req.ApiKey
 	}
 	if req.Extra != nil {
 		prov.Extra = *req.Extra
@@ -323,7 +318,7 @@ func (s *server) ListProviderModels(c echo.Context, name string) error {
 	}
 
 	resp := &protocol.AvailableModelsResponse{
-		Models:     &models,
+		Models:       &models,
 		ProviderName: strPtr(prov.Name),
 	}
 	return c.JSON(http.StatusOK, resp)
@@ -387,7 +382,7 @@ func fetchOpenAIModels(endpoint, apiKey string) ([]protocol.AvailableModelEntry,
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -400,8 +395,8 @@ func fetchOpenAIModels(endpoint, apiKey string) ([]protocol.AvailableModelEntry,
 
 	// Parse OpenAI-compatible response: {"object":"list","data":[{"id":"gpt-4o",...},...]}
 	var openaiResp struct {
-		Object string              `json:"object"`
-		Data   []map[string]any    `json:"data"`
+		Object string           `json:"object"`
+		Data   []map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(body, &openaiResp); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
@@ -438,7 +433,7 @@ func fetchOllamaModels(endpoint string) ([]protocol.AvailableModelEntry, error) 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

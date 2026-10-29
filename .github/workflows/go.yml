@@ -27,6 +27,11 @@ jobs:
     - name: Generate protocol types and handlers from api-spec.yaml
       run: make generate
 
+    - name: Lint
+      uses: golangci/golangci-lint-action@v7
+      with:
+        version: v2.15.0
+
     - name: Build
       run: go build -v ./...
 

@@ -137,49 +137,49 @@ func TestComputeHitRateEstimate(t *testing.T) {
 
 func TestCacheStrategyValidate(t *testing.T) {
 	tests := []struct {
-		name    string
+		name     string
 		strategy CacheStrategy
-		wantErr bool
+		wantErr  bool
 	}{
 		{
-			name: "valid fq",
+			name:     "valid fq",
 			strategy: CacheStrategy{Enabled: true, Size: 4096, Type: "fq", Hashing: true, MaxCachedPrefixes: 128},
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name: "valid q4_0",
+			name:     "valid q4_0",
 			strategy: CacheStrategy{Enabled: true, Size: 2048, Type: "q4_0", Hashing: false, MaxCachedPrefixes: 64},
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name: "valid q8_0",
+			name:     "valid q8_0",
 			strategy: CacheStrategy{Enabled: true, Size: 2048, Type: "q8_0", Hashing: false, MaxCachedPrefixes: 64},
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name: "valid iq2_xs",
+			name:     "valid iq2_xs",
 			strategy: CacheStrategy{Enabled: true, Size: 1024, Type: "iq2_xs", Hashing: false, MaxCachedPrefixes: 32},
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name: "invalid type",
+			name:     "invalid type",
 			strategy: CacheStrategy{Enabled: true, Size: 4096, Type: "invalid", Hashing: true, MaxCachedPrefixes: 128},
-			wantErr: true,
+			wantErr:  true,
 		},
 		{
-			name: "zero size",
+			name:     "zero size",
 			strategy: CacheStrategy{Enabled: true, Size: 0, Type: "fq", Hashing: true, MaxCachedPrefixes: 128},
-			wantErr: true,
+			wantErr:  true,
 		},
 		{
-			name: "negative size",
+			name:     "negative size",
 			strategy: CacheStrategy{Enabled: true, Size: -100, Type: "fq", Hashing: true, MaxCachedPrefixes: 128},
-			wantErr: true,
+			wantErr:  true,
 		},
 		{
-			name: "zero max prefixes",
+			name:     "zero max prefixes",
 			strategy: CacheStrategy{Enabled: true, Size: 4096, Type: "fq", Hashing: true, MaxCachedPrefixes: 0},
-			wantErr: true,
+			wantErr:  true,
 		},
 	}
 

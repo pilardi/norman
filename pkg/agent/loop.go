@@ -17,8 +17,8 @@ import (
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
-	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/mcp"
+	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
@@ -27,35 +27,35 @@ import (
 
 // Task represents an in-flight task (emergent or manual) with its execution state.
 type Task struct {
-	ID        string
-	Prompt    string
-	Status    protocol.TaskStatus
-	Workspace string
-	SessionId string
-	Output    []byte
-	Error     string
+	ID         string
+	Prompt     string
+	Status     protocol.TaskStatus
+	Workspace  string
+	SessionId  string
+	Output     []byte
+	Error      string
 	RetryCount int
-	CreatedAt time.Time
+	CreatedAt  time.Time
 }
 
 // Loop is the main agent loop managing session messages and emergent/manual task execution.
 type Loop struct {
-	mu          sync.Mutex
-	tasks       map[string]*Task // taskID -> Task state
-	store       *memory.Store    // persistent state
-	rawSources  *memory.RawSources // raw environment snapshots for context injection
-	activator   *skills.Activator
-	config      *config.Config
-	openShell   OpenShellClient
-	llmClient   llm.LLM           // LLM API client (optional, nil = shell-only mode)
-	wsHub       WSHubPublisher
-	notifier    *notify.Notifier
-	resultsCh   chan scheduler.TaskResult // results from scheduler (nil if not wired)
-	maxRetries  int
-	budget      *budget.SessionState // token budget tracker (nil if disabled)
-	workspaceDef *env.WorkspaceDefinition // workspace identity for system prompt injection
-	openShellClient *env.Client        // concrete client for session creation (P3 sandbox dep install)
-	mcpClient   *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
+	mu              sync.Mutex
+	tasks           map[string]*Task   // taskID -> Task state
+	store           *memory.Store      // persistent state
+	rawSources      *memory.RawSources // raw environment snapshots for context injection
+	activator       *skills.Activator
+	config          *config.Config
+	openShell       OpenShellClient
+	llmClient       llm.LLM // LLM API client (optional, nil = shell-only mode)
+	wsHub           WSHubPublisher
+	notifier        *notify.Notifier
+	resultsCh       chan scheduler.TaskResult // results from scheduler (nil if not wired)
+	maxRetries      int
+	budget          *budget.SessionState     // token budget tracker (nil if disabled)
+	workspaceDef    *env.WorkspaceDefinition // workspace identity for system prompt injection
+	openShellClient *env.Client              // concrete client for session creation (P3 sandbox dep install)
+	mcpClient       *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -439,12 +439,12 @@ func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]
 
 	// Store priority as metadata for the task.
 	if err := l.store.SaveTask(taskID, map[string]interface{}{
-		"id":          taskID,
-		"prompt":      prompt,
-		"status":      string(task.Status),
-		"workspace":   workspaceID,
-		"priority":    string(priority),
-		"created_at":  task.CreatedAt.Format(time.RFC3339),
+		"id":         taskID,
+		"prompt":     prompt,
+		"status":     string(task.Status),
+		"workspace":  workspaceID,
+		"priority":   string(priority),
+		"created_at": task.CreatedAt.Format(time.RFC3339),
 	}); err != nil {
 		log.Printf("agent: failed to persist task %s: %v", taskID, err)
 	}
@@ -646,7 +646,7 @@ func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 			}
 
 			// Also persist the tool call result (the RunCommand itself is a "tool" call)
-			if err := l.store.PersistToolCallResult(task.ID, "shell_command", prompt, string(output), exitCode); err != nil {
+			if err := l.store.PersistToolCallResult(task.ID, "shell_command", prompt, output, exitCode); err != nil {
 				log.Printf("agent: failed to persist shell command result for task %s: %v", task.ID, err)
 			}
 		}
@@ -707,7 +707,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			Messages:    messages,
 			Tools:       tools,
 			Model:       model,
-			Temperature:   temp,
+			Temperature: temp,
 			MaxTokens:   maxTokens,
 		})
 		if err != nil {
@@ -727,7 +727,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				log.Printf("agent: stream read error at turn %d: %v", turn, err)
 				task.Status = protocol.TaskStatusFailed
 				task.Error = fmt.Sprintf("streaming failed at turn %d: %v", turn, err)
-				stream.Close()
+				_ = stream.Close()
 				return []byte(task.Error)
 			}
 			if chunk.FinishReason == "[done]" {
@@ -754,7 +754,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			})
 		}
 
-		stream.Close()
+		_ = stream.Close()
 
 		responseText := fullText.String()
 
@@ -856,38 +856,6 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		task.Error = fmt.Sprintf("reached max turns (%d) without completing", maxTurns)
 	}
 	return task.Output
-}
-
-// buildSystemPrompt assembles the system prompt for the LLM.
-func (l *Loop) buildSystemPrompt(workspaceID string) string {
-	var parts []string
-
-	// 0. Agent identity & origin (preloaded, immutable facts — always present)
-	parts = append(parts, ParseFacts().AsSystemPrompt())
-
-	// 1. Workspace identity (if defined) — injected second so agent grounds its reasoning
-	if l.workspaceDef != nil {
-		parts = append(parts, l.workspaceDef.AsSystemPrompt())
-	}
-
-	// 2. Base system instructions
-	parts = append(parts, `You are Norman, a helpful AI assistant operating inside an OpenShell sandbox environment. You help users work on their projects by reading files, running commands, and reporting results.
-
-Rules:
-- Always respond in the user's language.
-- Be concise but thorough. If you need more information, ask a clarifying question.
-- When using tools (shell commands), execute them one at a time and wait for results before proceeding.
-- If a tool fails, explain what went wrong and try an alternative approach.
-- Never assume file contents without reading them first.
-- When done with a task, provide a clear summary of what you accomplished.`)
-
-	// 3. Add workspace-specific system prompt if configured (e.g., custom instructions)
-	ws := l.WorkspaceConfig(workspaceID)
-	if ws.SystemPrompt != "" {
-		parts = append(parts, "\n\nWorkspace-specific instructions:\n"+ws.SystemPrompt)
-	}
-
-	return strings.Join(parts, "\n")
 }
 
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
@@ -1088,7 +1056,7 @@ func (l *Loop) buildTools() []llm.Tool {
 				params := map[string]interface{}{
 					"type": "object",
 				}
-				if td.Parameters != nil && len(td.Parameters) > 0 {
+				if len(td.Parameters) > 0 {
 					params["properties"] = td.Parameters
 				} else {
 					params["properties"] = map[string]interface{}{
@@ -1187,7 +1155,7 @@ func (l *Loop) buildMessages(task *Task) ([]llm.Message, int, int) {
 		wsParts = append(wsParts, "")
 		wsParts = append(wsParts, "## Workspace Identity")
 		wsParts = append(wsParts, "")
-		wsParts = append(wsParts, fmt.Sprintf("You are operating inside a **workspace** — a bounded project environment with a specific purpose."))
+		wsParts = append(wsParts, "You are operating inside a **workspace** — a bounded project environment with a specific purpose.")
 		wsParts = append(wsParts, "")
 		wsParts = append(wsParts, "A workspace is defined by:")
 		wsParts = append(wsParts, "- **Purpose**: "+l.workspaceDef.Purpose)
@@ -1362,9 +1330,9 @@ func (l *Loop) pushThresholdNotification(taskID string, flags budget.ThresholdFl
 	}
 
 	n := notify.Notification{
-		TaskID:    taskID,
-		Title:     fmt.Sprintf("Budget threshold [%s]", flags.String()),
-		Body:      fmt.Sprintf("Token usage at %.0f%% of budget (%d/%d tokens). Threshold triggered.",
+		TaskID: taskID,
+		Title:  fmt.Sprintf("Budget threshold [%s]", flags.String()),
+		Body: fmt.Sprintf("Token usage at %.0f%% of budget (%d/%d tokens). Threshold triggered.",
 			l.budget.UsedFraction()*100, l.budget.TokenCount, l.budget.Budget.MaxTokens),
 		Severity:  severity,
 		Timestamp: time.Now(),
@@ -1380,10 +1348,10 @@ func turnsToInterface(turns []budget.Turn) []interface{} {
 	result := make([]interface{}, len(turns))
 	for i, t := range turns {
 		result[i] = map[string]interface{}{
-			"role":      t.Role,
-			"content":   t.Content,
-			"tokens":    t.Tokens,
-			"pinned":    t.Pinned,
+			"role":       t.Role,
+			"content":    t.Content,
+			"tokens":     t.Tokens,
+			"pinned":     t.Pinned,
 			"created_at": t.CreatedAt.Format(time.RFC3339),
 		}
 	}
@@ -1444,7 +1412,7 @@ func (l *Loop) pushCompletion(task *Task) {
 					Timestamp: time.Now(),
 				}
 				if l.notifier != nil {
-					l.notifier.Notify(n)
+					_ = l.notifier.Notify(n)
 				}
 			} else if result.Output != "" {
 				n := notify.Notification{
@@ -1455,7 +1423,7 @@ func (l *Loop) pushCompletion(task *Task) {
 					Timestamp: time.Now(),
 				}
 				if l.notifier != nil {
-					l.notifier.Notify(n)
+					_ = l.notifier.Notify(n)
 				}
 			}
 		default:
@@ -1570,7 +1538,7 @@ func (l *Loop) AddDiscoveryPaths(paths []string) error {
 }
 
 func strPtr(s string) *string { return &s }
-func intPtr(i int) *int        { return &i }
+func intPtr(i int) *int       { return &i }
 
 // contains checks if a string slice contains a value.
 func contains(slice []string, val string) bool {
@@ -1830,9 +1798,7 @@ func (l *Loop) handleMCPListTools(sandboxName string, argsRaw string) (string, i
 
 	// Optional endpoint override (for multi-endpoint scenarios).
 	// Currently unused in the MVP; kept for schema completeness.
-	if _, ok := args["endpoint"].(string); !ok {
-		// No endpoint specified — uses the default configured endpoint.
-	}
+	_ = args["endpoint"] // endpoint override (unused in MVP)
 
 	tools, err := l.mcpClient.ListTools(context.Background())
 	if err != nil {
@@ -1897,4 +1863,3 @@ func (l *Loop) MarkIdle(workspace string) {
 func shellEscape(s string) string {
 	return strings.ReplaceAll(s, "'", "'\\''")
 }
-

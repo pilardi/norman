@@ -95,7 +95,7 @@ func (e *Engine) Update(slug string, updates map[string]interface{}) error {
 		return fmt.Errorf("write entry: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename entry: %w", err)
 	}
 
@@ -150,7 +150,7 @@ func (e *Engine) WriteSchema(slug string, content string) error {
 		return fmt.Errorf("write schema: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename schema: %w", err)
 	}
 

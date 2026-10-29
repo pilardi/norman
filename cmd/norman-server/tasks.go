@@ -76,11 +76,11 @@ func (s *server) CreateTask(c echo.Context) error {
 // ScheduleTask registers a recurring scheduled task.
 func (s *server) ScheduleTask(c echo.Context) error {
 	var req struct {
-		Name            string `json:"name"`
-		Schedule        string `json:"schedule"` // cron expression
-		Command         string `json:"command"`  // shell command to execute
-		WorkspaceId     string `json:"workspace_id"`
-		Skill           string `json:"skill"`
+		Name              string `json:"name"`
+		Schedule          string `json:"schedule"` // cron expression
+		Command           string `json:"command"`  // shell command to execute
+		WorkspaceId       string `json:"workspace_id"`
+		Skill             string `json:"skill"`
 		ActivationCommand string `json:"activation_command"`
 	}
 	if err := c.Bind(&req); err != nil {
@@ -117,11 +117,11 @@ func (s *server) ScheduleTask(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"id":                id,
-		"name":              req.Name,
-		"schedule":          req.Schedule,
-		"workspace_id":      req.WorkspaceId,
-		"skill":             req.Skill,
+		"id":                 id,
+		"name":               req.Name,
+		"schedule":           req.Schedule,
+		"workspace_id":       req.WorkspaceId,
+		"skill":              req.Skill,
 		"activation_command": req.ActivationCommand,
 	})
 }
@@ -134,7 +134,7 @@ func (s *server) UnscheduleTask(c echo.Context, id string) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"unscheduled": true,
-		"id":        id,
+		"id":          id,
 	})
 }
 
@@ -153,10 +153,10 @@ func (s *server) ListScheduledTasks(c echo.Context) error {
 			continue
 		}
 		result = append(result, protocol.ScheduledTask{
-			Id:              &id,
-			Name:            &entry.Name,
-			Schedule:        &entry.Schedule,
-			Status:          &status,
+			Id:                &id,
+			Name:              &entry.Name,
+			Schedule:          &entry.Schedule,
+			Status:            &status,
 			WorkspaceId:       nil,
 			Skill:             strPtr(entry.Skill),
 			ActivationCommand: strPtr(entry.ActivationCommand),
@@ -177,14 +177,14 @@ func (s *server) GetTask(c echo.Context, id string) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid task ID: %v", parseErr)})
 	}
 
-	status := protocol.TaskStatus(task.Status)
+	status := task.Status
 	resp := protocol.Task{
-		Id:         &uuidVal,
-		Status:     &status,
-		Prompt:     strPtr(task.Prompt),
+		Id:          &uuidVal,
+		Status:      &status,
+		Prompt:      strPtr(task.Prompt),
 		WorkspaceId: strPtr(task.Workspace),
-		CreatedAt:  &task.CreatedAt,
-		Error:      strPtr(task.Error),
+		CreatedAt:   &task.CreatedAt,
+		Error:       strPtr(task.Error),
 	}
 
 	if len(task.Output) > 0 {

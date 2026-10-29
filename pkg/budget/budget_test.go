@@ -159,7 +159,7 @@ func TestThresholdFlagsString(t *testing.T) {
 		t.Errorf("expected 'critical', got '%s'", ThresholdCritical.String())
 	}
 	if (ThresholdWarn | ThresholdCritical).String() != "warn, critical" {
-		t.Errorf("expected 'warn, critical', got '%s'", (ThresholdWarn|ThresholdCritical).String())
+		t.Errorf("expected 'warn, critical', got '%s'", (ThresholdWarn | ThresholdCritical).String())
 	}
 }
 

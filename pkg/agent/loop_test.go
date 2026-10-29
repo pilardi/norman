@@ -339,7 +339,7 @@ func TestSourceContainsStartCheck(t *testing.T) {
 type FakeWSHub struct {
 	mu        sync.RWMutex
 	lastEvent protocol.WebSocketEvent
-	events      []protocol.WebSocketEvent
+	events    []protocol.WebSocketEvent
 }
 
 func (f *FakeWSHub) BroadcastEvent(event protocol.WebSocketEvent) {
@@ -584,8 +584,6 @@ func (m *mockLLMClient) ProviderInfo() llm.ProviderMetadata {
 
 // mockStreamReader implements llm.StreamReader for testing.
 type mockStreamReader struct {
-	resp   llm.CompletionResponse
-	done   bool
 	chunks []llm.Chunk
 	idx    int
 }

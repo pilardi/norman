@@ -123,9 +123,9 @@ func (c *Compressor) buildCompressionPrompt(state *SessionState, compressIndices
 		t := state.Turns[idx]
 		roleLabel := strings.ToUpper(t.Role)
 		if len(t.Content) > 500 {
-			sb.WriteString(fmt.Sprintf("[%s] (truncated, %d chars): %s...\n", roleLabel, len(t.Content), t.Content[:497]))
+			fmt.Fprintf(&sb, "[%s] (truncated, %d chars): %s...\n", roleLabel, len(t.Content), t.Content[:497])
 		} else {
-			sb.WriteString(fmt.Sprintf("[%s] %s\n", roleLabel, t.Content))
+			fmt.Fprintf(&sb, "[%s] %s\n", roleLabel, t.Content)
 		}
 	}
 

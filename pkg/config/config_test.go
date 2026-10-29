@@ -137,8 +137,7 @@ func TestDefaultHost(t *testing.T) {
 }
 
 func TestEnvVarPortOverride(t *testing.T) {
-	os.Setenv("NORMAN_PORT", "9090")
-	defer os.Unsetenv("NORMAN_PORT")
+	_ = os.Setenv("NORMAN_PORT", "9090")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -150,8 +149,7 @@ func TestEnvVarPortOverride(t *testing.T) {
 }
 
 func TestEnvVarHostOverride(t *testing.T) {
-	os.Setenv("NORMAN_HOST", "0.0.0.0")
-	defer os.Unsetenv("NORMAN_HOST")
+	_ = os.Setenv("NORMAN_HOST", "0.0.0.0")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -163,8 +161,7 @@ func TestEnvVarHostOverride(t *testing.T) {
 }
 
 func TestEnvVarServerURLOverride(t *testing.T) {
-	os.Setenv("NORMAN_SERVER_URL", "https://norman.example.com")
-	defer os.Unsetenv("NORMAN_SERVER_URL")
+	_ = os.Setenv("NORMAN_SERVER_URL", "https://norman.example.com")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -176,8 +173,8 @@ func TestEnvVarServerURLOverride(t *testing.T) {
 }
 
 func TestEnvVarVerboseOverride(t *testing.T) {
-	os.Setenv("NORMAN_VERBOSE", "true")
-	defer os.Unsetenv("NORMAN_VERBOSE")
+	_ = os.Setenv("NORMAN_VERBOSE", "true")
+	defer func() { _ = os.Unsetenv("NORMAN_VERBOSE") }()
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -189,8 +186,8 @@ func TestEnvVarVerboseOverride(t *testing.T) {
 }
 
 func TestEnvVarVerboseFalse(t *testing.T) {
-	os.Setenv("NORMAN_VERBOSE", "false")
-	defer os.Unsetenv("NORMAN_VERBOSE")
+	_ = os.Setenv("NORMAN_VERBOSE", "false")
+	defer func() { _ = os.Unsetenv("NORMAN_VERBOSE") }()
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -202,8 +199,8 @@ func TestEnvVarVerboseFalse(t *testing.T) {
 }
 
 func TestEnvVarBaseDirOverride(t *testing.T) {
-	os.Setenv("NORMAN_BASE_DIR", "/custom/workspaces")
-	defer os.Unsetenv("NORMAN_BASE_DIR")
+	_ = os.Setenv("NORMAN_BASE_DIR", "/custom/workspaces")
+	defer func() { _ = os.Unsetenv("NORMAN_BASE_DIR") }()
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -215,8 +212,8 @@ func TestEnvVarBaseDirOverride(t *testing.T) {
 }
 
 func TestEnvVarInvalidPort(t *testing.T) {
-	os.Setenv("NORMAN_PORT", "not-a-number")
-	defer os.Unsetenv("NORMAN_PORT")
+	_ = os.Setenv("NORMAN_PORT", "not-a-number")
+	defer func() { _ = os.Unsetenv("NORMAN_PORT") }()
 
 	cfg := DefaultConfig()
 	err := ApplyEnvOverrides(cfg.System)
@@ -229,8 +226,8 @@ func TestEnvVarInvalidPort(t *testing.T) {
 }
 
 func TestEnvVarInvalidVerbose(t *testing.T) {
-	os.Setenv("NORMAN_VERBOSE", "maybe")
-	defer os.Unsetenv("NORMAN_VERBOSE")
+	_ = os.Setenv("NORMAN_VERBOSE", "maybe")
+	defer func() { _ = os.Unsetenv("NORMAN_VERBOSE") }()
 
 	cfg := DefaultConfig()
 	err := ApplyEnvOverrides(cfg.System)
@@ -244,11 +241,11 @@ func TestEnvVarInvalidVerbose(t *testing.T) {
 
 func TestEnvVarPriority(t *testing.T) {
 	// Set env vars that should override defaults
-	os.Setenv("NORMAN_PORT", "9090")
-	os.Setenv("NORMAN_HOST", "0.0.0.0")
+	_ = os.Setenv("NORMAN_PORT", "9090")
+	_ = os.Setenv("NORMAN_HOST", "0.0.0.0")
 	defer func() {
-		os.Unsetenv("NORMAN_PORT")
-		os.Unsetenv("NORMAN_HOST")
+		_ = os.Unsetenv("NORMAN_PORT")
+		_ = os.Unsetenv("NORMAN_HOST")
 	}()
 
 	cfg := DefaultConfig()
@@ -266,9 +263,9 @@ func TestEnvVarPriority(t *testing.T) {
 func TestEnvVarOverridesDotEnv(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldCwd, _ := os.Getwd()
-	os.Chdir(tmpDir)
+	_ = os.Chdir(tmpDir)
 	defer func() {
-		os.Chdir(oldCwd)
+		_ = os.Chdir(oldCwd)
 	}()
 
 	// Write a .env file with PORT=7070
@@ -278,12 +275,10 @@ func TestEnvVarOverridesDotEnv(t *testing.T) {
 	}
 
 	// Set env var that should override the .env value
-	os.Setenv("NORMAN_PORT", "8888")
-	defer os.Unsetenv("NORMAN_PORT")
-
 	if err := LoadEnvFiles(); err != nil {
 		t.Fatalf("LoadEnvFiles failed: %v", err)
 	}
+	_ = os.Setenv("NORMAN_PORT", "8888")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -300,7 +295,7 @@ func TestEnvVarOverridesDotEnv(t *testing.T) {
 	}
 
 	// Cleanup
-	os.Remove(".env")
+	_ = os.Remove(".env")
 }
 
 func TestGetEnvVarNames(t *testing.T) {

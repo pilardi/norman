@@ -13,13 +13,13 @@ import (
 
 // SystemConfig holds global defaults shared across all workspaces.
 type SystemConfig struct {
-	ServerPort int               `yaml:"server_port"`
-	Host       string            `yaml:"host"` // bind address for server (default 127.0.0.1)
-	BaseDir    string            `yaml:"base_dir"`
-	Skills     SkillsConfig      `yaml:"skills"`
-	Notify     NotifyConfig      `yaml:"notify"`
-	Logging    LoggingConfig     `yaml:"logging"`
-	OpenShell  OpenShellConfig   `yaml:"openshell"` // OpenShell gateway connection config
+	ServerPort int             `yaml:"server_port"`
+	Host       string          `yaml:"host"` // bind address for server (default 127.0.0.1)
+	BaseDir    string          `yaml:"base_dir"`
+	Skills     SkillsConfig    `yaml:"skills"`
+	Notify     NotifyConfig    `yaml:"notify"`
+	Logging    LoggingConfig   `yaml:"logging"`
+	OpenShell  OpenShellConfig `yaml:"openshell"` // OpenShell gateway connection config
 
 	// LLM provider configuration.
 	LlmProviders []ProviderConfig `yaml:"llm_providers"`
@@ -35,15 +35,15 @@ type SystemConfig struct {
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.
 type ProviderConfig struct {
-	Name              string         `yaml:"name"`       // identifier, e.g. "default", "local"
-	Type              string         `yaml:"type"`       // "openai", "llamacpp", etc.
-	Endpoint          string         `yaml:"endpoint"`   // base API URL
-	Model             string         `yaml:"model"`      // model name/identifier
-	Temperature       float64        `yaml:"temperature"` // provider default temperature
-	MaxTokens         int            `yaml:"max_tokens"`  // provider default max tokens
-	ApiKey            string         `yaml:"api_key"`     // provider API key (e.g. OpenAI key)
+	Name              string         `yaml:"name"`               // identifier, e.g. "default", "local"
+	Type              string         `yaml:"type"`               // "openai", "llamacpp", etc.
+	Endpoint          string         `yaml:"endpoint"`           // base API URL
+	Model             string         `yaml:"model"`              // model name/identifier
+	Temperature       float64        `yaml:"temperature"`        // provider default temperature
+	MaxTokens         int            `yaml:"max_tokens"`         // provider default max tokens
+	ApiKey            string         `yaml:"api_key"`            // provider API key (e.g. OpenAI key)
 	EmbeddingEndpoint string         `yaml:"embedding_endpoint"` // embedding route: "/embeddings" or "/api/v1/embeddings"
-	Extra             map[string]any `yaml:",inline"`    // type-specific fields (cache_size, etc.)
+	Extra             map[string]any `yaml:",inline"`            // type-specific fields (cache_size, etc.)
 }
 
 // ResolveProvider returns the provider config matching the given name.
@@ -59,33 +59,33 @@ func (sc *SystemConfig) ResolveProvider(name string) (*ProviderConfig, error) {
 // WorkspaceConfig holds per-workspace overrides.
 // Each workspace can override model, token budget, skill set, etc.
 type WorkspaceConfig struct {
-	BaseDir        string   `yaml:"base_dir"`         // e.g., "~/workspaces" or derived from environment
-	Model          string   `yaml:"model"`            // per-workspace model (empty = use system default)
-	MaxTokens      int      `yaml:"max_tokens"`       // per-workspace token budget
-	Temperature    float64  `yaml:"temperature"`      // per-workspace temperature
-	SkillOverrides []string `yaml:"skill_overrides"`  // per-workspace skill activation list
-	SystemPrompt   string   `yaml:"system_prompt"`    // per-workspace system prompt override
+	BaseDir        string   `yaml:"base_dir"`        // e.g., "~/workspaces" or derived from environment
+	Model          string   `yaml:"model"`           // per-workspace model (empty = use system default)
+	MaxTokens      int      `yaml:"max_tokens"`      // per-workspace token budget
+	Temperature    float64  `yaml:"temperature"`     // per-workspace temperature
+	SkillOverrides []string `yaml:"skill_overrides"` // per-workspace skill activation list
+	SystemPrompt   string   `yaml:"system_prompt"`   // per-workspace system prompt override
 }
 
 // Config is the top-level configuration returned by the server.
 // It merges SystemConfig defaults with per-workspace overrides.
 type Config struct {
-	System     *SystemConfig  `yaml:"system"`
+	System     *SystemConfig               `yaml:"system"`
 	Workspaces map[string]*WorkspaceConfig `yaml:"workspaces,omitempty"` // workspace_id -> WorkspaceConfig
 }
 
 // SkillsConfig holds skill-related settings.
 type SkillsConfig struct {
 	DiscoveryPaths []string `yaml:"discovery_paths"` // paths to scan for SKILL.md files
-	MaxActive      int      `yaml:"max_active"`     // max concurrent active skills (0 = unlimited)
-	Path           string   `yaml:"path"`           // base directory where uploaded skills are stored
+	MaxActive      int      `yaml:"max_active"`      // max concurrent active skills (0 = unlimited)
+	Path           string   `yaml:"path"`            // base directory where uploaded skills are stored
 }
 
 // NotifyConfig holds notification delivery settings.
 type NotifyConfig struct {
-	BellEnabled      bool    `yaml:"bell_enabled"`       // ring terminal bell on notifications
-	SlackWebhook     string  `yaml:"slack_webhook"`      // optional Slack webhook URL
-	RateLimitPerMin  int     `yaml:"rate_limit_per_minute"` // max notifications per minute (default 10)
+	BellEnabled     bool   `yaml:"bell_enabled"`          // ring terminal bell on notifications
+	SlackWebhook    string `yaml:"slack_webhook"`         // optional Slack webhook URL
+	RateLimitPerMin int    `yaml:"rate_limit_per_minute"` // max notifications per minute (default 10)
 }
 
 // LoggingConfig holds logging settings.
@@ -107,11 +107,11 @@ func DefaultSystemConfig() *SystemConfig {
 func DefaultWorkspaceConfig() *WorkspaceConfig {
 	return &WorkspaceConfig{
 		BaseDir:        EmbeddedDefaults().System.BaseDir,
-		Model:          "",             // empty = use system default
-		MaxTokens:      0,              // zero = use system default
-		Temperature:    0,              // zero = use system default
-		SkillOverrides: []string{},     // empty = use all discovered skills
-		SystemPrompt:   "",             // empty = use system default
+		Model:          "",         // empty = use system default
+		MaxTokens:      0,          // zero = use system default
+		Temperature:    0,          // zero = use system default
+		SkillOverrides: []string{}, // empty = use all discovered skills
+		SystemPrompt:   "",         // empty = use system default
 	}
 }
 
@@ -152,10 +152,10 @@ func Load(path string) (*Config, error) {
 // Also loads .env files and applies NORMAN_* environment variable overrides.
 //
 // Priority order (highest to lowest):
-//   1. NORMAN_* environment variables (read directly from os.Environ)
-//   2. .env files (current dir, then $HOME/.norman/.env)
-//   3. config.yaml
-//   4. Embedded defaults
+//  1. NORMAN_* environment variables (read directly from os.Environ)
+//  2. .env files (current dir, then $HOME/.norman/.env)
+//  3. config.yaml
+//  4. Embedded defaults
 func LoadDefault() (*Config, error) {
 	// Step 1: Load .env files (lower priority than env vars).
 	if err := LoadEnvFiles(); err != nil {

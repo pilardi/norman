@@ -21,11 +21,11 @@ import (
 
 // Source represents a single raw environment read snapshot.
 type Source struct {
-	ID        string    `json:"id"`         // unique identifier (e.g., "env:HOME", "config:norman")
-	Name      string    `json:"name"`       // human-readable name
-	Category  string    `json:"category"`   // e.g., "env", "config", "api", "filesystem"
-	Content   string    `json:"content"`    // the raw data as a string (JSON-serialized if structured)
-	CreatedAt time.Time `json:"created_at"` // when this snapshot was taken
+	ID        string        `json:"id"`            // unique identifier (e.g., "env:HOME", "config:norman")
+	Name      string        `json:"name"`          // human-readable name
+	Category  string        `json:"category"`      // e.g., "env", "config", "api", "filesystem"
+	Content   string        `json:"content"`       // the raw data as a string (JSON-serialized if structured)
+	CreatedAt time.Time     `json:"created_at"`    // when this snapshot was taken
 	TTL       time.Duration `json:"ttl,omitempty"` // optional TTL; zero = no expiry
 }
 

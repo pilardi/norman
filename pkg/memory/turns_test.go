@@ -120,7 +120,7 @@ func TestStoreLoadTurnsNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load nonexistent turns should not error: %v", err)
 	}
-	if turns != nil && len(turns) != 0 {
+	if len(turns) != 0 {
 		t.Errorf("expected empty result for missing task, got %d entries", len(turns))
 	}
 }
@@ -235,7 +235,7 @@ func TestStoreLoadToolCallResultsNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load nonexistent results should not error: %v", err)
 	}
-	if results != nil && len(results) != 0 {
+	if len(results) != 0 {
 		t.Errorf("expected empty result for missing task, got %d entries", len(results))
 	}
 }

@@ -13,9 +13,9 @@ import (
 
 // ToolDef represents a discovered tool definition from an MCP server.
 type ToolDef struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Parameters  map[string]any    `json:"parameters,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
 }
 
 // Client wraps an MCP client session, providing tool discovery and invocation.

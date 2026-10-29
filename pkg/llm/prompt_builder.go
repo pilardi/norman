@@ -20,7 +20,6 @@ type PromptBuilder struct {
 	rawSources   *memory.RawSources
 	skillEntries []skills.SkillEntry
 	budget       *budget.SessionState
-	maxTokens    int
 }
 
 // NewPromptBuilder creates a builder configured with context sources.

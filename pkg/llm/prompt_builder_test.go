@@ -55,8 +55,8 @@ func TestBuildContext_WithSessionHistory(t *testing.T) {
 func TestBuildContext_SkipEmptyMessages(t *testing.T) {
 	pb := NewPromptBuilder("system prompt", nil, nil)
 	history := []map[string]interface{}{
-		{"role": "user", "content": ""},       // should be skipped
-		{"role": "", "content": "no role"},     // should be skipped
+		{"role": "user", "content": ""},           // should be skipped
+		{"role": "", "content": "no role"},        // should be skipped
 		{"role": "assistant", "content": "valid"}, // should be kept
 	}
 
@@ -72,9 +72,9 @@ func TestBuildContext_WithRawSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create RawSources: %v", err)
 	}
-	defer os.RemoveAll("/tmp/test-raw-sources")
+	t.Cleanup(func() { _ = os.RemoveAll("/tmp/test-raw-sources") })
 
-	rs.Snapshot(memory.Source{
+	_, _ = rs.Snapshot(memory.Source{
 		Name:      "config.yaml",
 		ID:        "cfg-001",
 		Category:  "config",

@@ -20,7 +20,7 @@ func httpGet(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -54,7 +54,7 @@ func httpPost(path string, body interface{}) error {
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -85,7 +85,7 @@ func httpPostJSON(path string, body interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -111,7 +111,7 @@ func httpDelete(path string) error {
 	if err != nil {
 		return fmt.Errorf("DELETE %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -142,7 +142,7 @@ func httpPutJSON(path string, body interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("PUT %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)

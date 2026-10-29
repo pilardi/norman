@@ -39,9 +39,9 @@ func TestJournalMultipleWrites(t *testing.T) {
 		t.Fatalf("NewJournal: %v", err)
 	}
 
-	j.Write(EventIngest, "entry A")
-	j.Write(EventUpdate, "updated entry A")
-	j.Write(EventPrune, "pruned 2 entries")
+	_ = j.Write(EventIngest, "entry A")
+	_ = j.Write(EventUpdate, "updated entry A")
+	_ = j.Write(EventPrune, "pruned 2 entries")
 
 	lines, err := j.ReadAll()
 	if err != nil {
@@ -61,9 +61,9 @@ func TestJournalTruncateLast(t *testing.T) {
 		t.Fatalf("NewJournal: %v", err)
 	}
 
-	j.Write(EventIngest, "entry A")
-	j.Write(EventUpdate, "updated entry A")
-	j.Write(EventPrune, "pruned 2 entries")
+	_ = j.Write(EventIngest, "entry A")
+	_ = j.Write(EventUpdate, "updated entry A")
+	_ = j.Write(EventPrune, "pruned 2 entries")
 
 	err = j.TruncateLast(1)
 	if err != nil {

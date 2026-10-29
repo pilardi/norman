@@ -17,8 +17,8 @@ var ErrProviderDown = &LLMError{Code: "provider_down", Message: "Provider endpoi
 
 // LLMError is a typed error wrapping provider-specific failure details.
 type LLMError struct {
-	Code    string // machine-readable error code (e.g., "rate_limit", "context_window")
-	Message string // human-readable description
+	Code     string // machine-readable error code (e.g., "rate_limit", "context_window")
+	Message  string // human-readable description
 	Original error  // the wrapped underlying error, if any
 }
 

@@ -14,16 +14,16 @@ import (
 type EventType string
 
 const (
-	EventIngest  EventType = "INGEST"
-	EventUpdate  EventType = "UPDATE"
-	EventQuery   EventType = "QUERY"
-	EventPrune   EventType = "PRUNE"
+	EventIngest EventType = "INGEST"
+	EventUpdate EventType = "UPDATE"
+	EventQuery  EventType = "QUERY"
+	EventPrune  EventType = "PRUNE"
 )
 
 // Journal manages an append-only event log file.
 type Journal struct {
-	mu     sync.Mutex
-	path   string // e.g., ~/.norman/memory/log.md
+	mu   sync.Mutex
+	path string // e.g., ~/.norman/memory/log.md
 }
 
 // NewJournal creates a new journal writing to the given path.
@@ -47,7 +47,7 @@ func (j *Journal) Write(event EventType, description string) error {
 	if err != nil {
 		return fmt.Errorf("open log: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	_, err = f.WriteString(line)
 	if err != nil {

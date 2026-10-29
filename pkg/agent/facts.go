@@ -21,19 +21,19 @@ var factsYAML []byte
 
 // Facts represents the immutable preloaded identity and context of Norman.
 type Facts struct {
-	Identity   Identity  `yaml:"identity"`
-	Purpose    string    `yaml:"purpose"`
-	Origin     string    `yaml:"origin"`
-	Capabilities string  `yaml:"capabilities"`
-	Constraints  string  `yaml:"constraints"`
+	Identity     Identity `yaml:"identity"`
+	Purpose      string   `yaml:"purpose"`
+	Origin       string   `yaml:"origin"`
+	Capabilities string   `yaml:"capabilities"`
+	Constraints  string   `yaml:"constraints"`
 }
 
 // Identity holds the agent's core identity fields.
 type Identity struct {
-	Name      string `yaml:"name"`
-	Role      string `yaml:"role"`
-	Version   string `yaml:"version"`
-	Pronouns  string `yaml:"pronouns"`
+	Name     string `yaml:"name"`
+	Role     string `yaml:"role"`
+	Version  string `yaml:"version"`
+	Pronouns string `yaml:"pronouns"`
 }
 
 // ParseFacts reads the embedded YAML and returns a Facts struct.

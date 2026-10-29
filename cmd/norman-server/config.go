@@ -23,10 +23,10 @@ func (s *server) GetConfig(c echo.Context, params protocol.GetConfigParams) erro
 	if workspaceID != "" {
 		if ws, ok := s.cfg.Workspaces[workspaceID]; ok {
 			return c.JSON(http.StatusOK, map[string]interface{}{
-				"system":        s.cfg.System,
-				"workspace":     ws,
-				"merged":        s.cfg.MergeWorkspaceConfig(workspaceID, ws),
-				"openshell":     resolveGatewayAddress(),
+				"system":    s.cfg.System,
+				"workspace": ws,
+				"merged":    s.cfg.MergeWorkspaceConfig(workspaceID, ws),
+				"openshell": resolveGatewayAddress(),
 			})
 		}
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})

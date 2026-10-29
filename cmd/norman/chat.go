@@ -35,7 +35,7 @@ func runWebSocketLoop(sessionID string) {
 		fmt.Fprintf(os.Stderr, "WebSocket connection failed: %v\n", err)
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	go func() {
 		for {
@@ -202,7 +202,7 @@ func handleChat(args []string) {
 				fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
 				os.Exit(1)
 			}
-			defer sessResp.Body.Close()
+			_ = sessResp.Body.Close()
 			if sessResp.StatusCode >= 400 {
 				bodyBytes, _ := io.ReadAll(sessResp.Body)
 				fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", sessResp.StatusCode, string(bodyBytes))
@@ -255,7 +255,7 @@ func handleChat(args []string) {
 					fmt.Fprintf(os.Stderr, "Failed to create new session: %v\n", err)
 					continue
 				}
-				defer newSessResp.Body.Close()
+				_ = newSessResp.Body.Close()
 				var newSess map[string]interface{}
 				if err := json.NewDecoder(newSessResp.Body).Decode(&newSess); err != nil {
 					fmt.Fprintf(os.Stderr, "Error parsing new session response: %v\n", err)
@@ -318,7 +318,7 @@ func handleChat(args []string) {
 		}
 
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode >= 400 {
 			fmt.Fprintf(os.Stderr, "HTTP %d: %s\n", resp.StatusCode, string(bodyBytes))
@@ -340,7 +340,7 @@ func handleChat(args []string) {
 			responseText = msg
 		}
 
-		turns = append(turns, map[string]interface{}{
+		_ = append(turns, map[string]interface{}{
 			"role":      "user",
 			"content":   line,
 			"timestamp": time.Now().Format(time.RFC3339),

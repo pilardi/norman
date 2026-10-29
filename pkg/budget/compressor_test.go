@@ -8,8 +8,8 @@ import (
 
 // mockLLMClient implements LLMClient for testing.
 type mockLLMClient struct {
-	response string
-	err      error
+	response  string
+	err       error
 	callCount int
 }
 

@@ -13,11 +13,11 @@ import (
 
 // Session represents a single OpenShell sandbox session with command execution.
 type Session struct {
-	client          *Client
-	provider        string
-	sandbox         string
-	namespace       string
-	sessionId   string // The session ID; set at creation, never the sandbox name
+	client       *Client
+	provider     string
+	sandbox      string
+	namespace    string
+	sessionId    string // The session ID; set at creation, never the sandbox name
 	lastActivity *time.Time
 }
 

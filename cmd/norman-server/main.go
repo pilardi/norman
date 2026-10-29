@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/norman/norman/pkg/docs"
 	"github.com/norman/norman/pkg/agent"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/docs"
 	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
@@ -27,22 +27,22 @@ import (
 
 // server holds all dependencies injected at startup.
 type server struct {
-	cfg        *config.Config
-	store      *memory.Store
-	rawSources *memory.RawSources
-	activator  *skills.Activator
-	loop       *agent.Loop
-	wsHub      *WSHub
-	notifier   *notify.Notifier
-	scheduler  *scheduler.Scheduler
-	registry   *skills.Registry
+	cfg              *config.Config
+	store            *memory.Store
+	rawSources       *memory.RawSources
+	activator        *skills.Activator
+	loop             *agent.Loop
+	wsHub            *WSHub
+	notifier         *notify.Notifier
+	scheduler        *scheduler.Scheduler
+	registry         *skills.Registry
 	workspaceManager *env.WorkspaceManager
 
 	// workspaceRegistry tracks created workspaces (in-memory + persisted).
-	mu               sync.Mutex
+	mu                sync.Mutex
 	taskCancellations sync.Map // taskID -> struct{}{} for cancellation signaling
-	workspaces       map[string]*protocol.Workspace
-	startTime        time.Time
+	workspaces        map[string]*protocol.Workspace
+	startTime         time.Time
 }
 
 func main() {
@@ -89,7 +89,7 @@ func main() {
 		stop()
 		schedCancel() // stop scheduler goroutine
 		e.Logger.Info("shutting down...")
-		e.Shutdown(context.Background())
+		_ = e.Shutdown(context.Background())
 	}()
 
 	<-ctx.Done()

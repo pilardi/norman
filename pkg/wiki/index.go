@@ -63,7 +63,7 @@ func WriteIndex(baseDir string, entries []IndexEntry) error {
 	sb.WriteString("---\n")
 	sb.WriteString("title: \"Content Catalog\"\n")
 	sb.WriteString("type: system\n")
-	sb.WriteString(fmt.Sprintf("updated: %s\n", time.Now().UTC().Format("2006-01-02")))
+	fmt.Fprintf(&sb, "updated: %s\n", time.Now().UTC().Format("2006-01-02"))
 	sb.WriteString("---\n\n")
 	sb.WriteString("# Content Catalog\n\n")
 
@@ -77,8 +77,8 @@ func WriteIndex(baseDir string, entries []IndexEntry) error {
 			if tags == "" {
 				tags = "—"
 			}
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
-				e.Page, string(e.Type), tags, e.Updated))
+			fmt.Fprintf(&sb, "| %s | %s | %s | %s |\n",
+				e.Page, string(e.Type), tags, e.Updated)
 		}
 		sb.WriteString("\n")
 	}
