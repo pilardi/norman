@@ -29,7 +29,7 @@ func (s *server) CreateNotification(c echo.Context) error {
 	n := notify.Notification{
 		Title:     req.Title,
 		Body:      req.Body,
-		Severity:  string(req.Severity),
+		Severity:  req.Severity,
 		Timestamp: time.Now(),
 	}
 	if req.TaskId != nil {
@@ -43,7 +43,7 @@ func (s *server) CreateNotification(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"id":       time.Now().UnixNano(),
 		"title":    req.Title,
-		"severity": string(req.Severity),
+		"severity": req.Severity,
 	})
 }
 

@@ -10,17 +10,17 @@ type Config struct {
 	BaseURL string // e.g., "http://localhost:8080" or the llama.cpp server address
 
 	// Cache optimization settings.
-	CacheEnabled bool   `yaml:"cache_enabled"`     // Enable --cache-prompt on the server
-	CacheSize    int    `yaml:"cache_size"`        // Max KV cache tokens (n_ctx)
-	CacheType    string `yaml:"cache_type"`        // "fq" (full precision) or quantized type
-	CacheHashing bool   `yaml:"cache_hashing"`     // Use content hashing for cache lookup (server-side)
+	CacheEnabled bool   `yaml:"cache_enabled"` // Enable --cache-prompt on the server
+	CacheSize    int    `yaml:"cache_size"`    // Max KV cache tokens (n_ctx)
+	CacheType    string `yaml:"cache_type"`    // "fq" (full precision) or quantized type
+	CacheHashing bool   `yaml:"cache_hashing"` // Use content hashing for cache lookup (server-side)
 
 	// Model selection.
 	Model string `yaml:"model"` // model identifier, e.g., "llama3.1:8b"
 
 	// Request defaults.
-	Temperature  float64 `yaml:"temperature"`
-	MaxTokens  int     `yaml:"max_tokens"`
+	Temperature   float64  `yaml:"temperature"`
+	MaxTokens     int      `yaml:"max_tokens"`
 	StopSequences []string `yaml:"stop_sequences"`
 }
 
@@ -32,8 +32,8 @@ func DefaultConfig() *Config {
 		CacheSize:     4096, // 4k tokens — good default for repeated short prompts
 		CacheType:     "fq", // full precision for accuracy
 		CacheHashing:  true,
-		Model:         "",   // empty = use system default
-		Temperature:     0.7,
+		Model:         "", // empty = use system default
+		Temperature:   0.7,
 		MaxTokens:     32000,
 		StopSequences: []string{},
 	}

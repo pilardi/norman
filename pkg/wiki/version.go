@@ -15,13 +15,13 @@ type BatchMode int
 
 const (
 	BatchPerWrite BatchMode = iota // commit after every write
-	BatchPerTurn                    // collect writes, commit once per agent turn
+	BatchPerTurn                   // collect writes, commit once per agent turn
 )
 
 // GitVersioner wraps wiki operations with git versioning.
 type GitVersioner struct {
 	mu       sync.Mutex
-	base     string  // e.g., ~/.norman/memory/
+	base     string // e.g., ~/.norman/memory/
 	batch    BatchMode
 	buf      []string // batched log messages
 	interval time.Duration
@@ -80,11 +80,11 @@ func (g *GitVersioner) BatchFinalize() error {
 	}
 
 	ts := time.Now().UTC().Format("2006-01-02 15:04")
-	fmt.Fprintf(f, "[%s] BATCH: %s\n", ts, msg)
+	_, _ = fmt.Fprintf(f, "[%s] BATCH: %s\n", ts, msg)
 	for _, entry := range g.buf {
-		fmt.Fprintf(f, "    - %s\n", entry)
+		_, _ = fmt.Fprintf(f, "    - %s\n", entry)
 	}
-	f.Close()
+	_ = f.Close()
 
 	return g.gitCommit(msg)
 }
@@ -128,11 +128,11 @@ func (g *GitVersioner) flush() error {
 	}
 
 	ts := time.Now().UTC().Format("2006-01-02 15:04")
-	fmt.Fprintf(f, "[%s] BATCH: %s\n", ts, msg)
+	_, _ = fmt.Fprintf(f, "[%s] BATCH: %s\n", ts, msg)
 	for _, entry := range g.buf {
-		fmt.Fprintf(f, "    - %s\n", entry)
+		_, _ = fmt.Fprintf(f, "    - %s\n", entry)
 	}
-	f.Close()
+	_ = f.Close()
 
 	return g.gitCommit(msg)
 }

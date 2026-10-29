@@ -50,11 +50,11 @@ func TestStoreArchiveSessionMultiple(t *testing.T) {
 
 	// First archival
 	turns1 := []interface{}{map[string]interface{}{"role": "user", "content": "First"}}
-	store.ArchiveSession("task-002", turns1)
+	_ = store.ArchiveSession("task-002", turns1)
 
 	// Second archival (should overwrite previous)
 	turns2 := []interface{}{map[string]interface{}{"role": "assistant", "content": "Second"}}
-	store.ArchiveSession("task-002", turns2)
+	_ = store.ArchiveSession("task-002", turns2)
 
 	path := filepath.Join(base, "sessions", "task-002.json")
 	data, err := os.ReadFile(path)
@@ -233,9 +233,9 @@ func TestStoreListPlans(t *testing.T) {
 		t.Fatalf("create store: %v", err)
 	}
 
-	store.SavePlan("plan-a", "content a")
-	store.SavePlan("plan-b", "content b")
-	store.SavePlan("plan-c", "content c")
+	_ = store.SavePlan("plan-a", "content a")
+	_ = store.SavePlan("plan-b", "content b")
+	_ = store.SavePlan("plan-c", "content c")
 
 	plans, err := store.ListPlans()
 	if err != nil {
@@ -254,10 +254,10 @@ func TestStoreStatsIncludesPlans(t *testing.T) {
 		t.Fatalf("create store: %v", err)
 	}
 
-	store.SaveTask("task-1", map[string]interface{}{"id": "task-1"})
-	store.SaveSession("session-1", map[string]interface{}{"id": "session-1"})
-	store.SavePlan("plan-1", "content")
-	store.SavePlan("plan-2", "content")
+	_ = store.SaveTask("task-1", map[string]interface{}{"id": "task-1"})
+	_ = store.SaveSession("session-1", map[string]interface{}{"id": "session-1"})
+	_ = store.SavePlan("plan-1", "content")
+	_ = store.SavePlan("plan-2", "content")
 
 	tasks, sessions, plans, _, err := store.Stats()
 	if err != nil {
@@ -282,11 +282,11 @@ func TestStoreStatsIncludesWorkspaces(t *testing.T) {
 		t.Fatalf("create store: %v", err)
 	}
 
-	store.SaveTask("task-1", map[string]interface{}{"id": "task-1"})
-	store.SaveSession("session-1", map[string]interface{}{"id": "session-1"})
-	store.SavePlan("plan-1", "content")
-	store.SaveWorkspace("ws-alpha", map[string]interface{}{"name": "ws-alpha", "path": "/tmp/ws"})
-	store.SaveWorkspace("ws-beta", map[string]interface{}{"name": "ws-beta", "path": "/tmp/ws2"})
+	_ = store.SaveTask("task-1", map[string]interface{}{"id": "task-1"})
+	_ = store.SaveSession("session-1", map[string]interface{}{"id": "session-1"})
+	_ = store.SavePlan("plan-1", "content")
+	_ = store.SaveWorkspace("ws-alpha", map[string]interface{}{"name": "ws-alpha", "path": "/tmp/ws"})
+	_ = store.SaveWorkspace("ws-beta", map[string]interface{}{"name": "ws-beta", "path": "/tmp/ws2"})
 
 	tasks, sessions, plans, workspaces, err := store.Stats()
 	if err != nil {

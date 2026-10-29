@@ -36,10 +36,10 @@ type CacheStrategy struct {
 func DefaultStrategy() CacheStrategy {
 	return CacheStrategy{
 		Enabled:           true,
-		Size:              4096,     // 4k tokens — sufficient for most repeated prompts
-		Type:              "fq",     // full precision for accuracy-critical generation
+		Size:              4096, // 4k tokens — sufficient for most repeated prompts
+		Type:              "fq", // full precision for accuracy-critical generation
 		Hashing:           true,
-		MaxCachedPrefixes: 128,      // retain up to 128 distinct prefix hashes
+		MaxCachedPrefixes: 128, // retain up to 128 distinct prefix hashes
 	}
 }
 

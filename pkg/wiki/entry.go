@@ -14,10 +14,10 @@ import (
 type EntryType string
 
 const (
-	EntryTypeEntity   EntryType = "entity"
-	EntryTypeSource   EntryType = "source"
-	EntryTypeTrend    EntryType = "trend"
-	EntryTypeTask     EntryType = "task"
+	EntryTypeEntity EntryType = "entity"
+	EntryTypeSource EntryType = "source"
+	EntryTypeTrend  EntryType = "trend"
+	EntryTypeTask   EntryType = "task"
 )
 
 // Valid checks whether the entry type is one of the recognized classifications.
@@ -131,11 +131,11 @@ func ParseFrontmatter(markdown string) (*WikiEntry, error) {
 // ToMarkdown serializes a WikiEntry back to markdown with frontmatter.
 func (e *WikiEntry) ToMarkdown() string {
 	data := map[string]interface{}{
-		"title":     e.Title,
-		"type":      string(e.Type),
-		"tags":      e.Tags,
-		"pinned":    e.Pinned,
-		"updated":   e.Updated.Format(time.RFC3339),
+		"title":      e.Title,
+		"type":       string(e.Type),
+		"tags":       e.Tags,
+		"pinned":     e.Pinned,
+		"updated":    e.Updated.Format(time.RFC3339),
 		"created_at": e.CreatedAt.Format(time.RFC3339),
 	}
 	if e.Workspace != "" {

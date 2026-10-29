@@ -21,10 +21,10 @@ func (a *ClientAdapter) Complete(ctx context.Context, req CompletionRequest) (*C
 
 	// Preserve Choices for backward compatibility with existing code.
 	return &CompletionResponse{
-		ID:           resp.ID,
-		Model:        resp.Model,
-		Choices:      []ResponseChoice{{Message: resp.Message, FinishReason: resp.FinishReason}},
-		Usage:        resp.Usage,
+		ID:      resp.ID,
+		Model:   resp.Model,
+		Choices: []ResponseChoice{{Message: resp.Message, FinishReason: resp.FinishReason}},
+		Usage:   resp.Usage,
 	}, nil
 }
 
@@ -45,10 +45,10 @@ func (a *ClientAdapter) LegacyComplete(ctx context.Context, systemPrompt string,
 	// The legacy CompletionResponse uses Choices ([]ResponseChoice);
 	// we synthesize a single-choice response from the new flat Message field.
 	return &CompletionResponse{
-		ID:           resp.ID,
-		Model:        resp.Model,
-		Choices:      []ResponseChoice{{Message: resp.Message, FinishReason: resp.FinishReason}},
-		Usage:        resp.Usage,
+		ID:      resp.ID,
+		Model:   resp.Model,
+		Choices: []ResponseChoice{{Message: resp.Message, FinishReason: resp.FinishReason}},
+		Usage:   resp.Usage,
 	}, nil
 }
 

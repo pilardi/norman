@@ -4,12 +4,13 @@
 #   help      Show this help message
 #   generate  Generate protocol types, client library, and server handlers from api-spec.yaml
 #   build     Run generate + compile all packages (binaries in dist/)
+#   lint      Run golangci-lint on all packages
 #   test      Run all unit tests with coverage report
 #   test-race Run all unit tests with race detector
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build rebuild test test-race test-short clean generate-docs generate-docs-html
+.PHONY: help generate build lint rebuild test test-race test-short clean generate-docs generate-docs-html
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -20,7 +21,7 @@ help:
 	@echo "Targets:"
 	@echo "  help        - Show this help message"
 	@echo "  generate    - Generate protocol types, client library, and server handlers from api-spec.yaml"
-	@echo "  build       - Run generate + compile all packages (binaries in $(DIST)/)"
+	@echo "  build       - Run generate + lint + compile all packages (binaries in $(DIST)/)"
 	@echo "  rebuild     - Clean + regenerate + build (safe sequential rebuild)"
 	@echo "  test        - Run all unit tests with coverage report"
 	@echo "  test-race   - Run all unit tests with race detector"
@@ -40,7 +41,10 @@ generate:
 	sed -i 's/GetConfigParams\b/protocol.GetConfigParams/g; s/ListTasksParams\b/protocol.ListTasksParams/g; s/TailTaskLogParams\b/protocol.TailTaskLogParams/g; s/SessionHistoryParams\b/protocol.SessionHistoryParams/g; s/ListWorkspacesParams\b/protocol.ListWorkspacesParams/g' internal/api/handlers.go
 	@echo "Regenerated code; compiling..."
 
-build: generate
+lint: generate
+	golangci-lint run ./...
+
+build: lint
 	go mod tidy
 	mkdir -p $(DIST)
 	go build -o $(DIST)/norman ./cmd/norman

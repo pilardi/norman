@@ -56,5 +56,3 @@ func WriteContextFile(ctx context.Context, session *Session, ctxFile ContextFile
 	}
 	return fmt.Errorf("write context.json after retries")
 }
-
-

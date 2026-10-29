@@ -15,9 +15,9 @@ func TestWithOutputHandler(t *testing.T) {
 
 	handlerCalled := false
 	entry := TaskEntry{
-		ID:            "test-oh",
-		Name:          "output-test",
-		Command:       "echo hello",
+		ID:      "test-oh",
+		Name:    "output-test",
+		Command: "echo hello",
 		OutputHandler: func(result string, err error) {
 			handlerCalled = true
 		},
@@ -53,16 +53,16 @@ func TestExecuteTask_ActivationCallback(t *testing.T) {
 
 	callbackCalled := false
 	entry := TaskEntry{
-		ID:               "test-activation",
-		Name:             "activation-test",
-		Command:          "echo done",
+		ID:      "test-activation",
+		Name:    "activation-test",
+		Command: "echo done",
 		ActivationCallback: func() error {
 			callbackCalled = true
 			return nil
 		},
 	}
 
-	s.Add(entry)
+	_ = s.Add(entry)
 	result := s.executeTask(&entry)
 
 	if !callbackCalled {
@@ -84,7 +84,7 @@ func TestExecuteTask_ActivationCommand(t *testing.T) {
 		ActivationCommand: "echo pre-main",
 	}
 
-	s.Add(entry)
+	_ = s.Add(entry)
 	result := s.executeTask(&entry)
 
 	if result.Err != nil {
@@ -102,7 +102,7 @@ func TestExecuteTask_RunCommand(t *testing.T) {
 	})
 
 	entry := TaskEntry{ID: "test-run-cmd", Name: "run-cmd-test", Command: "echo test"}
-	s.Add(entry)
+	_ = s.Add(entry)
 	result := s.executeTask(&entry)
 
 	if result.Output != "sandbox output" {
@@ -120,7 +120,7 @@ func TestExecuteTask_RunCommandError(t *testing.T) {
 	})
 
 	entry := TaskEntry{ID: "test-run-cmd-err", Name: "run-cmd-err-test", Command: "echo test"}
-	s.Add(entry)
+	_ = s.Add(entry)
 	result := s.executeTask(&entry)
 
 	if result.Err == nil {
@@ -132,8 +132,8 @@ func TestToInterfaceSlice(t *testing.T) {
 	results := make(chan TaskResult, 10)
 	s := NewScheduler(results)
 
-	s.Add(TaskEntry{ID: "slice-1", Name: "task-one", Schedule: "* * * * *", Command: "echo one"})
-	s.Add(TaskEntry{ID: "slice-2", Name: "task-two", Schedule: "* * * * *", Command: "echo two"})
+	_ = s.Add(TaskEntry{ID: "slice-1", Name: "task-one", Schedule: "* * * * *", Command: "echo one"})
+	_ = s.Add(TaskEntry{ID: "slice-2", Name: "task-two", Schedule: "* * * * *", Command: "echo two"})
 
 	slice := s.ToInterfaceSlice()
 	if len(slice) != 2 {
@@ -158,7 +158,7 @@ func TestToInterfaceSlice_Defer(t *testing.T) {
 	s := NewScheduler(results)
 
 	future := time.Now().Add(5 * time.Minute)
-	s.Defer(TaskEntry{ID: "defer-slice", Name: "deferred", Command: "echo deferred"}, future)
+	_ = s.Defer(TaskEntry{ID: "defer-slice", Name: "deferred", Command: "echo deferred"}, future)
 
 	slice := s.ToInterfaceSlice()
 	if len(slice) != 1 {
@@ -183,14 +183,14 @@ func TestStatus(t *testing.T) {
 		t.Errorf("expected 0 tasks, got %d", count)
 	}
 
-	s.Add(TaskEntry{ID: "status-1", Name: "test", Schedule: "* * * * *", Command: "echo ok"})
-	count, lastTick = s.Status()
+	_ = s.Add(TaskEntry{ID: "status-1", Name: "test", Schedule: "* * * * *", Command: "echo ok"})
+	count, _ = s.Status()
 	if count != 1 {
 		t.Errorf("expected 1 task, got %d", count)
 	}
 
-	s.Add(TaskEntry{ID: "status-2", Name: "test2", Schedule: "* * * * *", Command: "echo ok"})
-	count, lastTick = s.Status()
+	_ = s.Add(TaskEntry{ID: "status-2", Name: "test2", Schedule: "* * * * *", Command: "echo ok"})
+	count, _ = s.Status()
 	if count != 2 {
 		t.Errorf("expected 2 tasks, got %d", count)
 	}
@@ -206,7 +206,7 @@ func TestExecuteTask_NoOutputHandler(t *testing.T) {
 	s := NewScheduler(results)
 
 	entry := TaskEntry{ID: "test-no-handler", Name: "no-handler-test", Command: "echo no handler"}
-	s.Add(entry)
+	_ = s.Add(entry)
 
 	// No OutputHandler set — should not panic
 	result := s.executeTask(&entry)
@@ -220,15 +220,15 @@ func TestExecuteTask_ActivationCallbackError(t *testing.T) {
 	s := NewScheduler(results)
 
 	entry := TaskEntry{
-		ID:               "test-callback-err",
-		Name:             "callback-error-test",
-		Command:          "echo after callback",
+		ID:      "test-callback-err",
+		Name:    "callback-error-test",
+		Command: "echo after callback",
 		ActivationCallback: func() error {
 			return nil // callback succeeds but task still runs
 		},
 	}
 
-	s.Add(entry)
+	_ = s.Add(entry)
 	result := s.executeTask(&entry)
 	if result.Err != nil {
 		t.Errorf("unexpected error: %v", result.Err)

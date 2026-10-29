@@ -79,7 +79,7 @@ func (s *server) InstallSkill(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	skillName := req.Repo // default to repo basename
+	var skillName string
 	if req.Name != nil && *req.Name != "" {
 		skillName = *req.Name
 	} else {
@@ -186,10 +186,10 @@ func (s *server) UpdateSkill(c echo.Context, name string) error {
 	})
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"name":        entry.Name,
-		"version":     entry.Version,
-		"path":        entry.Path,
-		"updated":     true,
+		"name":    entry.Name,
+		"version": entry.Version,
+		"path":    entry.Path,
+		"updated": true,
 	})
 }
 
@@ -256,9 +256,9 @@ func (s *server) GetSkillsRegistry(c echo.Context) error {
 
 	for name, entry := range entries {
 		result[name] = map[string]interface{}{
-			"source_url":            entry.SourceURL,
-			"version":               entry.Version,
-			"description":           entry.Description,
+			"source_url":              entry.SourceURL,
+			"version":                 entry.Version,
+			"description":             entry.Description,
 			"installed_in_workspaces": entry.InstalledInWorkspaces,
 		}
 	}
@@ -277,13 +277,13 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 
 	// Accept either a repo URL (git clone path) or files[] (upload path)
 	var req struct {
-		Repo    string   `json:"repo"`
-		Version string   `json:"version"`
-		Name    string   `json:"name"`
+		Repo    string `json:"repo"`
+		Version string `json:"version"`
+		Name    string `json:"name"`
 		Files   []struct {
-			Name     string `json:"name"`
-			Content  string `json:"content"`
-			Executable bool `json:"executable,omitempty"`
+			Name       string `json:"name"`
+			Content    string `json:"content"`
+			Executable bool   `json:"executable,omitempty"`
 		} `json:"files"`
 	}
 
@@ -339,10 +339,10 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 			})
 
 			// Register in global persistent registry
-			s.registry.Register(req.Name, skills.RegistryEntry{
-				SourceURL:           entry.SourceURL,
-				Version:             entry.Version,
-				Description:         entry.Description,
+			_ = s.registry.Register(req.Name, skills.RegistryEntry{
+				SourceURL:             entry.SourceURL,
+				Version:               entry.Version,
+				Description:           entry.Description,
 				InstalledInWorkspaces: []string{wsName},
 			})
 
@@ -404,10 +404,10 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 		})
 
 		// Register in global persistent registry
-		s.registry.Register(req.Name, skills.RegistryEntry{
-			SourceURL:           entry.SourceURL,
-			Version:             entry.Version,
-			Description:         entry.Description,
+		_ = s.registry.Register(req.Name, skills.RegistryEntry{
+			SourceURL:             entry.SourceURL,
+			Version:               entry.Version,
+			Description:           entry.Description,
 			InstalledInWorkspaces: []string{wsName},
 		})
 

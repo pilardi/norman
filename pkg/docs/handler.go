@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
 	scalar "github.com/MarceloPetrucio/go-scalar-api-reference"
+	"github.com/labstack/echo/v4"
 )
 
 // Handler returns an Echo handler for serving the API reference at /docs.
@@ -29,5 +29,3 @@ func Handler(specPath string, title string, darkMode bool, customCSS string) ech
 		return c.HTML(http.StatusOK, html)
 	}
 }
-
-

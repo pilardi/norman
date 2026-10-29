@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 )
 
 // handleWorkspaces handles workspace subcommands.
@@ -238,24 +237,4 @@ func handleWorkspacePurge(args []string) {
 
 	status, _ := ws["status"].(string)
 	fmt.Printf("Workspace '%s' purged successfully (status=%s)\n", name, status)
-}
-
-// resolveWorkspaceName resolves a workspace name/short ID to the actual UUID.
-func resolveWorkspaceName(input string) (string, bool) {
-	body, err := httpGet("/api/workspaces")
-	if err != nil {
-		return input, false // fall back to original
-	}
-	var workspaces []map[string]interface{}
-	if err := json.Unmarshal(body, &workspaces); err != nil {
-		return input, false
-	}
-	for _, w := range workspaces {
-		name, _ := w["name"].(string)
-		id, _ := w["id"].(string)
-		if name == input || strings.HasPrefix(id[:8], input[:8]) {
-			return id, true
-		}
-	}
-	return input, false
 }

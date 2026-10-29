@@ -28,7 +28,7 @@ type Notification struct {
 
 // Notifier delivers notifications via multiple channels.
 type Notifier struct {
-	mu          sync.Mutex
+	mu sync.Mutex
 	// WS hub reference — push structured events to connected clients
 	wsHub WSHubPublisher
 	// Terminal bell enabled flag
@@ -36,8 +36,8 @@ type Notifier struct {
 	// Slack webhook URL (empty = disabled)
 	slackURL string
 	// Rate limiting: token bucket, 10 tokens per minute
-	rateLimit int
-	tokens    float64
+	rateLimit  int
+	tokens     float64
 	lastRefill time.Time
 }
 
@@ -119,9 +119,9 @@ func (n *Notifier) pushWS(notification Notification) {
 	}
 
 	event := protocol.WebSocketEvent{
-		Event:   protocol.Notification,
-		TaskId:  &notification.TaskID,
-		Message: strPtr(fmt.Sprintf("[%s] %s: %s", notification.Severity, notification.Title, notification.Body)),
+		Event:    protocol.Notification,
+		TaskId:   &notification.TaskID,
+		Message:  strPtr(fmt.Sprintf("[%s] %s: %s", notification.Severity, notification.Title, notification.Body)),
 		Priority: priority(notification.Severity),
 	}
 
@@ -256,7 +256,7 @@ func (n *Notifier) postSlack(notification Notification) {
 		log.Printf("notify: slack POST failed: %v (webhook may be unreachable)", err)
 		return
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		log.Printf("notify: slack returned HTTP %d for task %s", resp.StatusCode, notification.TaskID)

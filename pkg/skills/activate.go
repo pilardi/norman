@@ -12,8 +12,8 @@ import (
 
 // Activator manages progressive activation of skill tools into agent context.
 type Activator struct {
-	registry map[string]SkillEntry // name → entry, loaded at startup
-	active   []string              // currently active skill names (reclaim budget by deactivating)
+	registry  map[string]SkillEntry // name → entry, loaded at startup
+	active    []string              // currently active skill names (reclaim budget by deactivating)
 	maxActive int                   // max concurrent active skills
 }
 
@@ -55,7 +55,7 @@ func (a *Activator) Activate(name string, session *env.Session) (string, error) 
 
 	// If at capacity, deactivate the least-recently-used skill
 	if len(a.active) >= a.maxActive && len(a.active) > 0 {
-		a.Deactivate(a.active[0])
+		_ = a.Deactivate(a.active[0])
 	}
 
 	a.active = append(a.active, name)
@@ -145,7 +145,7 @@ func (a *Activator) deployBinary(name string, session *env.Session, entry *Skill
 	}
 
 	// Ensure ~/.local/bin is in PATH by appending to .bashrc
-	pathCmd := fmt.Sprintf(`grep -q '$HOME/.local/bin' "$HOME/.bashrc" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"`)
+	pathCmd := `grep -q '$HOME/.local/bin' "$HOME/.bashrc" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"`
 	output, err = session.Exec(ctx, []string{"bash", "-c", pathCmd})
 	if err != nil {
 		log.Printf("[skills] PATH injection for '%s' in sandbox '%s': %v", name, sandboxName, output)
@@ -181,13 +181,13 @@ func (a *Activator) Active() []string {
 // formatToolInjection formats a skill's tools into a prompt-injection string.
 func formatToolInjection(entry SkillEntry) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n## Active Skill: %s\n", entry.Name))
-	sb.WriteString(fmt.Sprintf("%s\n", entry.Description))
+	fmt.Fprintf(&sb, "\n## Active Skill: %s\n", entry.Name)
+	fmt.Fprintf(&sb, "%s\n", entry.Description)
 
 	if len(entry.Tools) > 0 {
 		sb.WriteString("\n**Available Tools:**\n")
 		for _, tool := range entry.Tools {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", tool))
+			fmt.Fprintf(&sb, "- `%s`\n", tool)
 		}
 	}
 
@@ -289,5 +289,3 @@ type ToolRegistry interface {
 	// ListActive returns currently active skill names.
 	ListActive() []string
 }
-
-

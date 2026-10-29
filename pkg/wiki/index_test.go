@@ -17,8 +17,8 @@ func TestBuildIndex(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	engine.Create(&WikiEntry{Title: "Alpha", Type: EntryTypeEntity, Updated: now.Add(-2 * 24 * time.Hour)})
-	engine.Create(&WikiEntry{Title: "Beta", Type: EntryTypeTrend, Tags: []string{"mcp"}, Updated: now})
+	_ = engine.Create(&WikiEntry{Title: "Alpha", Type: EntryTypeEntity, Updated: now.Add(-2 * 24 * time.Hour)})
+	_ = engine.Create(&WikiEntry{Title: "Beta", Type: EntryTypeTrend, Tags: []string{"mcp"}, Updated: now})
 
 	entries, err := BuildIndex(dir)
 	if err != nil {
@@ -72,5 +72,3 @@ func TestWriteIndexEmpty(t *testing.T) {
 		t.Error("expected 'No entries yet' for empty index")
 	}
 }
-
-

@@ -12,9 +12,9 @@ import (
 
 // RegistryEntry holds metadata about an installed skill and which workspaces it's deployed to.
 type RegistryEntry struct {
-	SourceURL           string   `json:"source_url"`
-	Version             string   `json:"version"`
-	Description         string   `json:"description"`
+	SourceURL             string   `json:"source_url"`
+	Version               string   `json:"version"`
+	Description           string   `json:"description"`
 	InstalledInWorkspaces []string `json:"installed_in_workspaces"`
 }
 
@@ -31,7 +31,7 @@ func NewRegistry(filePath string) *Registry {
 		entries:  make(map[string]RegistryEntry),
 		filePath: filePath,
 	}
-	r.Load()
+	_ = r.Load()
 	return r
 }
 

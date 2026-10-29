@@ -21,9 +21,9 @@ const (
 
 // BudgetConfig holds the configuration for token budget tracking.
 type BudgetConfig struct {
-	MaxTokens         int           // total token budget (e.g., 128000 for GPT-4)
-	WarnThreshold     float64       // trigger at this fraction of max (e.g., 0.75)
-	CriticalThreshold float64       // trigger at this fraction of max (e.g., 0.90)
+	MaxTokens         int            // total token budget (e.g., 128000 for GPT-4)
+	WarnThreshold     float64        // trigger at this fraction of max (e.g., 0.75)
+	CriticalThreshold float64        // trigger at this fraction of max (e.g., 0.90)
 	Estimation        EstimationMode // how to count tokens
 }
 
@@ -41,20 +41,20 @@ func NewBudgetConfig(maxTokens int) *BudgetConfig {
 type Turn struct {
 	Role      string // "user", "assistant", "system"
 	Content   string
-	Tokens    int    // estimated or actual token count for this turn
-	Pinned    bool   // if true, never compressed out during summarization
+	Tokens    int  // estimated or actual token count for this turn
+	Pinned    bool // if true, never compressed out during summarization
 	CreatedAt time.Time
 }
 
 // SessionState tracks the current state of a session including budget usage.
 type SessionState struct {
-	Turns        []Turn
-	Budget       *BudgetConfig
-	Compressed   bool      // flag: has a compression cycle run?
-	LastCheck    time.Time // when budget was last checked
-	TokenCount   int       // cumulative tokens used so far
-	PlanID       string    // optional plan identifier for this session
-	PlanContent  string    // optional plan content (preserved across compression)
+	Turns       []Turn
+	Budget      *BudgetConfig
+	Compressed  bool      // flag: has a compression cycle run?
+	LastCheck   time.Time // when budget was last checked
+	TokenCount  int       // cumulative tokens used so far
+	PlanID      string    // optional plan identifier for this session
+	PlanContent string    // optional plan content (preserved across compression)
 }
 
 // NewSessionState creates a new session state with the given budget config.
@@ -109,8 +109,8 @@ func (s *SessionState) Remaining() int {
 type ThresholdFlags int
 
 const (
-	ThresholdNone    ThresholdFlags = 0
-	ThresholdWarn    ThresholdFlags = 1 << 0 // 75% threshold
+	ThresholdNone     ThresholdFlags = 0
+	ThresholdWarn     ThresholdFlags = 1 << 0 // 75% threshold
 	ThresholdCritical ThresholdFlags = 1 << 1 // 90% threshold
 )
 

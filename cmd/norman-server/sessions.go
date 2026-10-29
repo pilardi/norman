@@ -280,7 +280,7 @@ func (s *server) checkWorkspaceIdle(sessionID string) {
 func (s *server) SessionHistory(c echo.Context, id string, params protocol.SessionHistoryParams) error {
 	limit := 10 // default
 	if q := c.QueryParam("limit"); q != "" {
-		fmt.Sscanf(q, "%d", &limit)
+		_, _ = fmt.Sscanf(q, "%d", &limit)
 	}
 
 	sessMap, err := s.store.LoadSession(id)
@@ -317,7 +317,7 @@ func (s *server) createSessionInternal(workspaceID string, clientType string) (*
 		CreatedAt:     &now,
 	}
 
-	s.store.SaveSession(id.String(), map[string]interface{}{
+	_ = s.store.SaveSession(id.String(), map[string]interface{}{
 		"id":           id.String(),
 		"name":         sessionName,
 		"workspace_id": workspaceID,

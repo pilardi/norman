@@ -8,8 +8,8 @@ import (
 
 // Message represents a single chat message in the conversation.
 type Message struct {
-	Role    string `json:"role"`     // "system", "user", "assistant", "tool"
-	Content string `json:"content"`  // The message content
+	Role    string `json:"role"`           // "system", "user", "assistant", "tool"
+	Content string `json:"content"`        // The message content
 	Name    string `json:"name,omitempty"` // For tool messages: the tool name
 	ID      string `json:"id,omitempty"`   // Tool call ID (for response)
 }
@@ -89,9 +89,9 @@ type Chunk struct {
 // ResponseChoice is kept for backward compatibility with existing code that accesses resp.Choices[0].Message.
 // New code should prefer resp.Message directly.
 type ResponseChoice struct {
-	Message      Message   `json:"message"`
+	Message      Message `json:"message"`
 	FinishReason string  `json:"finish_reason"`
-	Index        int       `json:"index"`
+	Index        int     `json:"index"`
 }
 
 // ToolCall represents a tool invocation requested by the LLM.
@@ -107,7 +107,7 @@ type ToolCall struct {
 // ParseArguments deserializes the raw Arguments into a typed map.
 // Returns nil if Arguments is empty or invalid JSON.
 func (tc *ToolCall) ParseArguments() map[string]interface{} {
-	if tc.Arguments == nil || len(tc.Arguments) == 0 {
+	if len(tc.Arguments) == 0 {
 		return nil
 	}
 	var m map[string]interface{}

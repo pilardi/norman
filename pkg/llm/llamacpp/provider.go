@@ -24,13 +24,13 @@ const ProviderName = "llamacpp"
 
 // ChatRequest mirrors the llama.cpp native /completion endpoint body.
 type ChatRequest struct {
-	Prompt     string `json:"prompt"`
-	NPredict   int    `json:"n_predict,omitempty"`
-	Model      string `json:"model"`
-	Stream     bool   `json:"stream"`
-	Temperature float64 `json:"temperature,omitempty"`
-	Stop       []string `json:"stop,omitempty"`
-	CachePrompt bool   `json:"cache_prompt,omitempty"`
+	Prompt      string   `json:"prompt"`
+	NPredict    int      `json:"n_predict,omitempty"`
+	Model       string   `json:"model"`
+	Stream      bool     `json:"stream"`
+	Temperature float64  `json:"temperature,omitempty"`
+	Stop        []string `json:"stop,omitempty"`
+	CachePrompt bool     `json:"cache_prompt,omitempty"`
 }
 
 // ChatResponse is the llama.cpp native /completion response.
@@ -49,8 +49,8 @@ type EmbedRequest struct {
 
 // EmbedResponse is the OpenAI-compatible embedding result (from /api/v1/embeddings).
 type EmbedResponse struct {
-	Data   []EmbedData `json:"data"`
-	Usage  Usage       `json:"usage"`
+	Data  []EmbedData `json:"data"`
+	Usage Usage       `json:"usage"`
 }
 
 // NativeEmbedResponse is the llama.cpp-native /embeddings response shape.
@@ -80,15 +80,15 @@ type Usage struct {
 
 // Provider implements llm.LLM + llm.Embedder for llama.cpp's HTTP server.
 type Provider struct {
-	BaseURL          string
-	Model            string
-	Temperature        float64
-	MaxTokens        int
-	HTTPClient       *http.Client
-	Timeout          time.Duration
-	CacheEnabled     bool   // whether --cache-prompt is active on the server
-	CacheSize        int    // max KV cache tokens (n_ctx)
-	CacheType        string // "fq" or quantized type
+	BaseURL           string
+	Model             string
+	Temperature       float64
+	MaxTokens         int
+	HTTPClient        *http.Client
+	Timeout           time.Duration
+	CacheEnabled      bool   // whether --cache-prompt is active on the server
+	CacheSize         int    // max KV cache tokens (n_ctx)
+	CacheType         string // "fq" or quantized type
 	EmbeddingEndpoint string // embedding endpoint path; "" = auto-detect, "/api/v1/embeddings", "/embeddings"
 }
 
@@ -124,7 +124,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
 		Model:       req.Model,
-		Temperature:   req.Temperature,
+		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		CachePrompt: p.CacheEnabled,
 	}
@@ -147,7 +147,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 	if err != nil {
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -193,7 +193,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
 		Model:       req.Model,
-		Temperature:   req.Temperature,
+		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		Stream:      true,
 		CachePrompt: p.CacheEnabled,
@@ -218,7 +218,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 	if err != nil {
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -267,7 +267,7 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 		}
 
 		bodyBytes, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			continue
 		}
@@ -362,7 +362,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 }
 
 func (s *sseStreamReader) Close() error {
-	s.resp.Body.Close()
+	_ = s.resp.Body.Close()
 	return nil
 }
 

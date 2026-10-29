@@ -166,9 +166,8 @@ func handleNotify(args []string) {
 			}
 		case "--task-id":
 			i++
-			if i < len(args) {
-				// ignored for now — stored for future use
-			}
+			// ignored for now — stored for future use
+			_ = args[i]
 		}
 	}
 
@@ -202,10 +201,10 @@ func handleNotify(args []string) {
 		outputText("API error: %v", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	var apiResp NotificationResponse
-	json.NewDecoder(resp.Body).Decode(&apiResp)
+	_ = json.NewDecoder(resp.Body).Decode(&apiResp)
 
 	outputJSON(apiResp)
 	outputText("✓ notification sent (id=%d, severity=%s)", apiResp.ID, apiResp.Severity)
@@ -248,7 +247,7 @@ func handlePing(args []string) {
 		outputText("API error: %v", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	outputText("✓ ping sent to session %s", sessionID)
 }
@@ -273,10 +272,10 @@ func handleStatus(args []string) {
 		outputText("API error: %v", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	var workspace map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&workspace)
+	_ = json.NewDecoder(resp.Body).Decode(&workspace)
 
 	outputJSON(workspace)
 	outputText("✓ workspace %s is active", ctx.WorkspaceName)
@@ -316,10 +315,10 @@ func handleLog(args []string) {
 		outputText("API error: %v", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	var events []map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&events)
+	_ = json.NewDecoder(resp.Body).Decode(&events)
 
 	outputJSON(events)
 	outputText("✓ showed %d events for session %s", len(events), sessionID)

@@ -16,7 +16,9 @@ import (
 
 // handleProviders implements the `norman provider` subcommands.
 // Usage: norman providers add <name> --type <type> --endpoint <url> [flags...]
-//        norman providers list
+//
+//	norman providers list
+//
 // reservedExtraKeys are struct field names that must not appear in the extra map.
 var reservedExtraKeys = map[string]struct{}{
 	"name":           {},
@@ -379,7 +381,7 @@ func fetchOpenAICompatibleModels(endpoint, apiKey string) ([]modelEntry, error) 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -392,8 +394,8 @@ func fetchOpenAICompatibleModels(endpoint, apiKey string) ([]modelEntry, error) 
 
 	// Parse OpenAI-compatible response: {"object":"list","data":[{"id":"gpt-4o",...},...]}
 	var openaiResp struct {
-		Object string              `json:"object"`
-		Data   []map[string]any    `json:"data"`
+		Object string           `json:"object"`
+		Data   []map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(body, &openaiResp); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
@@ -424,7 +426,7 @@ func fetchOllamaModels(endpoint string) ([]modelEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

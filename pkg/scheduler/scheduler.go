@@ -16,18 +16,18 @@ import (
 
 // TaskEntry represents a scheduled task to be executed.
 type TaskEntry struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Schedule    string    `json:"schedule"` // cron expression (5 or 6 field); empty if deferring by absolute time
-	Command     string    `json:"command"`  // shell command to execute
-	ActivationCommand string `json:"activation_command,omitempty"` // optional command to run before task execution (e.g., skill activation)
-	OutputHandler func(result string, err error) `json:"-"` // callback for results
-	NextRun     time.Time `json:"next_run"`
-	LastRun     time.Time `json:"last_run,omitempty"`
-	Active      bool      `json:"active"`
+	ID                string                         `json:"id"`
+	Name              string                         `json:"name"`
+	Schedule          string                         `json:"schedule"`                     // cron expression (5 or 6 field); empty if deferring by absolute time
+	Command           string                         `json:"command"`                      // shell command to execute
+	ActivationCommand string                         `json:"activation_command,omitempty"` // optional command to run before task execution (e.g., skill activation)
+	OutputHandler     func(result string, err error) `json:"-"`                            // callback for results
+	NextRun           time.Time                      `json:"next_run"`
+	LastRun           time.Time                      `json:"last_run,omitempty"`
+	Active            bool                           `json:"active"`
 	// DeferUntil is an absolute time at which the task should run (overrides Schedule).
 	// If non-zero, NextRun is set to this value and the task runs once.
-	DeferUntil  time.Time `json:"defer_until,omitempty"`
+	DeferUntil time.Time `json:"defer_until,omitempty"`
 	// Skill is the associated skill name that should be activated before execution.
 	Skill string `json:"skill,omitempty"`
 	// ActivationCallback is called before task execution to activate associated skills.
@@ -53,7 +53,7 @@ type Scheduler struct {
 	tasks      map[string]*TaskEntry // ID → entry
 	done       chan struct{}
 	results    chan TaskResult
-	runCommand RunCommandFunc        // OpenShell Exec() adapter (nil = fallback to local exec)
+	runCommand RunCommandFunc // OpenShell Exec() adapter (nil = fallback to local exec)
 }
 
 // NewScheduler creates a new scheduler with the given output channel.
@@ -123,13 +123,13 @@ func (s *Scheduler) ToInterfaceSlice() []interface{} {
 	result := make([]interface{}, 0, len(s.tasks))
 	for _, entry := range s.tasks {
 		m := map[string]interface{}{
-			"id":                  entry.ID,
-			"name":                entry.Name,
-			"schedule":            entry.Schedule,
-			"command":             entry.Command,
-			"active":              entry.Active,
-			"activation_command":  entry.ActivationCommand,
-			"skill":               entry.Skill,
+			"id":                 entry.ID,
+			"name":               entry.Name,
+			"schedule":           entry.Schedule,
+			"command":            entry.Command,
+			"active":             entry.Active,
+			"activation_command": entry.ActivationCommand,
+			"skill":              entry.Skill,
 		}
 		if !entry.DeferUntil.IsZero() {
 			m["defer_until"] = entry.DeferUntil.Format(time.RFC3339)

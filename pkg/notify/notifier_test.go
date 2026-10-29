@@ -12,7 +12,7 @@ import (
 // mockWSHub implements WSHubPublisher for testing.
 type mockWSHub struct {
 	events []protocol.WebSocketEvent
-	chans map[string]chan string
+	chans  map[string]chan string
 }
 
 func (m *mockWSHub) BroadcastEvent(event protocol.WebSocketEvent) {

@@ -14,9 +14,9 @@ import (
 // CSS rules that will be injected into the generated page (e.g., custom color palette).
 func Generate(specPath, outputPath, title string, darkMode bool, customCSS string) error {
 	opts := scalar.Options{
-		SpecURL:     "file://" + absPath(specPath),
-		CustomCss:   customCSS,
-		DarkMode:    darkMode,
+		SpecURL:   "file://" + absPath(specPath),
+		CustomCss: customCSS,
+		DarkMode:  darkMode,
 	}
 	opts.PageTitle = title
 

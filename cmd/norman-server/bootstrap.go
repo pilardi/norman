@@ -14,13 +14,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/norman/norman/pkg/agent"
 	"github.com/norman/norman/pkg/config"
-	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/env"
+	"github.com/norman/norman/pkg/llm"
+	"github.com/norman/norman/pkg/llm/llamacpp"
+	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
-	"github.com/norman/norman/pkg/llm"
-	"github.com/norman/norman/pkg/llm/llamacpp"
 	"github.com/norman/norman/pkg/skills"
 )
 
@@ -233,10 +233,10 @@ func bootstrap() *server {
 
 	// Seed registry from activator's current entries (host-installed skills)
 	for name, entry := range activator.Registry() {
-		reg.Register(name, skills.RegistryEntry{
-			SourceURL:           entry.SourceURL,
-			Version:             entry.Version,
-			Description:         entry.Description,
+		_ = reg.Register(name, skills.RegistryEntry{
+			SourceURL:             entry.SourceURL,
+			Version:               entry.Version,
+			Description:           entry.Description,
 			InstalledInWorkspaces: []string{},
 		})
 	}

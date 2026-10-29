@@ -77,9 +77,9 @@ Body text.`
 
 func TestTitleToSlug(t *testing.T) {
 	tests := []struct {
-		input    string
+		input     string
 		entryType EntryType
-		expected string
+		expected  string
 	}{
 		{"Project Alpha", EntryTypeEntity, "project-alpha-entity"},
 		{"API Gateway v2", EntryTypeSource, "api-gateway-v2-source"},
@@ -182,7 +182,7 @@ func TestToMarkdownWithWorkspace(t *testing.T) {
 		Type:      EntryTypeEntity,
 		Tags:      []string{"test"},
 		Pinned:    false,
-		Workspace:   "api-migration",
+		Workspace: "api-migration",
 		Updated:   time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC),
 		CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
 		Content:   "Some body text.",
@@ -225,7 +225,7 @@ func TestParseFrontmatterRoundTripWithWorkspace(t *testing.T) {
 		Title:     "Round Trip Test",
 		Type:      EntryTypeTask,
 		Tags:      []string{"roundtrip", "test"},
-		Workspace:   "test-workspace",
+		Workspace: "test-workspace",
 		Pinned:    true,
 		Updated:   time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC),
 		CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),

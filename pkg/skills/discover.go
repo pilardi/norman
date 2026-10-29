@@ -23,14 +23,14 @@ type ToolDef struct {
 }
 
 type SkillEntry struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Path        string   `json:"path"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Path        string    `json:"path"`
 	Tools       []ToolDef `json:"tools,omitempty"`
-	Activation  string   `json:"activation,omitempty"` // "manual", "auto", "on-demand"
+	Activation  string    `json:"activation,omitempty"` // "manual", "auto", "on-demand"
 
 	// MCPConnection holds optional MCP endpoint configuration for this skill.
-	MCPEndpoint    string   `json:"mcp_endpoint,omitempty"`
+	MCPEndpoint     string   `json:"mcp_endpoint,omitempty"`
 	MCPCapabilities []string `json:"mcp_capabilities,omitempty"`
 
 	// Dependencies lists pip packages to install before activation (for Python-based skills).
@@ -49,9 +49,9 @@ type SkillEntry struct {
 
 // DiscoverResult holds the result of a discovery scan.
 type DiscoverResult struct {
-	Skills    []SkillEntry
-	Scanned   int // total directories scanned
-	Valid     int // directories with valid SKILL.md
+	Skills  []SkillEntry
+	Scanned int // total directories scanned
+	Valid   int // directories with valid SKILL.md
 }
 
 // Discover scans configured paths for skill definitions and returns metadata only.
@@ -332,7 +332,7 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 	}
 
 	frontmatterEnd += 3 // account for the leading ---
-	fmContent := content[frontmatterStart+3:frontmatterEnd]
+	fmContent := content[frontmatterStart+3 : frontmatterEnd]
 
 	// Parse frontmatter into a generic map for flexible tool schema support.
 	var rawMap map[string]interface{}

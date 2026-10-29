@@ -37,9 +37,9 @@ Workspace-level overrides (per-workspace in config.yaml):
   system_prompt  (empty = use system default)
 
 `+
-		"  -p, --provider NAME   Select a configured provider (overrides default)\n\n" +
-		"Providers are defined in config.yaml under `llm_providers:`.\n" +
-		"Each provider defines its own model, temperature, max_tokens, and api_key.\n" +
+		"  -p, --provider NAME   Select a configured provider (overrides default)\n\n"+
+		"Providers are defined in config.yaml under `llm_providers:`.\n"+
+		"Each provider defines its own model, temperature, max_tokens, and api_key.\n"+
 		"Example: norman-server -p local --verbose\n",
 		BuildEnvVarHelpText(),
 		ed.System.ServerPort,

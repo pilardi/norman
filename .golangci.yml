@@ -1,0 +1,46 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - ineffassign
+    - staticcheck
+    - govet
+    - unused
+    - misspell
+    - unconvert
+    - copyloopvar
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    exclude-functions:
+      - (io.ReadCloser).Close
+      - (*net/http.Response).Body.Close
+      - fmt.Fprint
+      - fmt.Fprintf
+      - os.Unsetenv
+      - (encoding/json.Decoder).Decode
+
+  staticcheck:
+    checks: ["all", "-ST1000"]
+
+issues:
+  exclude-rules:
+    # Test files commonly ignore errors in test setup/teardown
+    - path: _test\.go
+      linters:
+        - errcheck
+      text: "Error return value of `.*` is not checked"
+    # Allow unused variables in tests where they serve as placeholders
+    - path: _test\.go
+      linters:
+        - ineffassign

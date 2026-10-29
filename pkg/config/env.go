@@ -12,21 +12,21 @@ import (
 
 // EnvVar represents a single environment variable that can override configuration.
 type EnvVar struct {
-	Name      string // e.g., "NORMAN_HOST"
-	Type      string // "string", "int", "bool", "float64"
-	Default   string // default value (as string)
-	EnvKey    string // the actual env var key to read
-	HelpText  string // description for help output
-	Apply     func(sc *SystemConfig, raw string) error
+	Name     string // e.g., "NORMAN_HOST"
+	Type     string // "string", "int", "bool", "float64"
+	Default  string // default value (as string)
+	EnvKey   string // the actual env var key to read
+	HelpText string // description for help output
+	Apply    func(sc *SystemConfig, raw string) error
 }
 
 // allEnvVars defines every supported NORMAN_* environment variable.
 // Env vars take priority over .env file values and config.yaml settings.
 var allEnvVars = []EnvVar{
 	{
-		Name: "NORMAN_HOST",
-		Type: "string",
-		Default: "127.0.0.1",
+		Name:     "NORMAN_HOST",
+		Type:     "string",
+		Default:  "127.0.0.1",
 		HelpText: "Server bind address (default: \"127.0.0.1\")",
 		Apply: func(sc *SystemConfig, raw string) error {
 			sc.Host = raw
@@ -34,9 +34,9 @@ var allEnvVars = []EnvVar{
 		},
 	},
 	{
-		Name: "NORMAN_PORT",
-		Type: "int",
-		Default: "8080",
+		Name:     "NORMAN_PORT",
+		Type:     "int",
+		Default:  "8080",
 		HelpText: "Server port number (default: 8080)",
 		Apply: func(sc *SystemConfig, raw string) error {
 			n, err := strconv.Atoi(raw)
@@ -48,9 +48,9 @@ var allEnvVars = []EnvVar{
 		},
 	},
 	{
-		Name: "NORMAN_SERVER_URL",
-		Type: "string",
-		Default: "",
+		Name:     "NORMAN_SERVER_URL",
+		Type:     "string",
+		Default:  "",
 		HelpText: "External-facing server URL (e.g., https://norman.example.com). Overrides auto-derived http://host:port URL.",
 		Apply: func(sc *SystemConfig, raw string) error {
 			sc.ServerURL = raw
@@ -58,9 +58,9 @@ var allEnvVars = []EnvVar{
 		},
 	},
 	{
-		Name: "NORMAN_BASE_DIR",
-		Type: "string",
-		Default: "~/.norman/workspaces",
+		Name:     "NORMAN_BASE_DIR",
+		Type:     "string",
+		Default:  "~/.norman/workspaces",
 		HelpText: "Base directory for workspaces (default: ~/.norman/workspaces)",
 		Apply: func(sc *SystemConfig, raw string) error {
 			sc.BaseDir = raw
@@ -68,9 +68,9 @@ var allEnvVars = []EnvVar{
 		},
 	},
 	{
-		Name: "NORMAN_VERBOSE",
-		Type: "bool",
-		Default: "false",
+		Name:     "NORMAN_VERBOSE",
+		Type:     "bool",
+		Default:  "false",
 		HelpText: "Enable verbose/debug logging (true/false or 1/0)",
 		Apply: func(sc *SystemConfig, raw string) error {
 			sc.Logging.Verbose = (raw == "true" || raw == "1")
@@ -78,23 +78,23 @@ var allEnvVars = []EnvVar{
 		},
 	},
 	{
-		Name: "NORMAN_STORE_DIR",
-		Type: "string",
-		Default: "$HOME/.norman/store",
+		Name:     "NORMAN_STORE_DIR",
+		Type:     "string",
+		Default:  "$HOME/.norman/store",
 		HelpText: "Path to the memory store directory (default: $HOME/.norman/store)",
 		Apply: func(sc *SystemConfig, raw string) error {
 			// This is consumed by the caller; we just return it for discovery.
-			os.Setenv("NORMAN_STORE_DIR", raw)
+			_ = os.Setenv("NORMAN_STORE_DIR", raw)
 			return nil
 		},
 	},
 	{
-		Name: "NORMAN_RAW_SOURCES_DIR",
-		Type: "string",
-		Default: "$HOME/.norman/raw_sources",
+		Name:     "NORMAN_RAW_SOURCES_DIR",
+		Type:     "string",
+		Default:  "$HOME/.norman/raw_sources",
 		HelpText: "Path to the raw sources store directory (default: $HOME/.norman/raw_sources)",
 		Apply: func(sc *SystemConfig, raw string) error {
-			os.Setenv("NORMAN_RAW_SOURCES_DIR", raw)
+			_ = os.Setenv("NORMAN_RAW_SOURCES_DIR", raw)
 			return nil
 		},
 	},
@@ -133,8 +133,8 @@ func loadEnvFile(path string) error {
 
 // LoadEnvFiles loads .env files from standard locations.
 // Priority order (later files override earlier ones):
-//   1. Current directory .env
-//   2. $HOME/.norman/.env
+//  1. Current directory .env
+//  2. $HOME/.norman/.env
 func LoadEnvFiles() error {
 	// Load from current directory first (highest priority for local overrides)
 	if err := loadEnvFile(".env"); err != nil {
@@ -203,9 +203,9 @@ func ServerEnvVars() []EnvVar {
 func ClientEnvVars() []EnvVar {
 	return []EnvVar{
 		{
-			Name: "NORMAN_SERVER_URL",
-			Type: "string",
-			Default: "",
+			Name:     "NORMAN_SERVER_URL",
+			Type:     "string",
+			Default:  "",
 			HelpText: "Server URL to connect to (e.g., https://norman.example.com). Primary client connection target.",
 			Apply: func(sc *SystemConfig, raw string) error {
 				sc.ServerURL = raw
@@ -213,9 +213,9 @@ func ClientEnvVars() []EnvVar {
 			},
 		},
 		{
-			Name: "NORMAN_HOST",
-			Type: "string",
-			Default: "127.0.0.1",
+			Name:     "NORMAN_HOST",
+			Type:     "string",
+			Default:  "127.0.0.1",
 			HelpText: "Fallback server bind address (used only when NORMAN_SERVER_URL is not set)",
 			Apply: func(sc *SystemConfig, raw string) error {
 				sc.Host = raw
@@ -223,9 +223,9 @@ func ClientEnvVars() []EnvVar {
 			},
 		},
 		{
-			Name: "NORMAN_PORT",
-			Type: "int",
-			Default: "8080",
+			Name:     "NORMAN_PORT",
+			Type:     "int",
+			Default:  "8080",
 			HelpText: "Fallback server port (used only when NORMAN_SERVER_URL is not set)",
 			Apply: func(sc *SystemConfig, raw string) error {
 				n, err := strconv.Atoi(raw)
@@ -237,9 +237,9 @@ func ClientEnvVars() []EnvVar {
 			},
 		},
 		{
-			Name: "NORMAN_VERBOSE",
-			Type: "bool",
-			Default: "false",
+			Name:     "NORMAN_VERBOSE",
+			Type:     "bool",
+			Default:  "false",
 			HelpText: "Enable verbose/debug logging (true/false or 1/0)",
 			Apply: func(sc *SystemConfig, raw string) error {
 				sc.Logging.Verbose = (raw == "true" || raw == "1")

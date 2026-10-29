@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"os"
@@ -585,20 +584,6 @@ func splitLines(s string) []string {
 	}
 	if current != "" {
 		lines = append(lines, current)
-	}
-	return lines
-}
-
-// --- Helper: splitLinesScanner (using bufio.Scanner) ---
-
-func splitLinesScanner(s string) []string {
-	var lines []string
-	scanner := bufio.NewScanner(strings.NewReader(s))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line != "" {
-			lines = append(lines, line)
-		}
 	}
 	return lines
 }

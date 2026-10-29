@@ -15,7 +15,7 @@ import (
 // WSHub manages WebSocket connections and broadcasts events to clients.
 type WSHub struct {
 	mu             sync.RWMutex
-	clients        map[*websocket.Conn]struct{}              // global clients (no session filter)
+	clients        map[*websocket.Conn]struct{}            // global clients (no session filter)
 	sessionClients map[string]map[*websocket.Conn]struct{} // per-session client maps
 	broadcast      chan []byte
 	// responseChannels stores registered channels keyed by request ID.

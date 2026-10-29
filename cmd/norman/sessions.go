@@ -110,7 +110,7 @@ func handleSessionArchive(args []string) {
 		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", shortID(actualID), err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
@@ -140,7 +140,7 @@ func archiveSession(sessionID string) {
 		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", shortID(actualID), err)
 		return
 	}
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
