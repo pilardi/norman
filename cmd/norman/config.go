@@ -2,107 +2,99 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"strconv"
 	"strings"
 
 	"github.com/norman/norman/pkg/config"
+	"github.com/urfave/cli/v3"
 )
 
 // handleConfig shows or edits the current config.
-func handleConfig(args []string) {
-	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(`config — Show or edit configuration
+func handleConfig(ctx context.Context, cmd *cli.Command) error {
+	args := cmd.Args().Slice()
 
-Usage: norman config [--set key=value | --json]
-
-Options:
-  --set     Set a config value (e.g., --set server_port=9090)
-            For providers use dot-path notation: --set providers.0.name=myprovider
-            Use --set default_provider=<name> to set the default provider.
-  --json    Output as machine-readable JSON
-
-Config is managed by the server at ~/.config/norman/config.yaml.
-Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
-		return
+	if len(args) == 0 {
+		return printConfig(nil, false)
 	}
 
-	if len(args) > 0 && args[0] == "--set" {
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: norman config --set key=value")
-			os.Exit(1)
-		}
-		parts := strings.SplitN(args[1], "=", 2)
-		if len(parts) != 2 {
-			fmt.Fprintf(os.Stderr, "Invalid format: %s (expected key=value)\n", args[1])
-			os.Exit(1)
-		}
-		key, val := parts[0], parts[1]
-
-		// Build partial update map
-		update := make(map[string]interface{})
-		switch key {
-		case "default_model":
-			update["default_model"] = val
-		case "server_port":
-			var port int
-			if n, err := fmt.Sscanf(val, "%d", &port); n != 1 || err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid server_port value: %s\n", val)
-				os.Exit(1)
-			}
-			update["server_port"] = port
-		case "max_tokens":
-			var t int
-			if n, err := fmt.Sscanf(val, "%d", &t); n != 1 || err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid max_tokens value: %s\n", val)
-				os.Exit(1)
-			}
-			update["max_tokens"] = t
-		case "temperature":
-			var t float64
-			if n, err := fmt.Sscanf(val, "%f", &t); n != 1 || err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid temperature value: %s\n", val)
-				os.Exit(1)
-			}
-			update["temperature"] = t
-		case "logging.verbose":
-			// Verbose is a client-side toggle (-v/--verbose); not shared with server.
-			fmt.Printf("Verbose mode: %s (client-local, not persisted to server)\n", val)
-			return
-		case "openshell_address":
-			update["openshell_address"] = val
-		case "default_provider":
-			update["default_provider"] = val
-		default:
-			// Check if it's a provider dot-path (e.g., "providers.0.name")
-			if strings.HasPrefix(key, "providers.") {
-				update[key] = val
-			} else {
-				fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
-				os.Exit(1)
-			}
-		}
-
-		// POST update to server
-		if err := putConfig(update); err != nil {
-			fmt.Fprintf(os.Stderr, "Error updating config: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Updated %s → %s\n", key, val)
-		return
+	switch args[0] {
+	case "--set":
+		return handleConfigSet(cmd.Args().Tail())
+	case "--json":
+		return printConfig(nil, true)
+	default:
+		return fmt.Errorf("unknown config option: %s (use --set key=value or --json)", args[0])
 	}
+}
 
-	if len(args) > 0 && args[0] == "--json" {
-		cfg, resolvedGateway, err := getConfig()
+// handleConfigSet handles the --set flag.
+func handleConfigSet(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: norman config --set key=value")
+	}
+	parts := strings.SplitN(args[0], "=", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid format: %s (expected key=value)", args[0])
+	}
+	key, val := parts[0], parts[1]
+
+	update := make(map[string]interface{})
+	switch key {
+	case "default_model":
+		update["default_model"] = val
+	case "server_port":
+		port, err := strconv.Atoi(val)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching config from server: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("invalid server_port value: %s", val)
 		}
+		update["server_port"] = port
+	case "max_tokens":
+		t, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("invalid max_tokens value: %s", val)
+		}
+		update["max_tokens"] = t
+	case "temperature":
+		t, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("invalid temperature value: %s", val)
+		}
+		update["temperature"] = t
+	case "logging.verbose":
+		fmt.Printf("Verbose mode: %s (client-local, not persisted to server)\n", val)
+		return nil
+	case "openshell_address":
+		update["openshell_address"] = val
+	case "default_provider":
+		update["default_provider"] = val
+	default:
+		if strings.HasPrefix(key, "providers.") {
+			update[key] = val
+		} else {
+			return fmt.Errorf("unknown config key: %s", key)
+		}
+	}
 
-		// Output snake_case for consistency with CLI display.
+	if err := putConfig(update); err != nil {
+		return fmt.Errorf("error updating config: %v", err)
+	}
+	fmt.Printf("Updated %s → %s\n", key, val)
+	return nil
+}
+
+// printConfig outputs the current config (human-readable or JSON).
+func printConfig(_ *cli.Command, asJSON bool) error {
+	cfg, resolvedGateway, err := getConfig()
+	if err != nil {
+		return fmt.Errorf("error fetching config from server: %v", err)
+	}
+
+	if asJSON {
 		output := map[string]interface{}{
 			"server_port":        cfg.ServerPort,
 			"host":               cfg.Host,
@@ -113,8 +105,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			"rate_limit_per_min": cfg.Notify.RateLimitPerMin,
 			"openshell_address":  resolvedGateway,
 		}
-
-		// Include providers if available.
 		if len(cfg.LlmProviders) > 0 {
 			providers := make([]map[string]interface{}, len(cfg.LlmProviders))
 			for i, p := range cfg.LlmProviders {
@@ -133,17 +123,9 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			}
 			output["providers"] = providers
 		}
-
 		data, _ := json.MarshalIndent(output, "", "  ")
 		fmt.Println(string(data))
-		return
-	}
-
-	// Default: show current config (human-readable)
-	cfg, resolvedGateway, err := getConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching config from server: %v\n", err)
-		os.Exit(1)
+		return nil
 	}
 
 	fmt.Println("# Current Configuration (System)")
@@ -156,16 +138,12 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 	fmt.Printf("  max_active_skills: %d\n", cfg.Skills.MaxActive)
 	fmt.Printf("  bell_enabled:     %v\n", cfg.Notify.BellEnabled)
 	fmt.Printf("  rate_limit_per_min: %d\n", cfg.Notify.RateLimitPerMin)
-	// Show the resolved gateway address (from server-side resolution, not local config).
 	if resolvedGateway != "" {
 		fmt.Printf("  openshell_address: %s\n", resolvedGateway)
 	} else if cfg.OpenShell.Address != "" {
 		fmt.Printf("  openshell_address: %s\n", cfg.OpenShell.Address)
 	}
 
-	// Note: workspace overrides are managed server-side; client cannot read them here.
-
-	// Display providers if any exist.
 	if len(cfg.LlmProviders) > 0 {
 		fmt.Println("  providers:")
 		for i, p := range cfg.LlmProviders {
@@ -181,6 +159,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`)
 			fmt.Printf("        max_tokens: %d%s\n", p.MaxTokens, masked)
 		}
 	}
+	return nil
 }
 
 // getConfig fetches the current system config from the server.

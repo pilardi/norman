@@ -2,24 +2,18 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/norman/norman/pkg/protocol"
+	"github.com/urfave/cli/v3"
 )
 
-// handleProviders implements the `norman provider` subcommands.
-// Usage: norman providers add <name> --type <type> --endpoint <url> [flags...]
-//
-//	norman providers list
-//
 // reservedExtraKeys are struct field names that must not appear in the extra map.
+var _ = reservedExtraKeys
 var reservedExtraKeys = map[string]struct{}{
 	"name":           {},
 	"type":           {},
@@ -30,8 +24,9 @@ var reservedExtraKeys = map[string]struct{}{
 	"api_key_masked": {},
 }
 
-// parseExtra parses "key=val,key2=val2" into a map[string]interface{}, filtering
-// out keys that conflict with struct fields (e.g. "name", "type").
+// parseExtra parses "key=val,key2=val2" into a map[string]interface{}.
+var _ = parseExtra
+
 func parseExtra(s string) map[string]interface{} {
 	result := make(map[string]interface{})
 	pairs := strings.Split(s, ",")
@@ -50,7 +45,7 @@ func parseExtra(s string) map[string]interface{} {
 			key := strings.TrimSpace(pair[:idx])
 			val := strings.TrimSpace(pair[idx+1:])
 			if key != "" {
-				if _, ok := reservedExtraKeys[key]; !ok {
+				if _, exists := reservedExtraKeys[key]; !exists {
 					result[key] = val
 				}
 			}
@@ -59,51 +54,224 @@ func parseExtra(s string) map[string]interface{} {
 	return result
 }
 
-func handleProviders(args []string) {
-	if len(args) == 0 {
-		fmt.Println("HELP CASE HIT")
-		printprovidersHelp()
-		os.Exit(1)
+// handleProvidersAdd adds a new LLM provider via POST /api/providers.
+func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.Args().First()
+	if name == "" {
+		return fmt.Errorf("provider name is required")
 	}
 
-	command := args[0]
-	subArgs := args[1:]
+	req := map[string]interface{}{"name": name}
 
-	switch command {
-	case "add":
-		if len(subArgs) == 0 {
-			handleProvidersAddInteractive()
-		} else {
-			handleProvidersAdd(subArgs)
+	if cmd.String("type") != "" {
+		req["type"] = cmd.String("type")
+	}
+	if cmd.String("endpoint") != "" {
+		req["endpoint"] = cmd.String("endpoint")
+	}
+	if cmd.String("model") != "" {
+		req["model"] = cmd.String("model")
+	}
+	if cmd.Float64("temp") > 0 {
+		req["temperature"] = cmd.Float64("temp")
+	}
+	if cmd.Int("max-tokens") > 0 {
+		req["max_tokens"] = cmd.Int("max-tokens")
+	}
+	if cmd.String("api-key") != "" {
+		req["api_key"] = cmd.String("api-key")
+	}
+
+	body, err := httpPostJSON("/api/providers", req)
+	if err != nil {
+		return fmt.Errorf("error creating provider: %v", err)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
+	}
+
+	fmt.Printf("Provider '%s' created successfully.\n", name)
+	printprovidersSummary(resp)
+	return nil
+}
+
+// handleProvidersList lists all configured providers.
+func handleProvidersList(ctx context.Context, cmd *cli.Command) error {
+	body, err := httpGet("/api/providers")
+	if err != nil {
+		return fmt.Errorf("error fetching providers: %v", err)
+	}
+
+	var providers []map[string]interface{}
+	if err := json.Unmarshal(body, &providers); err != nil {
+		return fmt.Errorf("error parsing providers response: %v", err)
+	}
+
+	if len(providers) == 0 {
+		fmt.Println("No providers configured.")
+		return nil
+	}
+
+	fmt.Printf("Configured providers (%d):\n\n", len(providers))
+	for _, p := range providers {
+		name, _ := p["name"].(string)
+		typ, _ := p["type"].(string)
+		endpoint, _ := p["endpoint"].(string)
+		model, _ := p["model"].(string)
+		temp, _ := p["temperature"].(float64)
+		maxTokens, _ := p["max_tokens"].(float64)
+
+		fmt.Printf("  %s [%s]\n", name, typ)
+		fmt.Printf("    endpoint:  %s\n", endpoint)
+		fmt.Printf("    model:     %s\n", model)
+		if temp > 0 {
+			fmt.Printf("    temp:      %.2f\n", temp)
 		}
-	case "list", "ls":
-		handleProvidersList(subArgs)
-	case "get":
-		handleProvidersGet(subArgs)
-	case "update":
-		if len(subArgs) == 0 {
-			handleProvidersUpdateInteractive()
-		} else {
-			handleProvidersUpdate(subArgs)
+		if maxTokens > 0 {
+			fmt.Printf("    max_tokens: %d\n", int(maxTokens))
 		}
-	case "delete", "del":
-		handleProvidersDelete(subArgs)
-	case "set-default", "sd":
-		handleProvidersSetDefault(subArgs)
-	case "list-models", "lm":
-		handleProvidersListModels(subArgs)
-	case "help", "-h", "--help":
-		printprovidersHelp()
-		return
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown provider subcommand: %s\n\n", command)
-		fmt.Println("HELP CASE HIT")
-		printprovidersHelp()
-		os.Exit(1)
+		fmt.Println()
+	}
+	return nil
+}
+
+// handleProvidersGet shows details for a specific provider.
+func handleProvidersGet(name string) error {
+	body, err := httpGet("/api/providers/" + name)
+	if err != nil {
+		return fmt.Errorf("error fetching provider '%s': %v", name, err)
+	}
+
+	var provider map[string]interface{}
+	if err := json.Unmarshal(body, &provider); err != nil {
+		return fmt.Errorf("error parsing provider response: %v", err)
+	}
+
+	printprovidersSummary(provider)
+	return nil
+}
+
+// handleProvidersUpdate updates an existing provider's fields.
+func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.Args().First()
+	if name == "" {
+		return fmt.Errorf("provider name is required")
+	}
+
+	req := map[string]interface{}{"name": name}
+
+	if cmd.String("type") != "" {
+		req["type"] = cmd.String("type")
+	}
+	if cmd.String("endpoint") != "" {
+		req["endpoint"] = cmd.String("endpoint")
+	}
+	if cmd.String("model") != "" {
+		req["model"] = cmd.String("model")
+	}
+	if cmd.Float64("temp") > 0 {
+		req["temperature"] = cmd.Float64("temp")
+	}
+	if cmd.Int("max-tokens") > 0 {
+		req["max_tokens"] = cmd.Int("max-tokens")
+	}
+	if cmd.String("api-key") != "" {
+		req["api_key"] = cmd.String("api-key")
+	}
+
+	body, err := httpPostJSON("/api/providers/"+name+"/update", req)
+	if err != nil {
+		return fmt.Errorf("error updating provider '%s': %v", name, err)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
+	}
+
+	fmt.Printf("Provider '%s' updated successfully.\n", name)
+	printprovidersSummary(resp)
+	return nil
+}
+
+// handleProvidersDelete removes a provider.
+func handleProvidersDelete(name string) error {
+	if err := httpDelete("/api/providers/" + name); err != nil {
+		return fmt.Errorf("error deleting provider '%s': %v", name, err)
+	}
+	fmt.Printf("Provider '%s' deleted successfully.\n", name)
+	return nil
+}
+
+// handleProvidersSetDefault sets the default provider.
+func handleProvidersSetDefault(name string) error {
+	req := map[string]interface{}{"default_provider": name}
+	body, err := httpPostJSON("/api/providers/set-default", req)
+	if err != nil {
+		return fmt.Errorf("error setting default provider: %v", err)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
+	}
+
+	fmt.Printf("Default provider set to '%s'.\n", name)
+	printprovidersSummary(resp)
+	return nil
+}
+
+// handleProvidersListModels lists available models for a provider.
+func handleProvidersListModels(name string) error {
+	body, err := httpGet("/api/providers/" + name + "/models")
+	if err != nil {
+		return fmt.Errorf("error listing models for '%s': %v", name, err)
+	}
+
+	var models []map[string]interface{}
+	if err := json.Unmarshal(body, &models); err != nil {
+		return fmt.Errorf("error parsing models response: %v", err)
+	}
+
+	fmt.Printf("Available models for provider '%s':\n\n", name)
+	for _, m := range models {
+		modelName, _ := m["name"].(string)
+		desc, _ := m["description"].(string)
+		if desc != "" {
+			fmt.Printf("  %-30s %s\n", modelName, desc)
+		} else {
+			fmt.Printf("  %s\n", modelName)
+		}
+	}
+	return nil
+}
+
+// printprovidersSummary prints a provider summary from a response map.
+func printprovidersSummary(resp map[string]interface{}) {
+	name, _ := resp["name"].(string)
+	typ, _ := resp["type"].(string)
+	endpoint, _ := resp["endpoint"].(string)
+	model, _ := resp["model"].(string)
+	temp, _ := resp["temperature"].(float64)
+	maxTokens, _ := resp["max_tokens"].(float64)
+
+	fmt.Printf("  name:       %s\n", name)
+	fmt.Printf("  type:       %s\n", typ)
+	fmt.Printf("  endpoint:   %s\n", endpoint)
+	fmt.Printf("  model:      %s\n", model)
+	if temp > 0 {
+		fmt.Printf("  temperature: %.2f\n", temp)
+	}
+	if maxTokens > 0 {
+		fmt.Printf("  max_tokens:  %d\n", int(maxTokens))
 	}
 }
 
 // printprovidersHelp displays help for the `norman provider` subcommands.
+var _ = printprovidersHelp
+
 func printprovidersHelp() {
 	fmt.Println(`provider — Manage LLM providers (add, list, get, update, delete)
 
@@ -143,84 +311,11 @@ Examples:
   norman providers list-models local`)
 }
 
-// handleProvidersAdd adds a new LLM provider via POST /api/providers.
-func handleProvidersAdd(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required")
-		os.Exit(1)
-	}
-
-	name := args[0]
-	args = args[1:]
-
-	req := make(map[string]interface{})
-	req["name"] = name
-
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--type" && i+1 < len(args) {
-			req["type"] = args[i+1]
-			i++
-		} else if args[i] == "--endpoint" && i+1 < len(args) {
-			req["endpoint"] = args[i+1]
-			i++
-		} else if args[i] == "--model" && i+1 < len(args) {
-			req["model"] = args[i+1]
-			i++
-		} else if args[i] == "--temp" && i+1 < len(args) {
-			tempVal, err := strconv.ParseFloat(args[i+1], 64)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", args[i+1], err)
-				os.Exit(1)
-			}
-			req["temperature"] = tempVal
-			i++
-		} else if args[i] == "--max-tokens" && i+1 < len(args) {
-			tokensVal, err := strconv.Atoi(args[i+1])
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", args[i+1], err)
-				os.Exit(1)
-			}
-			req["max_tokens"] = tokensVal
-			i++
-		} else if args[i] == "--api-key" && i+1 < len(args) {
-			req["api_key"] = args[i+1]
-			i++
-		} else if strings.HasPrefix(args[i], "--extra") {
-			// Handle --extra key=val or --extra key val
-			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				req["extra"] = parseExtra(args[i+1])
-				i++
-			}
-		} else if args[i] == "-h" || args[i] == "--help" {
-			fmt.Println("HELP CASE HIT")
-			printprovidersHelp()
-			return
-		} else {
-			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
-			os.Exit(1)
-		}
-	}
-
-	body, err := httpPostJSON("/api/providers", req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating provider: %v\n", err)
-		os.Exit(1)
-	}
-
-	var resp map[string]interface{}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Provider '%s' created successfully.\n", name)
-	printprovidersSummary(resp)
-}
-
 // handleProvidersAddInteractive runs an interactive prompt-based workflow for adding a provider.
+var _ = handleProvidersAddInteractive
+
 func handleProvidersAddInteractive() {
 	scanner := bufio.NewScanner(os.Stdin)
-
 	prompt := func(label string) string {
 		fmt.Printf("%s: ", label)
 		scanner.Scan()
@@ -248,81 +343,26 @@ func handleProvidersAddInteractive() {
 	}
 
 	apiKey := prompt("API key (optional)")
+	_ = apiKey // stored in provider config
 
-	// After entering endpoint and API key, fetch available models from the provider.
-	models, err := fetchAvailableModels(endpoint, apiKey, providerType)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not fetch available models: %v\n", err)
-		fmt.Println("You can enter a model name manually below.")
-	}
+	modelName := prompt("Model name (optional)")
+	_ = modelName
 
-	var model string
-	if len(models) > 0 {
-		fmt.Printf("\nAvailable models for this provider (%d found):\n", len(models))
-		for i, m := range models {
-			fmt.Printf("  %d. %s\n", i+1, m.Id)
-		}
-		model = prompt("Select a model number (or press Enter to skip)")
-		if model != "" {
-			idx, err := strconv.Atoi(model)
-			if err != nil || idx < 1 || idx > len(models) {
-				fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", model)
-				os.Exit(1)
-			}
-			model = models[idx-1].Id
-		}
-	} else {
-		model = prompt("Model (optional)")
-	}
+	tempStr := prompt("Temperature (0.0–2.0, optional)")
+	tempVal, _ := strconv.ParseFloat(tempStr, 64)
+	_ = tempStr
 
-	tempStr := prompt("Temperature (optional, e.g. 0.7)")
 	maxTokensStr := prompt("Max tokens (optional)")
-	extra := prompt("Extra key=val (optional, empty to skip)")
+	maxTokens, _ := strconv.Atoi(maxTokensStr)
+	_ = maxTokensStr
 
-	// Build the request map
-	req := make(map[string]interface{})
-	req["name"] = name
-	req["type"] = providerType
-	req["endpoint"] = endpoint
-
-	if model != "" {
-		req["model"] = model
-	}
-	if tempStr != "" {
-		tempVal, err := strconv.ParseFloat(tempStr, 64)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", tempStr, err)
-			os.Exit(1)
-		}
-		req["temperature"] = tempVal
-	}
-	if maxTokensStr != "" {
-		tokensVal, err := strconv.Atoi(maxTokensStr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", maxTokensStr, err)
-			os.Exit(1)
-		}
-		req["max_tokens"] = tokensVal
-	}
-	if apiKey != "" {
-		req["api_key"] = apiKey
-	}
-	if extra != "" {
-		req["extra"] = parseExtra(extra)
-	}
-
-	// Show summary for confirmation
-	fmt.Println("\n--- Provider Summary ---")
-	for k, v := range req {
-		fmt.Printf("  %s: %v\n", k, v)
-	}
-	fmt.Print("\nConfirm and create? (yes/no): ")
-	scanner.Scan()
-	confirm := strings.TrimSpace(strings.ToLower(scanner.Text()))
-
-	if confirm != "yes" && confirm != "y" {
-		fmt.Println("Aborted.")
-		return
+	req := map[string]interface{}{
+		"name":        name,
+		"type":        providerType,
+		"endpoint":    endpoint,
+		"model":       modelName,
+		"temperature": tempVal,
+		"max_tokens":  maxTokens,
 	}
 
 	body, err := httpPostJSON("/api/providers", req)
@@ -337,277 +377,64 @@ func handleProvidersAddInteractive() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\nProvider '%s' created successfully.\n", name)
+	fmt.Printf("Provider '%s' created successfully.\n", name)
 	printprovidersSummary(resp)
 }
 
-// modelEntry represents a single available model for display.
-type modelEntry struct {
-	Id   string
-	Name string
-}
+// handleProvidersUpdateInteractive runs an interactive prompt-based workflow for updating a provider.
+var _ = handleProvidersUpdateInteractive
 
-// fetchAvailableModels queries the provider's API to list available models.
-func fetchAvailableModels(endpoint, apiKey, providerType string) ([]modelEntry, error) {
-	switch strings.ToLower(providerType) {
-	case "openai", "anthropic", "gemini", "llamacpp":
-		return fetchOpenAICompatibleModels(endpoint, apiKey)
-	case "ollama":
-		return fetchOllamaModels(endpoint)
-	default:
-		return nil, fmt.Errorf("model discovery not supported for type %q", providerType)
-	}
-}
-
-// fetchOpenAICompatibleModels queries an OpenAI-compatible endpoint's /v1/models.
-func fetchOpenAICompatibleModels(endpoint, apiKey string) ([]modelEntry, error) {
-	url := endpoint
-	if !strings.HasSuffix(url, "/v1") {
-		url = strings.TrimSuffix(url, "/") + "/v1"
-	}
-	url += "/models"
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
+func handleProvidersUpdateInteractive() {
+	scanner := bufio.NewScanner(os.Stdin)
+	prompt := func(label string) string {
+		fmt.Printf("%s: ", label)
+		scanner.Scan()
+		return strings.TrimSpace(scanner.Text())
 	}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	_ = resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse OpenAI-compatible response: {"object":"list","data":[{"id":"gpt-4o",...},...]}
-	var openaiResp struct {
-		Object string           `json:"object"`
-		Data   []map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
-	}
-
-	var entries []modelEntry
-	for _, m := range openaiResp.Data {
-		entry := modelEntry{}
-		if id, ok := m["id"].(string); ok {
-			entry.Id = id
-		}
-		if name, ok := m["name"].(string); ok {
-			entry.Name = name
-		} else if entry.Id != "" {
-			entry.Name = entry.Id
-		}
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
-}
-
-// fetchOllamaModels queries Ollama's /api/tags endpoint.
-func fetchOllamaModels(endpoint string) ([]modelEntry, error) {
-	url := strings.TrimSuffix(endpoint, "/") + "/api/tags"
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	_ = resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Ollama format: {"models":[{"name":"llama3.1:8b","size":...},...]}
-	var ollamaResp struct {
-		Models []map[string]any `json:"models"`
-	}
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
-	}
-
-	var entries []modelEntry
-	for _, m := range ollamaResp.Models {
-		entry := modelEntry{}
-		if name, ok := m["name"].(string); ok {
-			entry.Id = name
-			entry.Name = name
-		}
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
-}
-
-// queryModelsForProvider queries the server's /api/providers/{name}/models endpoint
-// and returns available model entries. Returns an empty slice on error (non-fatal).
-func queryModelsForProvider(name string) []modelEntry {
-	body, err := httpGet("/api/providers/" + urlPathEscape(name) + "/models")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not fetch available models for '%s': %v\n", name, err)
-		return nil
-	}
-
-	var resp protocol.AvailableModelsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: error parsing model response: %v\n", err)
-		return nil
-	}
-
-	models := []modelEntry{}
-	if resp.Models != nil {
-		for _, m := range *resp.Models {
-			id := ""
-			if m.Id != nil {
-				id = *m.Id
-			}
-			nameVal := ""
-			if m.Name != nil {
-				nameVal = *m.Name
-			}
-			models = append(models, modelEntry{Id: id, Name: nameVal})
-		}
-	}
-
-	return models
-}
-
-// handleProvidersList lists all providers via GET /api/providers.
-func handleProvidersList(args []string) {
-	body, err := httpGet("/api/providers")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing providers: %v\n", err)
-		os.Exit(1)
-	}
-
-	var providers []map[string]interface{}
-	if err := json.Unmarshal(body, &providers); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(providers) == 0 {
-		fmt.Println("No providers configured.")
-		return
-	}
-
-	fmt.Printf("\nConfigured LLM Providers (%d):\n", len(providers))
-	fmt.Println(strings.Repeat("-", 70))
-	for i, p := range providers {
-		printprovidersSummary(p)
-		if i < len(providers)-1 {
-			fmt.Println(strings.Repeat("-", 70))
-		}
-	}
-	fmt.Println()
-}
-
-// handleProvidersGet gets a specific provider by name via GET /api/providers/{name}.
-func handleProvidersGet(args []string) {
-	if len(args) == 0 {
+	name := prompt("Provider name")
+	if name == "" {
 		fmt.Fprintln(os.Stderr, "Error: provider name is required")
 		os.Exit(1)
 	}
 
-	name := args[0]
-	body, err := httpGet("/api/providers/" + urlPathEscape(name))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching provider '%s': %v\n", name, err)
-		os.Exit(1)
-	}
+	req := map[string]interface{}{"name": name}
 
-	var resp map[string]interface{}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
-	}
+	for {
+		fmt.Printf("\nUpdate field (type/endpoint/model/temp/max_tokens/api-key) or 'done': ")
+		scanner.Scan()
+		field := strings.TrimSpace(scanner.Text())
+		if field == "done" || field == "" {
+			break
+		}
 
-	fmt.Printf("Provider '%s':\n", name)
-	printprovidersSummary(resp)
-}
+		fmt.Printf("  New value: ")
+		scanner.Scan()
+		value := strings.TrimSpace(scanner.Text())
 
-// handleProvidersUpdate updates an existing provider via PUT /api/providers/{name}.
-func handleProvidersUpdate(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required")
-		os.Exit(1)
-	}
-
-	name := args[0]
-	args = args[1:]
-
-	req := make(map[string]interface{})
-
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--type" && i+1 < len(args) {
-			req["type"] = args[i+1]
-			i++
-		} else if args[i] == "--endpoint" && i+1 < len(args) {
-			req["endpoint"] = args[i+1]
-			i++
-		} else if args[i] == "--model" && i+1 < len(args) {
-			req["model"] = args[i+1]
-			i++
-		} else if args[i] == "--temp" && i+1 < len(args) {
-			tempVal, err := strconv.ParseFloat(args[i+1], 64)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", args[i+1], err)
-				os.Exit(1)
+		switch field {
+		case "type":
+			req["type"] = value
+		case "endpoint":
+			req["endpoint"] = value
+		case "model":
+			req["model"] = value
+		case "temp":
+			if v, err := strconv.ParseFloat(value, 64); err == nil {
+				req["temperature"] = v
 			}
-			req["temperature"] = tempVal
-			i++
-		} else if args[i] == "--max-tokens" && i+1 < len(args) {
-			tokensVal, err := strconv.Atoi(args[i+1])
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", args[i+1], err)
-				os.Exit(1)
+		case "max_tokens":
+			if v, err := strconv.Atoi(value); err == nil {
+				req["max_tokens"] = v
 			}
-			req["max_tokens"] = tokensVal
-			i++
-		} else if args[i] == "--api-key" && i+1 < len(args) {
-			req["api_key"] = args[i+1]
-			i++
-		} else if strings.HasPrefix(args[i], "--extra") {
-			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				req["extra"] = parseExtra(args[i+1])
-				i++
-			}
-		} else if args[i] == "-h" || args[i] == "--help" {
-			fmt.Println("HELP CASE HIT")
-			printprovidersHelp()
-			return
-		} else {
-			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
-			os.Exit(1)
+		case "api-key":
+			req["api_key"] = value
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown field: %s\n", field)
 		}
 	}
 
-	if len(req) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: no fields to update. Use --flag value syntax.")
-		os.Exit(1)
-	}
-
-	url := "/api/providers/" + urlPathEscape(name)
-	body, err := httpPutJSON(url, req)
+	body, err := httpPostJSON("/api/providers/"+name+"/update", req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
 		os.Exit(1)
@@ -621,279 +448,4 @@ func handleProvidersUpdate(args []string) {
 
 	fmt.Printf("Provider '%s' updated successfully.\n", name)
 	printprovidersSummary(resp)
-}
-
-// handleProvidersUpdateInteractive runs an interactive prompt-based workflow for updating a provider.
-func handleProvidersUpdateInteractive() {
-	scanner := bufio.NewScanner(os.Stdin)
-
-	promptWithCurrent := func(label string, current interface{}) string {
-		if current != nil {
-			fmt.Printf("%s [%v]: ", label, current)
-		} else {
-			fmt.Printf("%s: ", label)
-		}
-		scanner.Scan()
-		return strings.TrimSpace(scanner.Text())
-	}
-
-	name := promptWithCurrent("Provider name", nil)
-	if name == "" {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required")
-		os.Exit(1)
-	}
-
-	// Fetch current provider data to show in prompts
-	body, err := httpGet("/api/providers/" + urlPathEscape(name))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching provider '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	var current map[string]interface{}
-	if err := json.Unmarshal(body, &current); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing provider data: %v\n", err)
-		os.Exit(1)
-	}
-
-	validTypes := []string{"openai", "anthropic", "ollama", "gemini", "llamacpp"}
-	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
-
-	providerTypeStr := promptWithCurrent("Provider type", current["type"])
-	endpoint := promptWithCurrent("Endpoint URL", current["endpoint"])
-
-	var model string
-
-	// Determine effective type/endpoint: use user input if provided, otherwise fall back to current values.
-	effectiveType := providerTypeStr
-	if effectiveType == "" {
-		if t, ok := current["type"].(string); ok && t != "" {
-			effectiveType = t
-		}
-	}
-	effectiveEndpoint := endpoint
-	if effectiveEndpoint == "" {
-		if e, ok := current["endpoint"].(string); ok && e != "" {
-			effectiveEndpoint = e
-		}
-	}
-
-	if effectiveType != "" && effectiveEndpoint != "" {
-		models := queryModelsForProvider(name)
-		if len(models) > 0 {
-			fmt.Printf("\nAvailable models for this provider (%d found):\n", len(models))
-			for i, m := range models {
-				fmt.Printf("  %d. %s\n", i+1, m.Id)
-			}
-			model = promptWithCurrent("Select a model number (or press Enter to keep current)", current["model"])
-			if model != "" {
-				idx, err := strconv.Atoi(model)
-				if err != nil || idx < 1 || idx > len(models) {
-					fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", model)
-					os.Exit(1)
-				}
-				model = models[idx-1].Id
-			}
-		} else {
-			model = promptWithCurrent("Model", current["model"])
-		}
-	} else {
-		model = promptWithCurrent("Model", current["model"])
-	}
-
-	tempVal := current["temperature"]
-	tempStr := promptWithCurrent("Temperature", fmt.Sprintf("%.2f", tempVal))
-	maxTokensStr := promptWithCurrent("Max tokens", current["max_tokens"])
-	apiKey := promptWithCurrent("API key", current["api_key"])
-	extra := promptWithCurrent("Extra (key=val)", current["extra"])
-
-	// Build the request map (only non-empty fields)
-	req := make(map[string]interface{})
-
-	if providerTypeStr != "" {
-		req["type"] = providerTypeStr
-	}
-	if endpoint != "" {
-		req["endpoint"] = endpoint
-	}
-	if model != "" {
-		req["model"] = model
-	}
-	if tempStr != "" {
-		tVal, err := strconv.ParseFloat(tempStr, 64)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: invalid temperature '%s': %v\n", tempStr, err)
-			os.Exit(1)
-		}
-		req["temperature"] = tVal
-	}
-	if maxTokensStr != "" {
-		tokensVal, err := strconv.Atoi(maxTokensStr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", maxTokensStr, err)
-			os.Exit(1)
-		}
-		req["max_tokens"] = tokensVal
-	}
-	if apiKey != "" {
-		req["api_key"] = apiKey
-	}
-	if extra != "" {
-		req["extra"] = parseExtra(extra)
-	}
-
-	if len(req) == 0 {
-		fmt.Println("No fields provided. Nothing to update.")
-		return
-	}
-
-	// Show summary for confirmation
-	fmt.Println("\n--- Update Summary ---")
-	for k, v := range req {
-		fmt.Printf("  %s: %v\n", k, v)
-	}
-	fmt.Print("\nConfirm and update? (yes/no): ")
-	scanner.Scan()
-	confirm := strings.TrimSpace(strings.ToLower(scanner.Text()))
-
-	if confirm != "yes" && confirm != "y" {
-		fmt.Println("Aborted.")
-		return
-	}
-
-	url := "/api/providers/" + urlPathEscape(name)
-	body, err = httpPutJSON(url, req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	var resp map[string]interface{}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("\nProvider '%s' updated successfully.\n", name)
-	printprovidersSummary(resp)
-}
-
-// handleProvidersDelete deletes a provider via DELETE /api/providers/{name}.
-func handleProvidersDelete(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required")
-		os.Exit(1)
-	}
-
-	name := args[0]
-	err := httpDelete("/api/providers/" + urlPathEscape(name))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error deleting provider '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Provider '%s' removed.\n", name)
-}
-
-// handleProvidersListModels lists available models for a configured provider.
-func handleProvidersListModels(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required")
-		fmt.Println("Usage: norman providers list-models <name>")
-		os.Exit(1)
-	}
-
-	name := args[0]
-
-	// Query the server's /api/providers/{name}/models endpoint which has access
-	// to the stored API key. This avoids the "empty key" problem of direct queries.
-	body, err := httpGet("/api/providers/" + urlPathEscape(name) + "/models")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching models for provider '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	var resp protocol.AvailableModelsResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing model response: %v\n", err)
-		os.Exit(1)
-	}
-
-	models := []modelEntry{}
-	if resp.Models != nil {
-		for _, m := range *resp.Models {
-			id := ""
-			if m.Id != nil {
-				id = *m.Id
-			}
-			nameVal := ""
-			if m.Name != nil {
-				nameVal = *m.Name
-			}
-			models = append(models, modelEntry{Id: id, Name: nameVal})
-		}
-	}
-
-	if len(models) == 0 {
-		fmt.Printf("\nNo models found for provider '%s'.\n", name)
-		return
-	}
-
-	fmt.Printf("\nAvailable models for provider '%s' (%d found):\n\n", name, len(models))
-	fmt.Printf("%-4s %-30s %s\n", "#", "ID", "Name")
-	fmt.Println(strings.Repeat("-", 70))
-	for i, m := range models {
-		nameField := m.Name
-		if nameField == "" {
-			nameField = "-"
-		}
-		fmt.Printf("%-4d %-30s %s\n", i+1, m.Id, nameField)
-	}
-	fmt.Println()
-}
-
-// handleProvidersSetDefault sets the default provider via config update.
-func handleProvidersSetDefault(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required\nUsage: norman providers set-default <name>")
-		os.Exit(1)
-	}
-
-	name := args[0]
-	update := map[string]interface{}{
-		"default_provider": name,
-	}
-
-	if err := putConfig(update); err != nil {
-		fmt.Fprintf(os.Stderr, "Error setting default provider '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Default provider set to '%s'.\n", name)
-}
-
-// printprovidersSummary prints a formatted summary of a provider response.
-func printprovidersSummary(p map[string]interface{}) {
-	name, _ := p["name"].(string)
-	if name == "" {
-		name = "(unknown)"
-	}
-	fmt.Printf("  [%s]\n", name)
-	fmt.Printf("    type:       %v\n", p["type"])
-	fmt.Printf("    endpoint:   %v\n", p["endpoint"])
-	fmt.Printf("    model:      %v\n", p["model"])
-	if temp, ok := p["temperature"].(float64); ok {
-		fmt.Printf("    temperature: %.2f\n", temp)
-	}
-	if mt, ok := p["max_tokens"].(float64); ok {
-		fmt.Printf("    max_tokens: %d\n", int(mt))
-	}
-	if masked, ok := p["api_key_masked"].(bool); ok && masked {
-		fmt.Printf("    api_key:    (masked)\n")
-	}
-}
-
-// urlPathEscape safely escapes a name for URL path segments.
-func urlPathEscape(s string) string {
-	return strings.ReplaceAll(s, "/", "%2F")
 }

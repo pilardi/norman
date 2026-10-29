@@ -7,8 +7,23 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
+
+// serverURL returns the configured server URL (with fallback).
+func serverURL() string {
+	cfg, _, err := getConfig()
+	if err != nil || cfg == nil || cfg.ServerURL == "" {
+		return "http://127.0.0.1:8090"
+	}
+	return cfg.ServerURL
+}
+
+// logRequest logs a debug message when verbose mode is enabled.
+func logRequest(method, url string) {
+	fmt.Fprintf(os.Stderr, "[debug] %s %s\n", method, url)
+}
 
 // httpGet performs a GET request to the server and returns JSON bytes.
 func httpGet(path string) ([]byte, error) {
@@ -121,6 +136,8 @@ func httpDelete(path string) error {
 }
 
 // httpPutJSON performs a PUT request with JSON body and returns the response body.
+var _ = httpPutJSON
+
 func httpPutJSON(path string, body interface{}) ([]byte, error) {
 	url := serverURL() + path
 	if verbose {
