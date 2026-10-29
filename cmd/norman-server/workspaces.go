@@ -310,6 +310,11 @@ func (s *server) ArchiveWorkspace(c echo.Context, name string) error {
 		f.Close()
 	}
 
+	// Close the sandbox to free resources.
+	if err := s.workspaceManager.CloseSandbox(context.Background(), name); err != nil {
+		log.Printf("[server] Error closing sandbox for workspace %s: %v", name, err)
+	}
+
 	archived := protocol.WorkspaceStatusArchived
 	ws.Status = &archived
 	now := time.Now()
@@ -332,8 +337,12 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
 	}
 
-	// First stop (free sandbox) then delete
+	// Close sessions and delete the sandbox to free resources.
 	s.closeWorkspaceSessions(name)
+	if err := s.workspaceManager.CloseSandbox(context.Background(), name); err != nil {
+		log.Printf("[server] Error deleting sandbox for workspace %s: %v", name, err)
+	}
+
 	delete(s.workspaces, name)
 
 	if err := s.store.DeleteWorkspace(name); err != nil {

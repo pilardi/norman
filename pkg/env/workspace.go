@@ -209,6 +209,16 @@ func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 	m.definitions = make(map[string]*WorkspaceDefinition)
 }
 
+// CloseSandbox deletes the sandbox associated with a workspace by name.
+func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) error {
+	cleanName := strings.ReplaceAll(workspace, "-", "")
+	if len(cleanName) > 15 {
+		cleanName = cleanName[:15]
+	}
+	sandboxName := "ws-" + cleanName
+	return m.client.DeleteSandbox(ctx, defaultProvider, sandboxName)
+}
+
 // SetDefinition assigns a workspace definition to the manager's cache.
 func (m *WorkspaceManager) SetDefinition(workspace string, def *WorkspaceDefinition) {
 	if def != nil {
