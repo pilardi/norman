@@ -120,9 +120,6 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	e.POST("/api/workspaces/:name/restore", func(c echo.Context) error {
 		return srv.RestoreWorkspace(c, c.Param("name"))
 	})
-	e.POST("/api/workspaces/:name/archive", func(c echo.Context) error {
-		return srv.ArchiveWorkspace(c, c.Param("name"))
-	})
 	e.POST("/api/workspaces/:name/purge", func(c echo.Context) error {
 		var req protocol.PurgeRequest
 		if err := c.Bind(&req); err != nil {

@@ -61,7 +61,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [active, stopped, archived]
+            enum: [active, stopped]
           description: Filter results by lifecycle state
         - name: idle_since
           in: query
@@ -168,7 +168,7 @@ paths:
         "404":
           description: Workspace not found
         "409":
-          description: Workspace is already stopped or archived
+          description: Workspace is already stopped
 
   /api/workspaces/{name}/restore:
     post:
@@ -197,34 +197,6 @@ paths:
           description: Workspace not found
         "409":
           description: Workspace is already active
-
-  /api/workspaces/{name}/archive:
-    post:
-      tags: [workspace]
-      summary: Archive a workspace (immutable snapshot, free sandbox)
-      operationId: archiveWorkspace
-      parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ArchiveRequest"
-      responses:
-        "200":
-          description: Workspace archived successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Workspace"
-        "404":
-          description: Workspace not found
-        "409":
-          description: Workspace is already archived
 
   /api/workspaces/{name}/purge:
     delete:
@@ -1013,10 +985,10 @@ components:
           format: date-time
         status:
           type: string
-          enum: [active, stopped, archived]
+          enum: [active, stopped]
           description: >
             Lifecycle state of the workspace. "active" = running sandbox;
-            "stopped" = sandbox freed but data preserved; "archived" = immutable read-only snapshot.
+            "stopped" = sandbox freed but data preserved (via snapshot).
         last_used:
           type: string
           format: date-time
@@ -1039,14 +1011,6 @@ components:
           type: boolean
           default: true
           description: Whether to recreate the OpenShell sandbox on restore
-
-    ArchiveRequest:
-      type: object
-      properties:
-        snapshot_wiki:
-          type: boolean
-          default: true
-          description: Whether to create a markdown/JSON snapshot of wiki entries before archiving
 
     PurgeRequest:
       type: object

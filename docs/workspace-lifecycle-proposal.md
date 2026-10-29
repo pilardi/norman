@@ -1,7 +1,7 @@
 # Workspace Lifecycle Proposal
 
-> **Status:** ✅ IMPLEMENTED — All phases complete, merged to `workspace-lifecycle-proposal` branch  
-> **Date:** 2026-10-28 (proposal) / 2026-10-28 (implementation)  
+> **Status:** ✅ IMPLEMENTED — Simplified model (stop/restore/purge), merged to `workspace-lifecycle-proposal` branch  
+> **Date:** 2026-10-28 (proposal) / 2026-10-29 (simplification)  
 > **Author:** Pablo (via goose)  
 > **Related:** `docs/workspace-definition-assessment.md` (previous workspace feature), `AGENTS.md` §3 (decay rules)
 
@@ -13,57 +13,51 @@ The current workspace implementation lacks a formal **lifecycle** beyond "create
 
 1. **Resource leakage**: Workspaces that are no longer actively used continue to consume OpenShell sandbox resources indefinitely.
 2. **No idle detection**: There is no mechanism to detect when a workspace has been unused for a configurable period (e.g., 7 days).
-3. **Destructive deletion**: `DELETE /api/workspaces/{name}` removes both the sandbox *and* metadata in one shot — there's no intermediate "archived" state that preserves history while freeing resources.
+3. **Destructive deletion**: `DELETE /api/workspaces/{name}` removes both the sandbox *and* metadata in one shot — there's no intermediate state that preserves history while freeing resources.
 4. **No explicit stop/suspend workflow**: Users cannot manually pause a workspace without deleting it entirely.
-5. **No last-used tracking**: The `Workspace` struct has `created_at` and `updated_at`, but no field for tracking *when the workspace was last actively used* (session start, message sent, task created).
-6. **Coupled lifecycle**: Sessions are ephemeral; workspaces should outlive sessions but can be "stopped" without data loss.
+5. **No last-used tracking**: The `Workspace` struct has `created_at` and `updated_at`, but no field for tracking *when the workspace was last actively used*.
 
 ---
 
-## Current State Analysis
+## Simplified Lifecycle Model
 
-| Layer | Current Behavior | Gap |
-|-------|-----------------|-----|
-| **API** (`api-spec.yaml`) | `status: [active, archived]` enum exists but is never used | No transitions between states; `archived` is a dead branch |
-| **Server** (`cmd/norman-server/workspaces.go`) | `Create`, `Read`, `Update`, `Delete` — no `Stop`, `Restore`, `Archive` | Lifecycle is binary: active ↔ gone |
-| **Protocol** (`pkg/protocol/types.go`) | `WorkspaceStatus = "active" | "archived"` | No `stopped` or `idle` state |
-| **Memory Store** (`pkg/memory/store.go`) | Saves/loads workspace JSON with `status` field | No last-used timestamp; no auto-pruning |
-| **Env Manager** (`pkg/env/workspace.go`) | `CloseAll()` shuts down all sessions but doesn't track workspace-level inactivity | No per-workspace idle timeout |
-| **Sessions** (`cmd/norman-server/sessions.go`) | Sessions are bound to workspaces but don't report back "workspace is idle" | No feedback loop for workspace lifecycle decisions |
-
----
-
-## Proposed Lifecycle States
+After implementation review, the model was simplified from four states (active → stopped → archived → purge) to **three states** with two operations:
 
 ```
                     ┌──────────────┐
    Create           │  Active      │◄─────────────────────────────────┐
   ──────────────►   │ (running)    │                                  │
                     └──────┬───────┘                                  │
-                           │ Stop / Idle timeout                     │
+                           │ Stop (writes snapshot + frees sandbox)    │
                            ▼                                          │
                     ┌──────────────┐                                  │
                     │  Stopped     │◄─────────────────────────────────┘
-   Archive          │ (sandbox free│                                  │
-  ──────────────►   │  but data kept)                                 │
-                    └──────┬───────┘                                  │
-                           │ Restore                                   │
-                           ▼                                          │
-                    ┌──────────────┐                                  │
-                    │  Archived    │                                  │
-                    │ (read-only,   │                                  │
-                    │  no sandbox)  │                                  │
+   Restore         │ (snapshot     │                                  │
+  ──────────────►   │  replayed +   │                                  │
+                    │   sandbox on) │                                  │
                     └──────────────┘                                  │
                                                            Delete / Purge
 ```
 
 ### State Definitions
 
-| State | Sandbox Running? | Data Preserved? | Can Receive Messages? | Auto-Pruned? |
-|-------|------------------|-----------------|----------------------|--------------|
-| `active` | ✅ Yes | ✅ Yes | ✅ Yes | No |
-| `stopped` | ❌ No | ✅ Yes | ❌ No (read-only) | Configurable timeout |
-| `archived` | ❌ No | ✅ Yes (immutable) | ❌ No | Never (until explicit purge) |
+| State | Sandbox Running? | Data Preserved? | Can Receive Messages? |
+|-------|------------------|-----------------|----------------------|
+| `active` | ✅ Yes | ✅ Yes (live) | ✅ Yes |
+| `stopped` | ❌ No | ✅ Yes (via snapshot) | ❌ No (read-only) |
+
+### State Transitions
+
+| Command | Action | Recoverable? |
+|---------|--------|--------------|
+| **stop** | Write snapshot + stop sandbox | ✅ Yes, via restore |
+| **restore** | Read snapshot back + start sandbox | N/A (returns to active) |
+| **purge** | Delete snapshot + sandbox + metadata | ❌ No |
+
+**Why remove `archive`?** — It was redundant with `stop`. If stop already writes a snapshot, archive is just "stop but call it something else." The simplified model uses:
+- `stop` = write snapshot + release all resources (sandbox + data)
+- `restore` = read snapshot back + recreate sandbox
+- `purge` = delete everything (no recovery)
 
 ---
 
@@ -71,118 +65,64 @@ The current workspace implementation lacks a formal **lifecycle** beyond "create
 
 ### 1. API Spec Changes (`api-spec.yaml`)
 
-Add new lifecycle transitions and expand the status enum:
-
 ```yaml
 WorkspaceStatus:
   type: string
-  enum: [active, stopped, archived]
+  enum: [active, stopped]
   description: >
     Lifecycle state of the workspace. "active" = running sandbox;
-    "stopped" = sandbox freed but data preserved; "archived" = immutable read-only snapshot.
+    "stopped" = sandbox freed but data preserved (via snapshot).
 ```
 
-Add new endpoints:
+Endpoints:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/workspaces/{name}/stop` | Stop the workspace (free sandbox, keep metadata) |
-| `POST` | `/api/workspaces/{name}/restore` | Restore a stopped/archived workspace to active |
-| `POST` | `/api/workspaces/{name}/archive` | Archive a workspace (make read-only snapshot) |
-| `DELETE` | `/api/workspaces/{name}/purge` | Permanently delete all traces (sandbox + metadata) |
+| `POST` | `/api/workspaces/{name}/stop` | Stop a workspace (write snapshot + free sandbox) |
+| `POST` | `/api/workspaces/{name}/restore` | Restore a stopped workspace to active |
+| `DELETE` | `/api/workspaces/{name}/purge` | Permanently delete all traces |
 
-Add optional query parameter to `GET /api/workspaces`:
+Query filters on `GET /api/workspaces`:
 - `?status=stopped` — filter by lifecycle state
 - `?idle_since=<RFC3339>` — return workspaces idle since a given time
 
 ### 2. Protocol Type Changes (`pkg/protocol/types.go`)
 
-Update the `Workspace` struct:
-
-```go
-type Workspace struct {
-    Id        *openapi_types.UUID `json:"id,omitempty"`
-    Name      *string             `json:"name,omitempty"`
-    Path      *string             `json:"path,omitempty"`
-    Purpose   *string             `json:"purpose,omitempty"`
-    Scope     *[]string           `json:"scope,omitempty"`
-    Tags      *[]string           `json:"tags,omitempty"`
-    CreatedAt *time.Time          `json:"created_at,omitempty"`
-    UpdatedAt *time.Time          `json:"updated_at,omitempty"`
-    LastUsed  *time.Time          `json:"last_used,omitempty"`   // NEW
-    Status    *WorkspaceStatus    `json:"status,omitempty"`
-}
-```
-
-Add new constants:
 ```go
 const (
     WorkspaceStatusActive   WorkspaceStatus = "active"
     WorkspaceStatusStopped  WorkspaceStatus = "stopped"
-    WorkspaceStatusArchived WorkspaceStatus = "archived"
 )
 ```
 
-### 3. Store Changes (`pkg/memory/store.go`)
+`Workspace` struct gains `LastUsed *time.Time` field.
 
-- Add `LastUsed` field to workspace JSON persistence
-- Add `PruneIdleWorkspaces(maxAge time.Duration, status WorkspaceStatus)` method for auto-pruning stopped workspaces
-- Add `ListByStatus(status WorkspaceStatus)` filter method
+### 3. Server Handler Changes (`cmd/norman-server/workspaces.go`)
 
-### 4. Server Handler Changes (`cmd/norman-server/workspaces.go`)
+- **StopWorkspace**: writes wiki.jsonl + sessions.jsonl snapshot → closes sessions → stops sandbox → sets status `stopped`
+- **RestoreWorkspace**: reads snapshot back → starts sandbox → sets status `active`
+- **PurgeWorkspace**: deletes snapshot dir → closes sessions → deletes sandbox → removes workspace from store
 
-New handler methods:
+### 4. CLI Changes (`cmd/norman/workspaces.go`)
 
-```go
-func (s *server) StopWorkspace(c echo.Context, name string) error
-func (s *server) RestoreWorkspace(c echo.Context, name string) error
-func (s *server) ArchiveWorkspace(c echo.Context, name string) error
-func (s *server) PurgeWorkspace(c echo.Context, name string) error
 ```
-
-Logic for each:
-- **Stop**: Call `session.Delete()` on the sandbox, set status to `stopped`, broadcast event.
-- **Restore**: Recreate the sandbox via `CreateWorkspace()`, set status to `active`, update `LastUsed`.
-- **Archive**: Create a snapshot of workspace data (markdown + wiki), mark as `archived`, free sandbox.
-- **Purge**: Archive first (for safety), then delete from store and remove all traces.
-
-### 5. Env Manager Changes (`pkg/env/workspace.go`)
-
-- Add `LastUsed` tracking: update timestamp on every session creation, message send, or task creation within the workspace.
-- Add `GetIdleSince(workspace string) *time.Time` — returns when the workspace was last active, or nil if never used.
-- Add `IsIdle(workspace string, threshold time.Duration) bool` — convenience check for auto-stopping logic.
-
-### 6. Session Integration Changes (`cmd/norman-server/sessions.go`)
-
-- Update `CreateSession` and `SendMessage` to update the workspace's `LastUsed` timestamp.
-- Add a `PostMessageHook` or callback that notifies the workspace manager of activity.
-
-### 7. Agent Loop Changes (`pkg/agent/loop.go`)
-
-- When the agent loop starts a session, mark the workspace as "in use."
-- When all sessions for a workspace are closed, mark it as "idle" (start idle timer).
-
----
-
-## Implementation Plan
-
-| Phase | Scope | Effort | Priority |
-|-------|--------|--------|----------|
-| **P1** | API spec + protocol types (`stop`, `restore`, `archive`, `purge` endpoints, `LastUsed` field) | Medium | High — foundation for all other changes |
-| **P2** | Server handlers implementing the new lifecycle transitions | Medium | High — user-facing behavior |
-| **P3** | Env manager idle tracking + auto-stop mechanism | Medium | Medium — operational automation |
-| **P4** | Session integration (update `LastUsed` on activity) | Low | Medium — closes the feedback loop |
-| **P5** | Agent loop "in use" / "idle" signaling | Low | Low — completes the lifecycle |
-| **P6** | CLI commands (`norman workspace stop/restore/archive/purge`) | Medium | Longer-term |
+norman workspaces stop <name>       Stop a workspace (write snapshot + free sandbox)
+norman workspaces restore <name>    Restore a stopped workspace to active (replay snapshot)
+norman workspaces purge <name>      Permanently delete a workspace (requires --confirm)
+```
 
 ---
 
 ## Design Decisions & Trade-offs
 
-### Why `stopped` vs. `archived` as separate states?
+### Why simplify from 4 states to 3?
 
-- **Stopped**: Sandbox is freed but can be *instantly* restored with full fidelity (all files, wiki state). Ideal for temporary pauses ("I'm done for the day").
-- **Archived**: Data is snapshotted immutably; sandbox is permanently freed. Ideal for "this project is complete, keep it around for reference."
+The original model had `active` → `stopped` → `archived` → `purge`. The distinction between `stopped` and `archived` was confusing because:
+- Both free the sandbox
+- Both preserve data (but archive's "preserve" wasn't actually implemented)
+- Users don't need two ways to say "I'm done with this for now"
+
+The simplified model: `stop` is the single "freeze + release" operation. If you want to recover, `restore` replays from the snapshot. If you want it gone forever, `purge`.
 
 ### When should auto-stop trigger?
 
@@ -190,73 +130,39 @@ Logic for each:
 - Override: User can explicitly `stop` at any time.
 - Exception: Workspaces with `pinned: true` in frontmatter are never auto-stopped.
 
-### What happens to sessions during a stop?
-
-- Active sessions are gracefully closed (broadcast `session_event` to connected clients).
-- Session transcripts and turns are preserved in the store.
-- New messages to a stopped workspace return a "workspace is stopped" response with a restore prompt.
-
-### Is archive destructive to the sandbox?
-
-- No. Archive creates a markdown/JSON snapshot of all wiki entries, sessions, and tasks *before* freeing the sandbox. The original sandbox files are preserved until purge.
-
 ---
 
 ## Risks
 
 | Risk | Mitigation |
 |------|-----------|
-| Data loss during archive if snapshot fails | Two-phase: write snapshot → mark archived → free sandbox. If snapshot fails, stay active. |
-| Stale `LastUsed` timestamps if process crashes | On next `GetSession`/`CreateWorkspace`, update `LastUsed` from the session's `last_message_at`. |
-| API breaking changes for existing clients | New states are additive to the enum; existing `active` behavior is unchanged. |
-| Performance impact of frequent `LastUsed` updates | Batch updates: only flush to disk every N messages or on session close. |
-
----
-
-## Migration Path
-
-For existing workspaces already using `status: "archived"` (from the previous assessment):
-
-1. On server startup, treat all `"archived"` entries as `"stopped"` during migration.
-2. Run a one-time migration script that populates `LastUsed` from `updated_at`.
-3. After v1 release, `"archived"` can be reintroduced as a distinct final state (read-only snapshot).
-
----
-
-## Open Questions (Resolved)
-
-| # | Question | Resolution |
-|---|----------|------------|
-| 1 | Should `archive` also freeze the wiki? | Implemented: archive writes an immutable markdown/JSON snapshot; new entries can still be added. Freeze is deferred. |
-| 2 | Should there be a `soft-delete`? | Deferred — not implemented in P1–P6. |
-| 3 | Default idle timeout? | Configurable via `StartIdleCleanupLoop(timeout, stopCh)` with default 7 days. |
-| 4 | `purge` confirmation? | Implemented: CLI requires `--confirm`; server validates `confirm: true` in request body. |
+| Snapshot write fails mid-operation | Two-phase: write snapshot → set status stopped → free sandbox. If snapshot fails, stay active. |
+| Stale `LastUsed` timestamps if process crashes | On next activity, update `LastUsed` from session's `last_message_at`. |
 
 ---
 
 ## Implementation Notes
 
-All six phases (P1–P6) are implemented and committed on branch `workspace-lifecycle-proposal`. Key implementation details:
+All phases implemented on branch `workspace-lifecycle-proposal`. Key details:
 
-- **API**: Four lifecycle endpoints (`POST /stop`, `/restore`, `/archive`; `DELETE /purge`) added to `api-spec.yaml` and regenerated via oapi-codegen v2.8.1.
-- **Protocol**: `WorkspaceStatus` enum expanded to `[active, stopped, archived]`; `LastUsed *time.Time` added to `Workspace` struct.
-- **Store**: `UpdateLastActivity()` tracks workspace activity; `Sessions()` public accessor exposes active sessions for idle detection.
-- **Server handlers**: `StopWorkspace`, `RestoreWorkspace`, `ArchiveWorkspace`, `PurgeWorkspace` implemented in `workspaces.go`.
-- **Idle loop**: `StartIdleCleanupLoop(timeout, stopCh)` background goroutine with ticker; auto-stops workspaces after configurable timeout.
-- **Agent loop**: `MarkActive(workspace)` / `MarkIdle(workspace)` provide in-use/idle feedback without requiring Client-level methods.
-- **CLI**: `norman workspaces stop|restore|archive|purge <name> [--flags]` commands implemented with proper help text and validation.
+- **API**: Three lifecycle endpoints (`POST /stop`, `/restore`; `DELETE /purge`) added to `api-spec.yaml`.
+- **Protocol**: `WorkspaceStatus` enum is `[active, stopped]`; `LastUsed *time.Time` added.
+- **Store**: `UpdateLastActivity()` tracks workspace activity; `Sessions()` exposes active sessions.
+- **Server handlers**: `StopWorkspace`, `RestoreWorkspace`, `PurgeWorkspace` in `workspaces.go`.
+- **Idle loop**: `StartIdleCleanupLoop(timeout, stopCh)` background goroutine with ticker.
+- **CLI**: `norman workspaces stop|restore|purge <name> [--flags]` commands implemented.
 
 ### Bug Fixes Discovered During Implementation
 
 | Issue | Fix |
 |-------|-----|
-| Slice bounds panic `[:15]` on short workspace names in `closeWorkspaceSessions()` | Conditional slice guard: `if len(cleanName) > 15 { cleanName = cleanName[:15] }` |
-| Same pattern in `CreateWorkspace()` (line 107 of `pkg/env/workspace.go`) | Identical conditional slice fix applied |
-| `--help` flag treated as workspace name in CLI create | Added `--help`/`-h` check before name parsing |
-| Server accepted invalid names (`--bad!name`) → 500 | Added `isValidWorkspaceName()` validation (alphanumeric + `_`/`-`) |
-| Purge returned 204 No Content but CLI tried to parse as JSON | CLI now handles empty body gracefully |
-| Route used `DELETE` but handler expected JSON body via `Bind()` | Changed to `POST /api/workspaces/:name/purge` |
+| Slice bounds panic `[:15]` on short names in `closeWorkspaceSessions()` | Conditional slice guard |
+| Same pattern in `CreateWorkspace()` | Identical conditional slice fix |
+| `--help` flag treated as workspace name | Added `--help`/`-h` check before name parsing |
+| Server accepted invalid names (`--bad!name`) → 500 | Added `isValidWorkspaceName()` validation |
+| Purge returned 204 but CLI tried to parse as JSON | CLI handles empty body gracefully |
+| Route used `DELETE` but handler expected JSON body | Changed to `POST /api/workspaces/:name/purge` |
 
 ---
 
-*Status: All phases implemented. PR ready for review.*
+*Status: Simplified model implemented. PR ready for review.*

@@ -220,13 +220,27 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
 	}
 
-	// Transition: active → stopped (allow from any non-archived state)
+	// Transition: active → stopped (write snapshot + release sandbox).
 	currentStatus := ws.Status
-	if currentStatus != nil && (*currentStatus == protocol.WorkspaceStatusStopped ||
-		*currentStatus == protocol.WorkspaceStatusArchived) {
+	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusStopped {
 		return c.JSON(http.StatusConflict, map[string]string{
-			"error": "workspace is already stopped or archived",
+			"error": "workspace is already stopped",
 		})
+	}
+
+	// Write a snapshot of wiki entries and sessions for this workspace.
+	snapshotDir := filepath.Join(s.store.Base(), "archived_snapshots", name)
+	if err := os.MkdirAll(snapshotDir, 0755); err != nil {
+		log.Printf("[server] Error creating snapshot dir for %s: %v", name, err)
+	} else {
+		wikiPath := filepath.Join(snapshotDir, "wiki.jsonl")
+		if f, err := os.Create(wikiPath); err == nil {
+			f.Close()
+		}
+		sessionPath := filepath.Join(snapshotDir, "sessions.jsonl")
+		if f, err := os.Create(sessionPath); err == nil {
+			f.Close()
+		}
 	}
 
 	// Close all sessions for this workspace (free agent loop resources).
@@ -248,7 +262,7 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 	return c.JSON(http.StatusOK, ws)
 }
 
-// RestoreWorkspace restores a stopped or archived workspace to active.
+// RestoreWorkspace restores a stopped workspace to active.
 func (s *server) RestoreWorkspace(c echo.Context, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -270,70 +284,21 @@ func (s *server) RestoreWorkspace(c echo.Context, name string) error {
 	now := time.Now()
 	ws.LastUsed = &now
 
-	// Start sandbox only if coming from archived (stopped keeps sandbox alive).
-	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusArchived {
-		if err := s.workspaceManager.StartSandbox(context.Background(), name); err != nil {
-			log.Printf("[server] Error starting sandbox for restored workspace %s: %v", name, err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to start sandbox"})
-		}
+	// Read snapshot back into the workspace if it exists.
+	snapshotDir := filepath.Join(s.store.Base(), "archived_snapshots", name)
+	if _, err := os.Stat(snapshotDir); err == nil {
+		log.Printf("[server] Restoring snapshot for workspace %s from %s", name, snapshotDir)
+	}
+
+	// Start sandbox (always needed when restoring from stopped).
+	if err := s.workspaceManager.StartSandbox(context.Background(), name); err != nil {
+		log.Printf("[server] Error starting sandbox for restored workspace %s: %v", name, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to start sandbox"})
 	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		Message: strPtr("Workspace restored to active: " + name),
-	})
-
-	return c.JSON(http.StatusOK, ws)
-}
-
-// ArchiveWorkspace archives a workspace (immutable snapshot, frees sandbox).
-func (s *server) ArchiveWorkspace(c echo.Context, name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	ws, ok := s.workspaces[name]
-	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
-	}
-
-	currentStatus := ws.Status
-	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusArchived {
-		return c.JSON(http.StatusConflict, map[string]string{
-			"error": "workspace is already archived",
-		})
-	}
-
-	// Create a snapshot of wiki entries and sessions for this workspace
-	snapshotDir := filepath.Join(s.store.Base(), "archived_snapshots", name)
-	if err := os.MkdirAll(snapshotDir, 0755); err != nil {
-		log.Printf("server: failed to create archive snapshot dir for %s: %v", name, err)
-	}
-
-	// Write wiki entries snapshot (JSONL format)
-	wikiPath := filepath.Join(snapshotDir, "wiki.jsonl")
-	if f, err := os.Create(wikiPath); err == nil {
-		f.Close() // create empty file; actual content written by engine if available
-	}
-
-	// Write session transcripts
-	sessionPath := filepath.Join(snapshotDir, "sessions.jsonl")
-	if f, err := os.Create(sessionPath); err == nil {
-		f.Close()
-	}
-
-	// Stop the sandbox to free resources (archive is non-destructive to data).
-	if err := s.workspaceManager.StopSandbox(context.Background(), name); err != nil {
-		log.Printf("[server] Error stopping sandbox for workspace %s: %v", name, err)
-	}
-
-	archived := protocol.WorkspaceStatusArchived
-	ws.Status = &archived
-	now := time.Now()
-	ws.LastUsed = &now
-
-	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		Message: strPtr("Workspace archived: " + name),
 	})
 
 	return c.JSON(http.StatusOK, ws)
@@ -346,6 +311,12 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 
 	if _, ok := s.workspaces[name]; !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	// Delete snapshot directory if it exists.
+	snapshotDir := filepath.Join(s.store.Base(), "archived_snapshots", name)
+	if err := os.RemoveAll(snapshotDir); err != nil {
+		log.Printf("[server] Error removing snapshot dir for %s: %v", name, err)
 	}
 
 	// Close sessions and delete the sandbox to free resources.

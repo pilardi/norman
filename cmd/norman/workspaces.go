@@ -24,8 +24,6 @@ func handleWorkspaces(args []string) {
 		handleWorkspaceStop(args[1:])
 	case "restore":
 		handleWorkspaceRestore(args[1:])
-	case "archive":
-		handleWorkspaceArchive(args[1:])
 	case "purge":
 		handleWorkspacePurge(args[1:])
 	case "--help", "-h":
@@ -45,9 +43,8 @@ Usage: norman workspaces <subcommand> [args...]
 Subcommands:
   create <name>       Create a new workspace directory
   list                List available workspaces and their sessions
-  stop <name>         Stop a workspace (free sandbox, keep data)
-  restore <name>      Restore a stopped/archived workspace to active
-  archive <name>      Archive a workspace (immutable snapshot, free sandbox)
+  stop <name>         Stop a workspace (write snapshot + free sandbox)
+  restore <name>      Restore a stopped workspace to active (replay snapshot)
   purge <name>        Permanently delete a workspace (requires --confirm)`)
 }
 
@@ -155,7 +152,7 @@ func handleWorkspaceStop(args []string) {
 	fmt.Printf("Workspace '%s' stopped successfully (status=%s)\n", name, status)
 }
 
-// handleWorkspaceRestore restores a stopped/archived workspace to active.
+// handleWorkspaceRestore restores a stopped workspace to active.
 func handleWorkspaceRestore(args []string) {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
 		fmt.Fprintln(os.Stderr, "Error: 'restore' requires a workspace name argument")
@@ -191,44 +188,6 @@ func handleWorkspaceRestore(args []string) {
 
 	status, _ := ws["status"].(string)
 	fmt.Printf("Workspace '%s' restored to active (status=%s)\n", name, status)
-}
-
-// handleWorkspaceArchive archives a workspace (immutable snapshot, frees sandbox).
-func handleWorkspaceArchive(args []string) {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "Error: 'archive' requires a workspace name argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman workspaces archive <name> [--no-snapshot]")
-		os.Exit(1)
-	}
-
-	name := args[0]
-	snapshotWiki := true
-
-	// Parse optional --no-snapshot flag (default is true)
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--no-snapshot" {
-			snapshotWiki = false
-		}
-	}
-
-	reqBody := map[string]interface{}{
-		"snapshot_wiki": snapshotWiki,
-	}
-
-	body, err := httpPostJSON("/api/workspaces/"+name+"/archive", reqBody)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error archiving workspace '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	var ws map[string]interface{}
-	if err := json.Unmarshal(body, &ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
-	}
-
-	status, _ := ws["status"].(string)
-	fmt.Printf("Workspace '%s' archived successfully (status=%s)\n", name, status)
 }
 
 // handleWorkspacePurge permanently deletes a workspace.

@@ -69,8 +69,7 @@ Commands:
   workspaces create <name>   Create a new workspace directory
   workspaces list            List available workspaces and their sessions
   workspaces stop <name>     Stop a workspace (free sandbox, keep data)
-  workspaces restore <name>  Restore a stopped/archived workspace to active
-  workspaces archive <name>  Archive a workspace (immutable snapshot, free sandbox)
+  workspaces restore <name>  Restore a stopped workspace to active (replay snapshot)
   workspaces purge <name>    Permanently delete a workspace (requires --confirm)
   skills list                List installed skills
   skills install <id>        Install a skill from registry
