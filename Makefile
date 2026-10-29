@@ -9,7 +9,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build test test-race test-short clean generate-docs generate-docs-html
+.PHONY: help generate build rebuild test test-race test-short clean generate-docs generate-docs-html
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -21,6 +21,7 @@ help:
 	@echo "  help        - Show this help message"
 	@echo "  generate    - Generate protocol types, client library, and server handlers from api-spec.yaml"
 	@echo "  build       - Run generate + compile all packages (binaries in $(DIST)/)"
+	@echo "  rebuild     - Clean + regenerate + build (safe sequential rebuild)"
 	@echo "  test        - Run all unit tests with coverage report"
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short  - Run short tests only (skip slow/integration)"
@@ -45,6 +46,10 @@ build: generate
 	go build -o $(DIST)/norman ./cmd/norman
 	go build -o $(DIST)/norman-server ./cmd/norman-server
 	go build -o $(DIST)/roger ./cmd/roger
+
+rebuild:
+	@$(MAKE) clean
+	@$(MAKE) build
 
 test:
 	@echo "Running all tests with coverage..."
