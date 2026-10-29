@@ -219,6 +219,26 @@ func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) e
 	return m.client.DeleteSandbox(ctx, defaultProvider, sandboxName)
 }
 
+// StopSandbox stops a running sandbox (preserves it for later start).
+func (m *WorkspaceManager) StopSandbox(ctx context.Context, workspace string) error {
+	cleanName := strings.ReplaceAll(workspace, "-", "")
+	if len(cleanName) > 15 {
+		cleanName = cleanName[:15]
+	}
+	sandboxName := "ws-" + cleanName
+	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
+}
+
+// StartSandbox starts a stopped sandbox. Returns error if sandbox doesn't exist.
+func (m *WorkspaceManager) StartSandbox(ctx context.Context, workspace string) error {
+	cleanName := strings.ReplaceAll(workspace, "-", "")
+	if len(cleanName) > 15 {
+		cleanName = cleanName[:15]
+	}
+	sandboxName := "ws-" + cleanName
+	return m.client.StartSandbox(ctx, defaultProvider, sandboxName)
+}
+
 // SetDefinition assigns a workspace definition to the manager's cache.
 func (m *WorkspaceManager) SetDefinition(workspace string, def *WorkspaceDefinition) {
 	if def != nil {

@@ -231,6 +231,9 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 
 	// Close all sessions for this workspace (free agent loop resources).
 	s.closeWorkspaceSessions(name)
+	if err := s.workspaceManager.StopSandbox(context.Background(), name); err != nil {
+		log.Printf("[server] Error stopping sandbox for workspace %s: %v", name, err)
+	}
 
 	stopped := protocol.WorkspaceStatusStopped
 	ws.Status = &stopped
@@ -267,10 +270,11 @@ func (s *server) RestoreWorkspace(c echo.Context, name string) error {
 	now := time.Now()
 	ws.LastUsed = &now
 
-	// Recreate sandbox only if coming from archived (stopped keeps sandbox alive).
+	// Start sandbox only if coming from archived (stopped keeps sandbox alive).
 	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusArchived {
-		if _, err := s.workspaceManager.CreateWorkspace(context.Background(), name, ""); err != nil {
-			log.Printf("[server] Error creating sandbox for restored workspace %s: %v", name, err)
+		if err := s.workspaceManager.StartSandbox(context.Background(), name); err != nil {
+			log.Printf("[server] Error starting sandbox for restored workspace %s: %v", name, err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to start sandbox"})
 		}
 	}
 
@@ -317,9 +321,9 @@ func (s *server) ArchiveWorkspace(c echo.Context, name string) error {
 		f.Close()
 	}
 
-	// Close the sandbox to free resources.
-	if err := s.workspaceManager.CloseSandbox(context.Background(), name); err != nil {
-		log.Printf("[server] Error closing sandbox for workspace %s: %v", name, err)
+	// Stop the sandbox to free resources (archive is non-destructive to data).
+	if err := s.workspaceManager.StopSandbox(context.Background(), name); err != nil {
+		log.Printf("[server] Error stopping sandbox for workspace %s: %v", name, err)
 	}
 
 	archived := protocol.WorkspaceStatusArchived
