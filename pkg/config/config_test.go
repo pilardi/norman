@@ -138,7 +138,6 @@ func TestDefaultHost(t *testing.T) {
 
 func TestEnvVarPortOverride(t *testing.T) {
 	_ = os.Setenv("NORMAN_PORT", "9090")
-	_ = os.Unsetenv("NORMAN_PORT")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -151,7 +150,6 @@ func TestEnvVarPortOverride(t *testing.T) {
 
 func TestEnvVarHostOverride(t *testing.T) {
 	_ = os.Setenv("NORMAN_HOST", "0.0.0.0")
-	_ = os.Unsetenv("NORMAN_HOST")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -164,7 +162,6 @@ func TestEnvVarHostOverride(t *testing.T) {
 
 func TestEnvVarServerURLOverride(t *testing.T) {
 	_ = os.Setenv("NORMAN_SERVER_URL", "https://norman.example.com")
-	_ = os.Unsetenv("NORMAN_SERVER_URL")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -177,7 +174,7 @@ func TestEnvVarServerURLOverride(t *testing.T) {
 
 func TestEnvVarVerboseOverride(t *testing.T) {
 	_ = os.Setenv("NORMAN_VERBOSE", "true")
-	_ = os.Unsetenv("NORMAN_VERBOSE")
+	defer func() { _ = os.Unsetenv("NORMAN_VERBOSE") }()
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -190,7 +187,7 @@ func TestEnvVarVerboseOverride(t *testing.T) {
 
 func TestEnvVarVerboseFalse(t *testing.T) {
 	_ = os.Setenv("NORMAN_VERBOSE", "false")
-	_ = os.Unsetenv("NORMAN_VERBOSE")
+	defer func() { _ = os.Unsetenv("NORMAN_VERBOSE") }()
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -203,7 +200,7 @@ func TestEnvVarVerboseFalse(t *testing.T) {
 
 func TestEnvVarBaseDirOverride(t *testing.T) {
 	_ = os.Setenv("NORMAN_BASE_DIR", "/custom/workspaces")
-	_ = os.Unsetenv("NORMAN_BASE_DIR")
+	defer func() { _ = os.Unsetenv("NORMAN_BASE_DIR") }()
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
@@ -216,7 +213,7 @@ func TestEnvVarBaseDirOverride(t *testing.T) {
 
 func TestEnvVarInvalidPort(t *testing.T) {
 	_ = os.Setenv("NORMAN_PORT", "not-a-number")
-	_ = os.Unsetenv("NORMAN_PORT")
+	defer func() { _ = os.Unsetenv("NORMAN_PORT") }()
 
 	cfg := DefaultConfig()
 	err := ApplyEnvOverrides(cfg.System)
@@ -230,7 +227,7 @@ func TestEnvVarInvalidPort(t *testing.T) {
 
 func TestEnvVarInvalidVerbose(t *testing.T) {
 	_ = os.Setenv("NORMAN_VERBOSE", "maybe")
-	_ = os.Unsetenv("NORMAN_VERBOSE")
+	defer func() { _ = os.Unsetenv("NORMAN_VERBOSE") }()
 
 	cfg := DefaultConfig()
 	err := ApplyEnvOverrides(cfg.System)
@@ -278,12 +275,10 @@ func TestEnvVarOverridesDotEnv(t *testing.T) {
 	}
 
 	// Set env var that should override the .env value
-	_ = os.Setenv("NORMAN_PORT", "8888")
-	_ = os.Unsetenv("NORMAN_PORT")
-
 	if err := LoadEnvFiles(); err != nil {
 		t.Fatalf("LoadEnvFiles failed: %v", err)
 	}
+	_ = os.Setenv("NORMAN_PORT", "8888")
 
 	cfg := DefaultConfig()
 	if err := ApplyEnvOverrides(cfg.System); err != nil {
