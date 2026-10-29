@@ -229,8 +229,11 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 		})
 	}
 
-	// Close all sessions for this workspace (free sandbox resources)
+	// Close all sessions for this workspace (free sandbox resources).
 	s.closeWorkspaceSessions(name)
+	if err := s.workspaceManager.CloseSandbox(context.Background(), name); err != nil {
+		log.Printf("[server] Error closing sandbox for workspace %s: %v", name, err)
+	}
 
 	stopped := protocol.WorkspaceStatusStopped
 	ws.Status = &stopped
@@ -266,6 +269,11 @@ func (s *server) RestoreWorkspace(c echo.Context, name string) error {
 	ws.Status = &active
 	now := time.Now()
 	ws.LastUsed = &now
+
+	// Recreate the sandbox for the restored workspace.
+	if _, err := s.workspaceManager.CreateWorkspace(context.Background(), name, ""); err != nil {
+		log.Printf("[server] Error creating sandbox for restored workspace %s: %v", name, err)
+	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
