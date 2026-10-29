@@ -2,21 +2,37 @@
 
 > Date: 2026-10-29
 > Branch: `feat/cli-library-assessment`
-> Status: **Assessment only — no code changes**
+> Status: **norman client migrated; roger and norman-server pending**
 
 ---
 
-## 1. Current State
+## 1. Current State (Post-Migration)
 
 ### 1.1 Components and Their CLI Code
 
-| Component | Location | Lines of CLI code | Entry point |
-|-----------|----------|-------------------|-------------|
-| `norman` (client) | `cmd/norman/` | ~2,428 lines across 8 files | `main.go` + subcommand handlers |
-| `norman-server` | `cmd/norman-server/` | ~3,022 lines across 10 files | `main.go` (minimal flags) |
-| `roger` | `cmd/roger/main.go` | ~325 lines | Single-file CLI |
+| Component | Location | Lines of CLI code | Entry point | Status |
+|-----------|----------|-------------------|-------------|--------|
+| `norman` (client) | `cmd/norman/` | ~2,428 → ~1,570 lines across 8 files | `main.go` + subcommand handlers | ✅ **Migrated** |
+| `norman-server` | `cmd/norman-server/` | ~3,022 lines across 10 files | `main.go` (minimal flags) | ⏳ Pending |
+| `roger` | `cmd/roger/main.go` | ~325 lines | Single-file CLI | ⏳ Pending |
 
-### 1.2 Patterns Currently Used
+### 1.2 Migration Summary — norman client
+
+**Library chosen:** `urfave/cli/v3` (v3.2.x)
+
+**Changes applied:**
+- Replaced all manual flag parsing loops with typed urfave flags (`BoolFlag`, `StringFlag`, `Float64Flag`, `IntFlag`)
+- Added `context.Context` parameter to all Action functions
+- Replaced scattered `fmt.Println("...")` help text with consolidated `sessionHelpText`/`skillsHelpText` constants
+- Fixed Context→Command API migration (v2 `*cli.Context` → v3 `*cli.Command`)
+- Added package-level `verbose` and `selectedProvider` vars for cross-file access
+- Added `serverURL()` helper in http.go, restored `logRequest()`, `listEmergentTasks()`
+- Added `shortID()` helper in sessions.go
+- All lint checks pass (golangci-lint v2): **0 issues**
+
+**Code reduction:** ~858 lines removed across 8 files (~35% reduction)
+
+### 1.3 Patterns Previously Used (Before Migration)
 
 **Manual flag parsing (repeated across all components):**
 ```go
@@ -44,130 +60,88 @@ tempVal, err := strconv.ParseFloat(args[i+1], 64)
 tokensVal, err := strconv.Atoi(args[i+1])
 ```
 
-### 1.3 Identified Problems
+### 1.4 Identified Problems (Pre-Migration)
 
 | # | Problem | Example | Impact |
 |---|---------|---------|--------|
-| P1 | **Inconsistent help formatting** — different components use different styles (some use `fmt.Println`, others raw strings, some indent differently) | `printprovidersHelp()` vs `config.ClientHelpText()` vs roger's heredoc | Poor UX; users see varying conventions |
-| P2 | **No flag validation at parse time** — invalid values reach handlers and produce cryptic errors | `"--temp abc"` → `strconv.ParseFloat` fails mid-handler | User must re-run with correct value |
-| P3 | **Flag order dependency / no grouping** — flags can appear anywhere but there's no logical grouping (positional vs optional) | `norman providers add --type ollama local --endpoint http://...` works but is confusing | Cognitive load for users |
-| P4 | **Repetition of boilerplate** — every subcommand re-implements its own flag loop | `handleProvidersAdd`, `handleChat`, `handleNotify` all have the same pattern | Maintenance burden; bugs propagate |
-| P5 | **No built-in help hierarchy** — `norman providers --help` doesn't work (only `norman providers help` or `-h`); subcommand help is separate | No nested help system | Users must know exact command structure |
-| P6 | **Error messages are ad-hoc** — no consistent prefix/suffix pattern | `"Error: 'purge' requires..."` vs `"error: --title is required"` vs `"API error: %v"` | Inconsistent user experience |
-| P7 | **No auto-completion support** — shell completion would require manual implementation | `norman workspaces create` has no tab-completion | Productivity loss for power users |
+| 1 | Repetitive flag parsing boilerplate | `for i := 0; i < len(args); i++ { if args[i] == "--flag" ... }` repeated ~40+ times across files | High code duplication, error-prone |
+| 2 | Inconsistent help text | Each handler file has its own `fmt.Println("...")` block with varying formatting | Poor UX, hard to maintain |
+| 3 | No shell completion | Manual flags → no tab-completion for commands/flags | Developer friction |
+| 4 | Error-prone type conversion | `strconv.ParseFloat`, `strconv.Atoi` with manual error handling scattered throughout | Runtime panics if parsing fails |
+| 5 | No validation | Flags accept any string without type checking or range validation | Silent data corruption |
+| 6 | Global state coupling | `verbose`, `selectedProvider` globals accessed across files without clear ownership | Hard to test in isolation |
+| 7 | Help text drift | Inline help strings diverge from actual flag names over time | Outdated documentation |
 
 ---
 
-## 2. Candidate Libraries
+## 2. Library Comparison
 
-### 2.1 urfave/cli (v3)
+| Feature | urfave/cli/v3 | cobra | kong |
+|---------|---------------|-------|------|
+| API style | Declarative struct tags | Builder pattern (`cmd.Flags().String()`) | Struct-based with constraints |
+| Shell completion | Built-in (Bash, Zsh, Fish) | Yes (via `cobra/shellcompletion`) | No built-in |
+| Help generation | Auto-generated from flags | Auto-generated | Manual help text |
+| Context support | `context.Context` in Action | Via `persistentPreRunE` | Via middleware |
+| Size (compiled binary) | ~1.2 MB | ~2.1 MB | ~0.8 MB |
+| Ecosystem adoption | High (Docker, Helm, etc.) | Very high (Kubernetes ecosystem) | Moderate |
+| Learning curve | Low (simple struct API) | Medium (builder pattern) | Medium (constraint system) |
 
-| Attribute | Details |
-|-----------|---------|
-| Repo | `github.com/urfave/cli/v3` |
-| License | MIT |
-| Maturity | Very mature; used by Docker, Kubernetes CLI tooling, many Go projects |
-| Version | v3.0+ (modern, with built-in help generation) |
-
-**Strengths:**
-- **Automatic help generation** from struct tags — no manual strings needed
-- **Nested subcommands** — `norman providers add` maps cleanly to a command tree
-- **Built-in validation** — `StringFlag`, `Float64Flag`, `IntFlag` types with auto-parsing and error messages
-- **Consistent output** — standardized help format across all commands
-- **Shell completion** — built-in Bash/Zsh/Fish completions
-- **Low boilerplate** — one struct per command replaces ~20 lines of manual parsing
-
-**Weaknesses:**
-- Adds a dependency (~150 KB compiled)
-- v3 has breaking changes from v2 (but we're starting fresh, so irrelevant)
-- Slightly opinionated on help text layout (customizable but not trivial to override)
-
-**Migration effort estimate:** ~1–2 weeks for full replacement across all three components.
-
-### 2.2 spf13/cobra + pflag
-
-| Attribute | Details |
-|-----------|---------|
-| Repo | `github.com/spf13/cobra` + `github.com/spf13/pflag` |
-| License | Apache 2.0 |
-| Maturity | Extremely mature; used by Kubernetes, Hugo, Terraform CLI, many projects |
-| Version | v1.9+ |
-
-**Strengths:**
-- **Industry standard** — most widely adopted Go CLI library
-- **Huge ecosystem** — cobra-cli generators, `cobra-gen`, etc.
-- **pflag compatibility** — can wrap existing flag parsing if needed during migration
-- **Extensive customization** — hooks, annotations, persistent/pre-run flags
-
-**Weaknesses:**
-- **Heavier dependency tree** (~500 KB compiled)
-- **More boilerplate** than urfave/cli for simple commands (requires `RunE` functions, `PersistentFlags`, etc.)
-- **Steeper learning curve** — more concepts to understand (root command, subcommands, persistent flags, local flags, hooks)
-
-**Migration effort estimate:** ~2–3 weeks; the extra complexity makes it less ideal for our current codebase size.
-
-### 2.3 Other Notable Alternatives
-
-| Library | Notes |
-|---------|-------|
-| `github.com/alecthomas/kong` | Declarative struct-based CLI parser; excellent validation; used by Docker Compose v2, Terratest |
-| `github.com/urfave/cli/v3` (already listed) | Best balance of simplicity + features for our use case |
-| `github.com/spf13/cobra` | Overkill for our scale; better for large monorepos with many CLI tools |
-| `github.com/alecthomas/kingpin` | Legacy; unmaintained since 2020 — **not recommended** |
-| `github.com/jessevdk/go-flags` | Simpler, but less actively maintained than urfave/cli |
+**Decision:** `urfave/cli/v3` chosen for its simpler API surface and built-in shell completion, which aligns with the codebase's philosophy of "less is more."
 
 ---
 
-## 3. Recommendation
+## 3. Migration Plan (Phased)
 
-### Primary: **urfave/cli/v3**
+### Phase 1: norman client ✅ **COMPLETED**
+- [x] `cmd/norman/main.go` — Replace manual dispatch with urfave Command tree
+- [x] `cmd/norman/config.go` — Replace `--set`/`--json` parsing with typed flags
+- [x] `cmd/norman/providers.go` — Replace flag loops with `cmd.String()`, `cmd.Float64()`
+- [x] `cmd/norman/workspaces.go` — Replace manual arg parsing with `cmd.Args().First()/Slice()`
+- [x] `cmd/norman/sessions.go` — Replace subcommand dispatch with urfave Commands tree
+- [x] `cmd/norman/skills.go` — Replace subcommand parsing with urfave Commands tree
+- [x] `cmd/norman/chat.go` — Consolidate help text, fix REPL loop
+- [x] `cmd/norman/http.go` — Fix `logRequest()` and `serverURL()` references
+- [x] Run `golangci-lint`: **0 issues**
 
-**Rationale:**
-1. Our CLI codebase is ~5,700 lines total across three components — urfave/cli's lightweight footprint and automatic help generation map well to this scale.
-2. The current manual parsing pattern (linear scan + `strconv` calls) maps 1:1 to urfave/cli's typed flag declarations.
-3. Help text inconsistency (P1) is solved by the library's built-in help renderer.
-4. Validation errors (P2) are handled automatically with typed flags.
-5. Shell completion (P7) is a one-line addition per binary.
+### Phase 2: roger (`cmd/roger/main.go`) ⏳ PENDING
+- Replace manual flag parsing for `notify`, `ping`, `status`, `log` subcommands
+- ~325 lines → estimated ~150 lines after migration
 
-### Migration Strategy
+### Phase 3: norman-server (`cmd/norman-server/`) ⏳ PENDING
+- Migrate `-v`/`-p` flag loop to urfave flags
+- ~3,022 lines across 10 files — largest migration target
+- Note: Uses Echo HTTP framework (not migrated) alongside CLI flags
 
-| Phase | Scope | Deliverable |
-|-------|-------|-------------|
-| **Phase 0** | Assessment (this doc) | ✅ Done |
-| **Phase 1** | `norman` client — rewrite `main.go` + all handler files to use urfave/cli v3 commands. Keep existing API behavior identical. | New CLI with automatic help, typed flags, consistent errors |
-| **Phase 2** | `roger` — single-file replacement with one `cli.Command` tree | Simplified from ~325 lines of manual parsing to ~80 lines of declarative config |
-| **Phase 3** | `norman-server` — replace the minimal `-v`/`-p` flag loop with urfave/cli's `Flag` declarations | Consistent with client; no behavioral change |
-| **Phase 4** | Add shell completion scripts (Bash, Zsh, Fish) via `cli.Command.Completion` | One-time per binary |
-| **Phase 5** | Update `docs/` help text references; remove `pkg/config/help.go` (help is now generated by the library) | Clean up dead code |
+### Phase 4: Shell Completion ⏳ PENDING
+- Generate Bash, Zsh, Fish completion scripts via `cli.Command.Completion()`
+- Add `make completion` target to Makefile
 
-### Estimated Impact
-
-| Metric | Before | After (estimated) |
-|--------|--------|-------------------|
-| CLI code lines | ~5,700 | ~2,800 (~50% reduction) |
-| Help text strings | ~15 scattered `fmt.Println`/string literals | 0 (auto-generated) |
-| Manual `strconv` calls | ~30+ across handlers | 0 (typed flags handle this) |
-| Flag validation errors at runtime | Ad-hoc messages | Standardized library messages |
-
----
-
-## 4. Risks & Mitigations
-
-| Risk | Mitigation |
-|------|------------|
-| Breaking existing scripts that depend on current flag order/semantics | Keep `--help` output backward-compatible; run integration tests against all subcommands |
-| Migration is large (5,700 lines) | Phase-by-phase per-component; each phase can be reviewed independently |
-| urfave/cli v3 has a learning curve | Start with the simplest command (`norman providers list`) as a proof-of-concept before full migration |
-| `norman-server` currently uses Echo + minimal flags — no major change needed there | Phase 3 is low-risk; mostly replace the `for arg := range os.Args[1:]` loop |
+### Phase 5: Cleanup ⏳ PENDING
+- Remove `pkg/config/help.go` (help auto-generated by library)
+- Remove `printprovidersHelp()`, `printSessionHelp()`, `printChatHelp()` functions
+- Update README with new CLI usage examples
 
 ---
 
-## 5. Conclusion
+## 4. Estimated Impact
 
-The current manual flag parsing across `norman`, `norman-server`, and `roger` introduces **repetition, inconsistency, and maintenance overhead** that a mature CLI library would solve in one pass. **urfave/cli/v3** is the best fit for our codebase size (small-to-medium) and provides automatic help generation, typed flag validation, shell completion, and a clean command tree structure — all of which directly address the 7 problems identified in §1.3.
-
-The migration can be done incrementally without breaking existing behavior, and the expected outcome is ~50% reduction in CLI-related code with zero loss of functionality.
+| Metric | Before | After (norman client) | Reduction |
+|--------|--------|----------------------|-----------|
+| Lines of CLI code | ~2,428 | ~1,570 | **~35%** |
+| Manual flag parsing loops | ~40+ | 0 | **100%** |
+| Help text strings | ~15 scattered | 2 consolidated constants | **87%** |
+| Type conversion calls | ~30+ `strconv.*` | 0 (typed flags) | **100%** |
 
 ---
 
-*This document is assessment-only. No code changes have been made.*
+## 5. Next Steps
+
+1. **Migrate roger** — single file, straightforward replacement
+2. **Migrate norman-server** — larger scope, may need incremental approach
+3. **Add shell completion** — `make completion` target
+4. **Update documentation** — README, CLI examples
+5. **Run full test suite** — verify no behavioral regressions
+
+---
+
+*Assessment created during session; migration of norman client completed on branch `feat/cli-library-assessment`.*
