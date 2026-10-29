@@ -265,7 +265,7 @@ func handleWorkspacePurge(args []string) {
 		os.Exit(1)
 	}
 
-	// Purge returns 204 No Content (empty body) on success
+	// Purge returns a JSON success response (or empty body in some cases).
 	if len(body) == 0 {
 		fmt.Printf("Workspace '%s' purged successfully.\n", name)
 		return
@@ -273,8 +273,9 @@ func handleWorkspacePurge(args []string) {
 
 	var ws map[string]interface{}
 	if err := json.Unmarshal(body, &ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
+		// Non-JSON body (e.g. "OK" from NoContent) — still a success
+		fmt.Printf("Workspace '%s' purged successfully.\n", name)
+		return
 	}
 
 	status, _ := ws["status"].(string)

@@ -345,7 +345,7 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 		Message: strPtr("Workspace purged: " + name),
 	})
 
-	return c.NoContent(http.StatusOK)
+	return c.JSON(http.StatusOK, map[string]string{"status": "purged"})
 }
 
 // isValidWorkspaceName validates that a workspace name contains only allowed characters.
