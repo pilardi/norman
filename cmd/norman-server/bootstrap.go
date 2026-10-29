@@ -26,27 +26,20 @@ import (
 
 // bootstrap initializes all server dependencies and returns the fully-configured
 // server struct ready for route registration.
-func bootstrap() *server {
+func bootstrap(verbose bool, selectedProvider string) *server {
 	cfg, err := config.LoadDefault()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// --verbose CLI flag overrides config.yaml Logging.Verbose (server-side debug output).
-	// -p/--provider CLI flag selects which configured provider to use (overrides default_provider).
-	var selectedProvider string
-	for _, arg := range os.Args[1:] {
-		switch arg {
-		case "--verbose", "-v":
-			cfg.System.Logging.Verbose = true
-		case "--provider", "-p":
-			selectedProvider = "unknown" // placeholder; resolved after config load
-		}
+	// Apply CLI flags (passed from main).
+	if verbose {
+		cfg.System.Logging.Verbose = true
 	}
 
 	// Resolve selected provider: CLI flag > configured default_provider > first in list.
 	var providerName string
-	if selectedProvider != "" && selectedProvider != "unknown" {
+	if selectedProvider != "" {
 		providerName = selectedProvider
 	} else if cfg.System.DefaultProvider != "" {
 		providerName = cfg.System.DefaultProvider
