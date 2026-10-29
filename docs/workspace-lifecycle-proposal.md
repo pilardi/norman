@@ -1,7 +1,7 @@
 # Workspace Lifecycle Proposal
 
-> **Status:** 📋 DRAFT — Awaiting review and approval  
-> **Date:** 2026-10-28  
+> **Status:** ✅ IMPLEMENTED — All phases complete, merged to `workspace-lifecycle-proposal` branch  
+> **Date:** 2026-10-28 (proposal) / 2026-10-28 (implementation)  
 > **Author:** Pablo (via goose)  
 > **Related:** `docs/workspace-definition-assessment.md` (previous workspace feature), `AGENTS.md` §3 (decay rules)
 
@@ -223,13 +223,40 @@ For existing workspaces already using `status: "archived"` (from the previous as
 
 ---
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. Should `archive` also freeze the wiki (prevent new entries) or just snapshot? → *Proposal: freeze on archive.*
-2. Should there be a `soft-delete` (hidden from default list but recoverable)? → *Deferred to P5.*
-3. What's the default idle timeout? → *Proposed: 7 days, configurable via `system.workspace_idle_timeout`.*
-4. Should `purge` require confirmation or an explicit `--force` flag? → *Proposed: POST `/api/workspaces/{name}/purge` requires a `confirm: true` body field.*
+| # | Question | Resolution |
+|---|----------|------------|
+| 1 | Should `archive` also freeze the wiki? | Implemented: archive writes an immutable markdown/JSON snapshot; new entries can still be added. Freeze is deferred. |
+| 2 | Should there be a `soft-delete`? | Deferred — not implemented in P1–P6. |
+| 3 | Default idle timeout? | Configurable via `StartIdleCleanupLoop(timeout, stopCh)` with default 7 days. |
+| 4 | `purge` confirmation? | Implemented: CLI requires `--confirm`; server validates `confirm: true` in request body. |
 
 ---
 
-*This document is a proposal only. No code changes have been made yet.*
+## Implementation Notes
+
+All six phases (P1–P6) are implemented and committed on branch `workspace-lifecycle-proposal`. Key implementation details:
+
+- **API**: Four lifecycle endpoints (`POST /stop`, `/restore`, `/archive`; `DELETE /purge`) added to `api-spec.yaml` and regenerated via oapi-codegen v2.8.1.
+- **Protocol**: `WorkspaceStatus` enum expanded to `[active, stopped, archived]`; `LastUsed *time.Time` added to `Workspace` struct.
+- **Store**: `UpdateLastActivity()` tracks workspace activity; `Sessions()` public accessor exposes active sessions for idle detection.
+- **Server handlers**: `StopWorkspace`, `RestoreWorkspace`, `ArchiveWorkspace`, `PurgeWorkspace` implemented in `workspaces.go`.
+- **Idle loop**: `StartIdleCleanupLoop(timeout, stopCh)` background goroutine with ticker; auto-stops workspaces after configurable timeout.
+- **Agent loop**: `MarkActive(workspace)` / `MarkIdle(workspace)` provide in-use/idle feedback without requiring Client-level methods.
+- **CLI**: `norman workspaces stop|restore|archive|purge <name> [--flags]` commands implemented with proper help text and validation.
+
+### Bug Fixes Discovered During Implementation
+
+| Issue | Fix |
+|-------|-----|
+| Slice bounds panic `[:15]` on short workspace names in `closeWorkspaceSessions()` | Conditional slice guard: `if len(cleanName) > 15 { cleanName = cleanName[:15] }` |
+| Same pattern in `CreateWorkspace()` (line 107 of `pkg/env/workspace.go`) | Identical conditional slice fix applied |
+| `--help` flag treated as workspace name in CLI create | Added `--help`/`-h` check before name parsing |
+| Server accepted invalid names (`--bad!name`) → 500 | Added `isValidWorkspaceName()` validation (alphanumeric + `_`/`-`) |
+| Purge returned 204 No Content but CLI tried to parse as JSON | CLI now handles empty body gracefully |
+| Route used `DELETE` but handler expected JSON body via `Bind()` | Changed to `POST /api/workspaces/:name/purge` |
+
+---
+
+*Status: All phases implemented. PR ready for review.*
