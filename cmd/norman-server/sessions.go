@@ -58,6 +58,10 @@ func (s *server) CreateSession(c echo.Context) error {
 		log.Printf("[sessions] failed to ensure sandbox for workspace %s: %v", req.WorkspaceId, err)
 	}
 
+	// Update last activity timestamp and signal "in use"
+	s.workspaceManager.UpdateLastActivity(req.WorkspaceId)
+	s.loop.MarkActive(req.WorkspaceId)
+
 	s.wsHub.BroadcastSession(session.Id.String(), protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session created for workspace " + req.WorkspaceId),
@@ -145,7 +149,35 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Update last activity timestamp for the session's workspace
+	s.updateWorkspaceActivity(id)
+
 	return c.JSON(http.StatusOK, resp)
+}
+
+// updateWorkspaceActivity updates the last activity timestamp for a session's workspace.
+func (s *server) updateWorkspaceActivity(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Look up the session to find its workspace ID
+	for _, ws := range s.workspaces {
+		if ws.Id != nil && ws.Id.String() == sessionID {
+			// Session belongs directly to this workspace
+			if ws.Name != nil {
+				s.workspaceManager.UpdateLastActivity(*ws.Name)
+			}
+			return
+		}
+	}
+
+	// Fallback: check sessions store for workspace_id mapping
+	data, err := s.store.LoadSession(sessionID)
+	if err == nil {
+		if wid, ok := data["workspace_id"].(string); ok && wid != "" {
+			s.workspaceManager.UpdateLastActivity(wid)
+		}
+	}
 }
 
 // HealthCheck returns service health with scheduler status.
@@ -191,7 +223,57 @@ func (s *server) DeleteSession(c echo.Context, id string) error {
 		Message: strPtr("Session " + id[:8] + " closed"),
 	})
 
+	// Check if this was the last session for its workspace and mark idle
+	s.checkWorkspaceIdle(id)
+
 	return c.NoContent(http.StatusOK)
+}
+
+// checkWorkspaceIdle determines if a deleted session was the last one for its workspace.
+func (s *server) checkWorkspaceIdle(sessionID string) {
+	// Look up the session's workspace
+	var workspaceID string
+	for _, ws := range s.workspaces {
+		if ws.Id != nil && ws.Id.String() == sessionID {
+			if ws.Name != nil && *ws.Name != "" {
+				workspaceID = *ws.Name
+			} else {
+				workspaceID = ws.Id.String()
+			}
+			break
+		}
+	}
+
+	if workspaceID == "" {
+		data, err := s.store.LoadSession(sessionID)
+		if err == nil {
+			if wid, ok := data["workspace_id"].(string); ok && wid != "" {
+				workspaceID = wid
+			}
+		}
+	}
+
+	if workspaceID == "" {
+		return
+	}
+
+	// Check if any other sessions exist for this workspace
+	s.mu.Lock()
+	hasOther := false
+	for _, ws := range s.workspaces {
+		if ws.Id != nil && ws.Id.String() != sessionID {
+			// Quick check: if workspace ID matches, there are other sessions
+			if ws.Name != nil && *ws.Name == workspaceID {
+				hasOther = true
+				break
+			}
+		}
+	}
+	s.mu.Unlock()
+
+	if !hasOther {
+		s.loop.MarkIdle(workspaceID)
+	}
 }
 
 // SessionHistory returns the last N conversation turns for a session.

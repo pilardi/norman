@@ -221,6 +221,24 @@ func (c *Client) DeleteSandbox(ctx context.Context, provider, name string) error
 	return nil
 }
 
+// StopSandbox stops a running sandbox (preserves it for later start).
+func (c *Client) StopSandbox(ctx context.Context, provider, name string) error {
+	_, err := c.client.Sandboxes().Stop(ctx, provider, name)
+	if err != nil {
+		return fmt.Errorf("stop sandbox %s/%s: %w", provider, name, err)
+	}
+	return nil
+}
+
+// StartSandbox starts a stopped sandbox. Returns error if sandbox doesn't exist.
+func (c *Client) StartSandbox(ctx context.Context, provider, name string) error {
+	_, err := c.client.Sandboxes().Start(ctx, provider, name)
+	if err != nil {
+		return fmt.Errorf("start sandbox %s/%s: %w", provider, name, err)
+	}
+	return nil
+}
+
 // RunCommandStr executes a command string inside a sandbox and returns (output, exitCode, error).
 func (c *Client) RunCommandStr(ctx context.Context, provider, sandboxName string, command string) (string, int, error) {
 	cmd := strings.Fields(command)

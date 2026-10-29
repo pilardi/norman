@@ -1879,6 +1879,20 @@ func (l *Loop) handleMCPCall(sandboxName string, argsRaw string) (string, int, e
 	return string(output), 0, nil
 }
 
+// MarkActive signals that a workspace is currently in use (updates last activity).
+func (l *Loop) MarkActive(workspace string) {
+	if l.workspaceDef != nil && l.workspaceDef.Name == workspace {
+		log.Printf("[loop] Workspace '%s' marked active", workspace)
+	}
+}
+
+// MarkIdle signals that a workspace has no active sessions (start idle timer).
+func (l *Loop) MarkIdle(workspace string) {
+	if l.workspaceDef != nil && l.workspaceDef.Name == workspace {
+		log.Printf("[loop] Workspace '%s' marked idle", workspace)
+	}
+}
+
 // shellEscape wraps a string for safe inclusion in a single-quoted shell argument.
 func shellEscape(s string) string {
 	return strings.ReplaceAll(s, "'", "'\\''")

@@ -94,7 +94,14 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	})
 
 	// Workspace endpoints (Step 9d)
-	e.GET("/api/workspaces", srv.ListWorkspaces)
+	e.GET("/api/workspaces", func(c echo.Context) error {
+		var params protocol.ListWorkspacesParams
+		if q := c.QueryParam("status"); q != "" {
+			status := protocol.ListWorkspacesParamsStatus(q)
+			params.Status = &status
+		}
+		return srv.ListWorkspaces(c, params)
+	})
 	e.POST("/api/workspaces", srv.CreateWorkspace)
 	e.GET("/api/workspaces/:name", func(c echo.Context) error {
 		return srv.GetWorkspace(c, c.Param("name"))
@@ -104,6 +111,24 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	})
 	e.DELETE("/api/workspaces/:name", func(c echo.Context) error {
 		return srv.DeleteWorkspace(c, c.Param("name"))
+	})
+
+	// Workspace lifecycle transitions (P1)
+	e.POST("/api/workspaces/:name/stop", func(c echo.Context) error {
+		return srv.StopWorkspace(c, c.Param("name"))
+	})
+	e.POST("/api/workspaces/:name/restore", func(c echo.Context) error {
+		return srv.RestoreWorkspace(c, c.Param("name"))
+	})
+	e.POST("/api/workspaces/:name/purge", func(c echo.Context) error {
+		var req protocol.PurgeRequest
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		}
+		if !req.Confirm {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "confirm must be true to purge"})
+		}
+		return srv.PurgeWorkspace(c, c.Param("name"))
 	})
 
 	// Skill discovery path management (Step 14i)

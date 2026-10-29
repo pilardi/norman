@@ -9,7 +9,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build test test-race test-short clean generate-docs generate-docs-html
+.PHONY: help generate build rebuild test test-race test-short clean generate-docs generate-docs-html
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -21,6 +21,7 @@ help:
 	@echo "  help        - Show this help message"
 	@echo "  generate    - Generate protocol types, client library, and server handlers from api-spec.yaml"
 	@echo "  build       - Run generate + compile all packages (binaries in $(DIST)/)"
+	@echo "  rebuild     - Clean + regenerate + build (safe sequential rebuild)"
 	@echo "  test        - Run all unit tests with coverage report"
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short  - Run short tests only (skip slow/integration)"
@@ -36,7 +37,7 @@ generate:
 	$(CODEGEN) -package api -generate server api-spec.yaml > internal/api/handlers.go
 	@echo "Fixing cross-package type references in handlers..."
 	sed -i '/^import (/a\\t"github.com/norman/norman/pkg/protocol"' internal/api/handlers.go
-	sed -i 's/GetConfigParams\b/protocol.GetConfigParams/g; s/ListTasksParams\b/protocol.ListTasksParams/g; s/TailTaskLogParams\b/protocol.TailTaskLogParams/g; s/SessionHistoryParams\b/protocol.SessionHistoryParams/g' internal/api/handlers.go
+	sed -i 's/GetConfigParams\b/protocol.GetConfigParams/g; s/ListTasksParams\b/protocol.ListTasksParams/g; s/TailTaskLogParams\b/protocol.TailTaskLogParams/g; s/SessionHistoryParams\b/protocol.SessionHistoryParams/g; s/ListWorkspacesParams\b/protocol.ListWorkspacesParams/g' internal/api/handlers.go
 	@echo "Regenerated code; compiling..."
 
 build: generate
@@ -45,6 +46,10 @@ build: generate
 	go build -o $(DIST)/norman ./cmd/norman
 	go build -o $(DIST)/norman-server ./cmd/norman-server
 	go build -o $(DIST)/roger ./cmd/roger
+
+rebuild:
+	@$(MAKE) clean
+	@$(MAKE) build
 
 test:
 	@echo "Running all tests with coverage..."
