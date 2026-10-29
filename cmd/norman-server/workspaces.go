@@ -43,6 +43,13 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	// Validate workspace name: non-empty, alphanumeric with underscores and hyphens
+	if req.Name == "" || !isValidWorkspaceName(req.Name) {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "workspace name must be non-empty and contain only alphanumeric characters, underscores, or hyphens",
+		})
+	}
+
 	storePath := s.store.Base()
 	wsPath := filepath.Join(storePath, req.Name)
 
@@ -339,6 +346,19 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 	})
 
 	return c.NoContent(http.StatusOK)
+}
+
+// isValidWorkspaceName validates that a workspace name contains only allowed characters.
+func isValidWorkspaceName(name string) bool {
+	if len(name) == 0 || len(name) > 64 {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // closeWorkspaceSessions finds and deletes all sessions associated with a workspace.

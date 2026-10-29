@@ -53,8 +53,10 @@ Subcommands:
 
 // handleWorkspaceCreate delegates workspace creation to the agent server.
 func handleWorkspacesCreate(args []string) {
-	if len(args) < 1 {
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
 		fmt.Fprintln(os.Stderr, "Usage: norman workspaces create <name>")
+		fmt.Fprintln(os.Stderr, "\nCreates a new workspace directory and registers it with the agent server.")
+		fmt.Fprintln(os.Stderr, "The workspace name must be alphanumeric (underscores and hyphens allowed).")
 		os.Exit(1)
 	}
 
