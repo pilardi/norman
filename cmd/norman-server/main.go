@@ -47,8 +47,9 @@ type server struct {
 
 func main() {
 	app := &cli.Command{
-		Name:        "norman-server",
-		Description: "Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via Echo",
+		Name:                  "norman-server",
+		Description:           "Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via Echo",
+		EnableShellCompletion: true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "verbose",

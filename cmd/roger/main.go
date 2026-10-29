@@ -41,9 +41,10 @@ type NotificationResponse struct {
 
 func main() {
 	app := &cli.Command{
-		Name:        "roger",
-		Suggest:     true,
-		Description: "Roger — Norman workspace client",
+		Name:                  "roger",
+		Suggest:               true,
+		Description:           "Roger — Norman workspace client",
+		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			notifyCommand(),
 			pingCommand(),

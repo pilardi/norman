@@ -16,6 +16,7 @@ var (
 
 func main() {
 	app := &cli.Command{
+		EnableShellCompletion: true,
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			if cmd.Bool("verbose") {
 				verbose = true

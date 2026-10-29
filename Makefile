@@ -10,7 +10,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build lint rebuild test test-race test-short clean generate-docs generate-docs-html
+.PHONY: help generate build lint rebuild test test-race test-short clean generate-docs generate-docs-html completion
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -80,3 +80,29 @@ generate-docs:
 generate-docs-html: generate-docs
 	@echo "Converting markdown files to HTML..."
 	go run ./cmd/md2html/ --out docs/ docs/*.md
+
+# Shell completion scripts for Bash, Zsh, and Fish.
+# Usage: make completion bash|zsh|fish > /etc/bash_completion.d/norman
+completion:
+	@echo "Generating shell completion scripts..."
+	@go build -o $(DIST)/norman ./cmd/norman
+	@go build -o $(DIST)/roger ./cmd/roger
+	@go build -o $(DIST)/norman-server ./cmd/norman-server
+	@echo "  Bash completions:"
+	@$(DIST)/norman completion bash > $(DIST)/_norman.bash
+	@$(DIST)/roger completion bash > $(DIST)/_roger.bash
+	@$(DIST)/norman-server completion bash > $(DIST)/_norman-server.bash
+	@echo "  Zsh completions:"
+	@$(DIST)/norman completion zsh > $(DIST)/_norman.zsh
+	@$(DIST)/roger completion zsh > $(DIST)/_roger.zsh
+	@$(DIST)/norman-server completion zsh > $(DIST)/_norman-server.zsh
+	@echo "  Fish completions:"
+	@$(DIST)/norman completion fish > $(DIST)/_norman.fish
+	@$(DIST)/roger completion fish > $(DIST)/_roger.fish
+	@$(DIST)/norman-server completion fish > $(DIST)/_norman-server.fish
+	@echo ""
+	@echo "Completion scripts written to $(DIST)/"
+	@echo ""
+	@echo "Install Bash:  source $(DIST)/_norman.bash"
+	@echo "Install Zsh:   source $(DIST)/_norman.zsh"
+	@echo "Install Fish:  source $(DIST)/_norman.fish"
