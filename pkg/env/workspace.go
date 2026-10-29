@@ -104,7 +104,11 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		WorkspaceName: workspace,
 	}
 	// Truncate to fit OpenShell's 19-char max name limit (same as Loop.GetSession).
-	sandboxName := "ws-" + strings.ReplaceAll(workspace, "-", "")[:15]
+	cleanName := strings.ReplaceAll(workspace, "-", "")
+	if len(cleanName) > 15 {
+		cleanName = cleanName[:15]
+	}
+	sandboxName := "ws-" + cleanName
 	sb, err := m.client.CreateSandbox(ctx, defaultProvider, sandboxName, ctxFile, sessionId)
 	if err != nil {
 		return nil, fmt.Errorf("create workspace %s: %w", workspace, err)
