@@ -17,10 +17,22 @@ import (
 // Reads directly from local config file to avoid circular dependency with getConfig().
 func serverURL() string {
 	cfg, err := config.LoadDefault()
-	if err != nil || cfg == nil || cfg.System == nil || cfg.System.ServerURL == "" {
+	if err != nil || cfg == nil || cfg.System == nil {
 		return "http://127.0.0.1:8090"
 	}
-	return cfg.System.ServerURL
+	if cfg.System.ServerURL != "" {
+		return cfg.System.ServerURL
+	}
+	// Derive from host + port (same logic as the server bootstrap)
+	host := cfg.System.Host
+	port := cfg.System.ServerPort
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port == 0 {
+		port = 8080
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
 }
 
 // logRequest logs a debug message when verbose mode is enabled.
