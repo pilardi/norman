@@ -160,6 +160,13 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required")
 	}
 
+	// If no update flags are provided, fall back to interactive mode.
+	if !cmd.IsSet("type") && !cmd.IsSet("endpoint") && !cmd.IsSet("model") &&
+		!cmd.IsSet("temp") && !cmd.IsSet("max-tokens") && !cmd.IsSet("api-key") {
+		handleProvidersUpdateInteractive()
+		return nil
+	}
+
 	req := map[string]interface{}{"name": name}
 
 	if cmd.String("type") != "" {
