@@ -349,11 +349,6 @@ func handleProvidersAddInteractive() {
 // handleProvidersUpdateInteractive runs an interactive prompt-based workflow for updating a provider.
 func handleProvidersUpdateInteractive(name string) {
 	scanner := bufio.NewScanner(os.Stdin)
-	prompt := func(label string) string {
-		fmt.Printf("%s: ", label)
-		scanner.Scan()
-		return strings.TrimSpace(scanner.Text())
-	}
 
 	// Fetch current provider data to populate defaults and show current values.
 	body, err := httpGet("/api/providers/" + name)
@@ -376,119 +371,117 @@ func handleProvidersUpdateInteractive(name string) {
 		}
 	}
 
-	fmt.Printf("\nCurrent configuration for '%s':\n", name)
+	fmt.Printf("\nProvider '%s' configuration:\n", name)
 	printprovidersSummary(provider)
 
+	fields := []struct {
+		key   string
+		label string
+	}{
+		{"type", "type"},
+		{"endpoint", "endpoint"},
+		{"model", "model"},
+		{"temperature", "temp"},
+		{"max_tokens", "max_tokens"},
+		{"api_key", "api-key"},
+	}
+
+	fmt.Printf("\n  Select field number (1-6) and press Enter to update, or Enter alone to finish:\n\n")
+
+	for i, f := range fields {
+		currentVal := req[f.key]
+		currentStr := fmt.Sprintf("%v", currentVal)
+		if currentStr == "<nil>" {
+			currentStr = "(empty)"
+		}
+		fmt.Printf("  %d. %-12s [%s]\n", i+1, f.label, currentStr)
+	}
+
 	for {
-		fmt.Printf("\nUpdate field (type/endpoint/model/temp/max_tokens/api-key) or 'done' to finish: ")
-		field := prompt("")
-		field = strings.TrimSpace(strings.ToLower(field))
-		if field == "done" || field == "" {
+		fmt.Printf("\n  Field number (1-6) or 'done': ")
+		line := scanner.Scan()
+		if !line {
+			break
+		}
+		input := strings.TrimSpace(scanner.Text())
+
+		if input == "" || strings.ToLower(input) == "done" {
 			break
 		}
 
-		switch field {
+		// Parse field number
+		idx, err := strconv.Atoi(input)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  Invalid field number: %s\n", input)
+			continue
+		}
+		if idx < 1 || idx > len(fields) {
+			fmt.Fprintf(os.Stderr, "  Valid range: 1-%d\n", len(fields))
+			continue
+		}
+
+		f := fields[idx-1]
+		currentVal := req[f.key]
+		currentStr := fmt.Sprintf("%v", currentVal)
+		if currentStr == "<nil>" {
+			currentStr = "(empty)"
+		}
+
+		fmt.Printf("  %-12s [%s] -> ", f.label, currentStr)
+		line = scanner.Scan()
+		if !line {
+			break
+		}
+		value := strings.TrimSpace(scanner.Text())
+
+		if value == "" || strings.ToLower(value) == "done" {
+			break
+		}
+
+		switch f.key {
 		case "type":
-			fmt.Printf("  Current: %v\n", req["type"])
-			fmt.Printf("  New value (or 'skip'): ")
-			value := prompt("")
-			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
-				req["type"] = strings.TrimSpace(value)
-			}
+			req["type"] = value
 
 		case "endpoint":
-			fmt.Printf("  Current: %v\n", req["endpoint"])
-			fmt.Printf("  New value (or 'skip'): ")
-			value := prompt("")
-			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
-				req["endpoint"] = strings.TrimSpace(value)
-			}
+			req["endpoint"] = value
 
 		case "model":
-			// Fetch available models from the server
-			modelBody, err := httpGet("/api/providers/" + name + "/models")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  Warning: could not fetch model list: %v\n", err)
-			} else {
-				var resp map[string]interface{}
-				if json.Unmarshal(modelBody, &resp) == nil {
-					if modelsArr, ok := resp["models"].([]interface{}); ok {
-						fmt.Printf("  Available models:\n")
-						for i, m := range modelsArr {
-							if mm, ok := m.(map[string]interface{}); ok {
-								modelID, _ := mm["id"].(string)
-								modelName, _ := mm["name"].(string)
-								fmt.Printf("    %d. %s", i+1, modelName)
-								if modelID != "" && modelID != modelName {
-									fmt.Printf(" (%s)", modelID)
+			// If input looks like a number, try to resolve from model list.
+			if idx2, err := strconv.Atoi(value); err == nil {
+				modelBody, err2 := httpGet("/api/providers/" + name + "/models")
+				if err2 == nil {
+					var resp map[string]interface{}
+					if json.Unmarshal(modelBody, &resp) == nil {
+						if modelsArr, ok := resp["models"].([]interface{}); ok {
+							if idx2 >= 1 && idx2 <= len(modelsArr) {
+								if mm, ok := modelsArr[idx2-1].(map[string]interface{}); ok {
+									modelID, _ := mm["id"].(string)
+									req["model"] = modelID
+									continue
 								}
-								fmt.Printf("\n")
 							}
 						}
 					}
 				}
 			}
-			fmt.Printf("  Current: %v\n", req["model"])
-			fmt.Printf("  New value or selection number (or 'skip'): ")
-			value := prompt("")
-			value = strings.TrimSpace(value)
-			if value != "skip" && value != "" {
-				// Check if input is a number (selection index)
-				if idx, err := strconv.Atoi(value); err == nil {
-					// Fetch models again to resolve by index
-					modelBody2, err2 := httpGet("/api/providers/" + name + "/models")
-					if err2 == nil {
-						var resp2 map[string]interface{}
-						if json.Unmarshal(modelBody2, &resp2) == nil {
-							if modelsArr, ok := resp2["models"].([]interface{}); ok {
-								if idx >= 1 && idx <= len(modelsArr) {
-									if mm, ok := modelsArr[idx-1].(map[string]interface{}); ok {
-										modelID, _ := mm["id"].(string)
-										req["model"] = modelID
-									}
-								}
-							}
-						}
-					}
-				} else {
-					req["model"] = value
-				}
-			}
+			req["model"] = value
 
-		case "temp":
-			fmt.Printf("  Current: %v\n", req["temperature"])
-			fmt.Printf("  New value (or 'skip'): ")
-			value := prompt("")
-			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
-				if v, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
-					req["temperature"] = v
-				} else {
-					fmt.Fprintf(os.Stderr, "  Invalid number: %s\n", value)
-				}
+		case "temperature":
+			if v, err := strconv.ParseFloat(value, 64); err == nil {
+				req["temperature"] = v
+			} else {
+				fmt.Fprintf(os.Stderr, "  Invalid number: %s\n", value)
 			}
 
 		case "max_tokens":
-			fmt.Printf("  Current: %v\n", req["max_tokens"])
-			fmt.Printf("  New value (or 'skip'): ")
-			value := prompt("")
-			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
-				if v, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
-					req["max_tokens"] = v
-				} else {
-					fmt.Fprintf(os.Stderr, "  Invalid number: %s\n", value)
-				}
+			if v, err := strconv.Atoi(value); err == nil {
+				req["max_tokens"] = v
+			} else {
+				fmt.Fprintf(os.Stderr, "  Invalid number: %s\n", value)
 			}
 
-		case "api-key":
-			fmt.Printf("  Current: %v\n", req["api_key"])
-			fmt.Printf("  New value (or 'skip'): ")
-			value := prompt("")
-			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
-				req["api_key"] = strings.TrimSpace(value)
-			}
-
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown field: %s\n", field)
+		case "api_key":
+			req["api_key"] = value
 		}
 	}
 
