@@ -30,7 +30,14 @@ func main() {
 		Usage: "Norman CLI — Session-centric chat agent",
 		Description: `Norman CLI — Session-centric chat agent
 
-Usage: norman [-v|--verbose] [-p|--provider NAME] <command> [args...]`,
+Usage: norman [-v|--verbose] [-p|--provider NAME] <command> [args...]
+
+Configuration is loaded from three sources (priority order):
+- environment variables (NORMAN_HOST, NORMAN_PORT, NORMAN_SERVER_URL)
+- .env files (~/.norman/.env, ././.env)
+- config.yaml (~/.config/norman/config.yaml)
+
+Use 'norman config --json' to inspect the effective configuration.`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "verbose",
@@ -58,9 +65,20 @@ Options:
             Use --set default_provider=<name> to set the default provider.
   --json    Output as machine-readable JSON
 
-Config is managed by the server at ~/.config/norman/config.yaml.
+Config sources (priority): env vars > .env files (~/.norman/.env, ././.env) > config.yaml (~/.config/norman/config.yaml) > embedded defaults.
 Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
-				Action: handleConfig,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "json",
+						Usage: "Output configuration as JSON",
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					if cmd.Bool("json") {
+						return handleConfigJSON(ctx, cmd)
+					}
+					return handleConfig(ctx, cmd)
+				},
 			},
 			// --- workspaces subcommand ---
 			{

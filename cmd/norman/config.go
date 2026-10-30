@@ -33,6 +33,11 @@ func handleConfig(ctx context.Context, cmd *cli.Command) error {
 	}
 }
 
+// handleConfigJSON is the action for the --json flag.
+func handleConfigJSON(ctx context.Context, cmd *cli.Command) error {
+	return printConfig(nil, true)
+}
+
 // handleConfigSet handles the --set flag.
 func handleConfigSet(args []string) error {
 	if len(args) < 1 {
@@ -170,7 +175,7 @@ func getConfig() (*config.SystemConfig, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("GET /api/config: %w", err)
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

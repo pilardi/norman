@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -47,8 +48,16 @@ type server struct {
 
 func main() {
 	app := &cli.Command{
-		Name:                  "norman-server",
-		Description:           "Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via Echo",
+		Name: "norman-server",
+		Description: `Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via Echo
+
+Configuration loaded from (priority order):
+- environment variables (NORMAN_HOST, NORMAN_PORT, OPENSHELL_GATEWAY_ADDRESS)
+- .env files (~/.norman/.env, ././.env)
+- config.yaml (~/.config/norman/config.yaml)
+- embedded defaults
+
+OpenShell gateway auto-discovered from ~/.config/openshell/gateways/opensshell/metadata.json when address is empty.`,
 		EnableShellCompletion: true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
@@ -97,6 +106,13 @@ func runServer(verbose bool, selectedProvider string) error {
 	e.GET("/docs", docs.Handler("api-spec.yaml", "Norman API Reference", false, ":root{--bg-color:#000000;--color-gold:#D4AF37;--color-red:#A52A2A;--color-silver:#E5E5E5;--color-charcoal:#1C1C1C}"))
 
 	log.Printf("Norman Agent Server starting on %s:%d", host, port)
+
+	// Start HTTP listener.
+	go func() {
+		if err := e.Start(fmt.Sprintf("%s:%d", host, port)); err != nil && err != http.ErrServerClosed {
+			log.Printf("http server error: %v", err)
+		}
+	}()
 
 	// Start scheduler background goroutine.
 	schedCtx, schedCancel := context.WithCancel(context.Background())

@@ -154,9 +154,75 @@ tokensVal, err := strconv.Atoi(args[i+1])
 
 ---
 
-## 5. Next Steps
+## 6. Connectivity & Configuration Reference
 
-All phases complete. No remaining work items. The PR (#41) is ready for review and merge.
+### 6.1 `.env` File Support
+
+Norman loads environment variables from two `.env` locations (priority order):
+
+| Priority | Location | Purpose |
+|----------|----------|---------|
+| 1 (highest) | `./.env` (current working directory) | Per-workspace or per-run overrides |
+| 2 | `$HOME/.norman/.env` | Global user defaults |
+
+`.env` files use standard `KEY=value` format. Values are loaded as OS environment variables, then consumed by `ApplyEnvOverrides()` which maps them to config struct fields.
+
+**Example `.env`:**
+```bash
+NORMAN_HOST=127.0.0.1
+NORMAN_PORT=8080
+NORMAN_VERBOSE=true
+OPENSHELL_GATEWAY_ADDRESS=http://127.0.0.1:17670
+```
+
+### 6.2 YAML Configuration (`~/.norman/config.yaml`)
+
+The server reads `~/.norman/config.yaml` (or `$HOME/.norman/config.yaml`). This file defines system-level settings including LLM providers, workspace paths, skill discovery, and OpenShell gateway configuration.
+
+**Relevant sections for connectivity:**
+```yaml
+system:
+  host: "127.0.0.1"          # Server bind address
+  server_port: 8080           # HTTP port (default)
+  open_shell:
+    address: ""               # Gateway address (empty = auto-discover)
+  llm_providers:
+    - name: "local-llamacpp"
+      type: "llamacpp"
+      endpoint: "http://localhost:8288"
+```
+
+The embedded defaults (`config_defaults.yaml`) provide fallback values when no user config exists. User `config.yaml` **overrides** embedded defaults (merged, not replaced).
+
+### 6.3 Environment Variables (Connectivity-Critical)
+
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `NORMAN_HOST` | string | Server bind address (default: `127.0.0.1`) |
+| `NORMAN_PORT` | int | HTTP port number (default: `8080`) |
+| `NORMAN_SERVER_URL` | string | External-facing server URL; overrides auto-derived `http://host:port` |
+| `NORMAN_BASE_DIR` | string | Workspace base directory (default: `~/.norman/workspaces`) |
+| `NORMAN_VERBOSE` | bool | Enable verbose/debug logging (`true`/`1` or `false`/`0`) |
+| `NORMAN_STORE_DIR` | string | Memory store path (default: `~/.norman/store`) |
+| `NORMAN_RAW_SOURCES_DIR` | string | Raw sources path (default: `~/.norman/raw_sources`) |
+| `OPENSHELL_GATEWAY_ADDRESS` | string | Explicit OpenShell gateway address; overrides metadata.json discovery |
+
+**Priority order (highest → lowest):**
+1. OS environment variables (set in shell or `.env` files)
+2. `.env` file values (loaded into OS env vars)
+3. `~/.norman/config.yaml` settings
+4. Embedded defaults (`config_defaults.yaml`)
+
+### 6.4 OpenShell Gateway Discovery
+
+When `open_shell.address` is empty (default), the server auto-discovers the gateway via:
+
+1. **Env var:** `OPENSHELL_GATEWAY_ADDRESS`
+2. **Metadata file:** `$HOME/.config/openshell/gateways/openshell/metadata.json` → `gateway_endpoint` field
+
+The gateway address determines whether mTLS certificates are passed to the OpenShell SDK client (`https://` → TLS enabled; `http://` → TLS disabled).
+
+> ⚠️ **Note:** The gateway health check requires a working endpoint. A 404 response means the gateway is unreachable or misconfigured — verify `metadata.json` contains the correct `gateway_endpoint`.
 
 ---
 

@@ -41,9 +41,12 @@ type NotificationResponse struct {
 
 func main() {
 	app := &cli.Command{
-		Name:                  "roger",
-		Suggest:               true,
-		Description:           "Roger — Norman workspace client",
+		Name:    "roger",
+		Suggest: true,
+		Description: `Roger — Norman workspace client
+
+Configuration loaded from environment variables:
+- SESSION_ID (target session ID; default "*" broadcasts to all sessions)`,
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			notifyCommand(),
