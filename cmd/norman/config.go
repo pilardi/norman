@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -91,7 +92,8 @@ func handleConfigSet(args []string) error {
 func printConfig(_ *cli.Command, asJSON bool) error {
 	cfg, resolvedGateway, err := getConfig()
 	if err != nil {
-		return fmt.Errorf("error fetching config from server: %v", err)
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		return err
 	}
 
 	if asJSON {
