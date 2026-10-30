@@ -316,9 +316,16 @@ Examples:
   norman providers list-models local`,
 				Commands: []*cli.Command{
 					{
-						Name:   "add",
-						Usage:  "Add a new LLM provider",
-						Action: handleProvidersAdd,
+						Name:  "add",
+						Usage: "Add a new LLM provider",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							err := handleProvidersAdd(ctx, cmd)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
+							}
+							return nil
+						},
 						Flags: []cli.Flag{
 							&cli.StringFlag{Name: "type", Usage: "Provider type (openai, anthropic, ollama, gemini, llamacpp)"},
 							&cli.StringFlag{Name: "endpoint", Usage: "API endpoint URL"},
@@ -332,7 +339,14 @@ Examples:
 						Name:    "list",
 						Aliases: []string{"ls"},
 						Usage:   "List all configured providers with their settings",
-						Action:  handleProvidersList,
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							err := handleProvidersList(ctx, cmd)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
+							}
+							return nil
+						},
 					},
 					{
 						Name:  "get",
@@ -343,15 +357,23 @@ Examples:
 							}
 							err := handleProvidersGet(cmd.Args().First())
 							if err != nil {
-								return fmt.Errorf("get provider failed: %v", err)
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
 							return nil
 						},
 					},
 					{
-						Name:   "update",
-						Usage:  "Update an existing provider's fields (partial update)",
-						Action: handleProvidersUpdate,
+						Name:  "update",
+						Usage: "Update an existing provider's fields (partial update)",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							err := handleProvidersUpdate(ctx, cmd)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
+							}
+							return nil
+						},
 						Flags: []cli.Flag{
 							&cli.StringFlag{Name: "type", Usage: "Provider type"},
 							&cli.StringFlag{Name: "endpoint", Usage: "API endpoint URL"},
@@ -371,7 +393,8 @@ Examples:
 							}
 							err := handleProvidersDelete(cmd.Args().First())
 							if err != nil {
-								return fmt.Errorf("delete provider failed: %v", err)
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
 							return nil
 						},
@@ -386,7 +409,8 @@ Examples:
 							}
 							err := handleProvidersSetDefault(cmd.Args().First())
 							if err != nil {
-								return fmt.Errorf("set default failed: %v", err)
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
 							return nil
 						},
@@ -401,7 +425,8 @@ Examples:
 							}
 							err := handleProvidersListModels(cmd.Args().First())
 							if err != nil {
-								return fmt.Errorf("list models failed: %v", err)
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
 							return nil
 						},

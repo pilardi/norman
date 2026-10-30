@@ -181,7 +181,7 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 		req["api_key"] = cmd.String("api-key")
 	}
 
-	body, err := httpPostJSON("/api/providers/"+name+"/update", req)
+	body, err := httpPutJSON("/api/providers/"+name, req)
 	if err != nil {
 		return fmt.Errorf("error updating provider '%s': %v", name, err)
 	}
@@ -392,7 +392,7 @@ func handleProvidersUpdateInteractive() {
 		}
 	}
 
-	body, err := httpPostJSON("/api/providers/"+name+"/update", req)
+	body, err := httpPutJSON("/api/providers/"+name, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
 		os.Exit(1)
