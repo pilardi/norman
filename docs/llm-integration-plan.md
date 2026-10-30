@@ -160,7 +160,7 @@ The provider selection is controlled at two levels:
 | Flag | Purpose |
 |------|---------|
 | `-p NAME`, `--provider NAME` | Select a configured provider by name (overrides positional default) |
-| `-v`, `--verbose` | Enable server-side debug logging |
+| `-v`, `--verbose` | Enable verbose/debug output (HTTP request details via `logRequest()` in client layer) |
 
 ### Resolution Priority
 

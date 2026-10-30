@@ -114,7 +114,7 @@ norman/
 
 ### Step 13 — Logging verbosity ✅
 
-- `-v`/`--verbose` CLI flag; prints `[debug] METHOD URL` to stderr before each request.
+- `-v`/`--verbose` CLI flag (global); enables verbose/debug output via `logRequest()` calls in HTTP client layer. Populated via urfave `Before` hook as a package-level boolean.
 - Server conditionally applies `middleware.Logger()` based on config.
 - `NORMAN_VERBOSE` env var support (`true`/`false`/`1`/`0`).
 

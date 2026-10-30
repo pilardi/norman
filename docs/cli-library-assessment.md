@@ -150,15 +150,14 @@ tokensVal, err := strconv.Atoi(args[i+1])
 
 > **Note:** norman-server's total lines (~3,022) include its Echo HTTP framework handlers. The CLI flag portion migrated is ~15 lines; the bulk of that file's code (HTTP handlers) remains unchanged.
 >
-> **Phase 5 completed.** Remaining work: shell completion scripts (`make completion`) and full test suite verification.
+> **Phase 4 & 5 completed.** Shell completion scripts generated via `make completion`. Full test suite verified (all tests pass, no data races).
 
 ---
 
 ## 5. Next Steps
 
-1. **Add shell completion** — `make completion` target (Bash, Zsh, Fish) via `cli.Command.Completion()`
-2. **Run full test suite** — verify no behavioral regressions across all three CLIs (`norman`, `roger`, `norman-server`)
+All phases complete. No remaining work items. The PR (#41) is ready for review and merge.
 
 ---
 
-*Assessment created during session; full CLI migration (norman, roger, norman-server) + shell completion + cleanup completed on branch `feat/cli-library-assessment`. Remaining: full test suite verification.*
+*Assessment created during session; full CLI migration (norman, roger, norman-server) + shell completion + cleanup + test suite verification completed on branch `feat/cli-library-assessment`. Status: **ready for merge**.*
