@@ -37,3 +37,6 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+    - name: Integration Tests
+      run: make test-integration

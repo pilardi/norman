@@ -1,37 +1,92 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// TestClientServerCommunication verifies the client can reach and communicate
-// with the server process. This catches regressions like a missing e.Start()
-// call or a response body being closed before it is read.
-func TestClientServerCommunication(t *testing.T) {
-	t.Parallel()
+var (
+	mockGatewayAddr string
+	serverProcess   *os.Process
+)
 
-	bin := filepath.Join("..", "..", "dist", "norman-server")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skipf("%s not found; run 'make build' first", bin)
+// mockOpenShellServer is a minimal gRPC service implementation that satisfies the
+// OpenShell proto interface for testing. It embeds UnimplementedOpenShellServer
+// and overrides only the Health method to return a healthy status.
+type mockOpenShellServer struct {
+	openshellv1.UnimplementedOpenShellServer
+}
+
+func (m *mockOpenShellServer) Health(context.Context, *openshellv1.HealthRequest) (*openshellv1.HealthResponse, error) {
+	return &openshellv1.HealthResponse{
+		Status:  openshellv1.ServiceStatus_SERVICE_STATUS_HEALTHY,
+		Version: "test-mock-v0.0.0",
+	}, nil
+}
+
+func TestMain(m *testing.M) {
+	const testPort = 19876
+	mockGatewayAddr = "http://127.0.0.1:" + strconv.Itoa(testPort)
+
+	// Start the gRPC mock as a background goroutine in this process.
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", testPort))
+	if err != nil {
+		log.Fatalf("bind port %d: %v", testPort, err)
 	}
 
-	cmd := exec.Command(bin)
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start server: %v", err)
-	}
-	defer func() {
-		_ = cmd.Process.Signal(os.Interrupt)
-		_ = cmd.Wait()
-	}()
+	srv := grpc.NewServer()
 
-	// Wait for the server to be ready.
+	// Register the standard gRPC health protocol (for HTTP /health checks).
+	healthSvc := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(srv, healthSvc)
+	healthSvc.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+
+	// Register the OpenShell proto service with our minimal stub.
+	openShellSvc := &mockOpenShellServer{}
+	openshellv1.RegisterOpenShellServer(srv, openShellSvc)
+
+	goReady := make(chan struct{})
+	go func() { close(goReady); _ = srv.Serve(listener) }()
+
+	select {
+	case <-goReady:
+	case <-time.After(5 * time.Second):
+		log.Fatal("gRPC mock server did not become ready in time")
+	}
+
+	time.Sleep(300 * time.Millisecond) // ensure TCP connections are accepted
+
+	code := m.Run()
+
+	// Cleanup: stop the gRPC mock and kill the norman-server process.
+	srv.Stop()
+	_ = listener.Close()
+	if serverProcess != nil {
+		_ = serverProcess.Signal(os.Interrupt)
+		_, _ = serverProcess.Wait()
+	}
+	os.Exit(code)
+}
+
+// waitForServer waits up to 15 seconds for the norman-server HTTP endpoint to respond.
+func waitForServer(t *testing.T) {
+	t.Helper()
 	for i := 0; i < 30; i++ {
 		if resp, err := http.Get("http://127.0.0.1:8080/health"); err == nil {
 			resp.Body.Close()
@@ -42,9 +97,30 @@ func TestClientServerCommunication(t *testing.T) {
 	t.Fatal("server did not become ready within timeout")
 }
 
+// TestClientServerCommunication verifies the client can reach and communicate
+// with the server process. This catches regressions like a missing e.Start()
+// call or a response body being closed before it is read.
+func TestClientServerCommunication(t *testing.T) {
+	bin := filepath.Join("..", "..", "dist", "norman-server")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skipf("%s not found; run 'make build' first", bin)
+	}
+
+	cmd := exec.Command(bin)
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
+	t.Logf("Starting server with OPENSHELL_GATEWAY_ADDRESS=%s", mockGatewayAddr)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+	serverProcess = cmd.Process // store for cleanup in TestMain
+
+	// Wait for the server to be ready.
+	waitForServer(t)
+}
+
 // TestHealthEndpoint verifies the /health endpoint returns valid JSON.
 func TestHealthEndpoint(t *testing.T) {
-	t.Parallel()
+	waitForServer(t)
 
 	resp, err := http.Get("http://127.0.0.1:8080/health")
 	if err != nil {
@@ -64,7 +140,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 // TestConfigEndpoint verifies the /api/config endpoint returns a valid config object.
 func TestConfigEndpoint(t *testing.T) {
-	t.Parallel()
+	waitForServer(t)
 
 	resp, err := http.Get("http://127.0.0.1:8080/api/config")
 	if err != nil {
@@ -98,7 +174,7 @@ func TestConfigEndpoint(t *testing.T) {
 
 // TestCLIConfigJSON verifies the CLI binary's config --json output parses as valid JSON.
 func TestCLIConfigJSON(t *testing.T) {
-	t.Parallel()
+	waitForServer(t)
 
 	bin := filepath.Join("..", "..", "dist", "norman")
 	if _, err := os.Stat(bin); err != nil {
@@ -106,6 +182,7 @@ func TestCLIConfigJSON(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin, "config", "--json")
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("norman config --json: %v\n%s", err, string(out))
@@ -124,7 +201,7 @@ func TestCLIConfigJSON(t *testing.T) {
 
 // TestCLIPlaintextConfig verifies the CLI binary's plain text config output is non-empty.
 func TestCLIPlaintextConfig(t *testing.T) {
-	t.Parallel()
+	waitForServer(t)
 
 	bin := filepath.Join("..", "..", "dist", "norman")
 	if _, err := os.Stat(bin); err != nil {
@@ -132,6 +209,7 @@ func TestCLIPlaintextConfig(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin, "config")
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("norman config: %v\n%s", err, string(out))
