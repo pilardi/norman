@@ -367,6 +367,11 @@ Examples:
 						Name:  "update",
 						Usage: "Update an existing provider's fields (partial update)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
+							if !cmd.IsSet("type") && !cmd.IsSet("endpoint") && !cmd.IsSet("model") &&
+								!cmd.IsSet("temp") && !cmd.IsSet("max-tokens") && !cmd.IsSet("api-key") {
+								handleProvidersUpdateInteractive()
+								return nil
+							}
 							err := handleProvidersUpdate(ctx, cmd)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
