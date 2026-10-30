@@ -163,7 +163,7 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 	// If no update flags are provided, fall back to interactive mode.
 	if !cmd.IsSet("type") && !cmd.IsSet("endpoint") && !cmd.IsSet("model") &&
 		!cmd.IsSet("temp") && !cmd.IsSet("max-tokens") && !cmd.IsSet("api-key") {
-		handleProvidersUpdateInteractive()
+		handleProvidersUpdateInteractive(name)
 		return nil
 	}
 
@@ -347,9 +347,7 @@ func handleProvidersAddInteractive() {
 }
 
 // handleProvidersUpdateInteractive runs an interactive prompt-based workflow for updating a provider.
-var _ = handleProvidersUpdateInteractive
-
-func handleProvidersUpdateInteractive() {
+func handleProvidersUpdateInteractive(name string) {
 	scanner := bufio.NewScanner(os.Stdin)
 	prompt := func(label string) string {
 		fmt.Printf("%s: ", label)
@@ -357,49 +355,144 @@ func handleProvidersUpdateInteractive() {
 		return strings.TrimSpace(scanner.Text())
 	}
 
-	name := prompt("Provider name")
-	if name == "" {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required")
+	// Fetch current provider data to populate defaults and show current values.
+	body, err := httpGet("/api/providers/" + name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching provider '%s': %v\n", name, err)
+		os.Exit(1)
+	}
+
+	var provider map[string]interface{}
+	if err := json.Unmarshal(body, &provider); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing provider data: %v\n", err)
 		os.Exit(1)
 	}
 
 	req := map[string]interface{}{"name": name}
+	// Copy current values into req for display purposes.
+	for k, v := range provider {
+		if k != "api_key_masked" {
+			req[k] = v
+		}
+	}
+
+	fmt.Printf("\nCurrent configuration for '%s':\n", name)
+	printprovidersSummary(provider)
 
 	for {
-		fmt.Printf("\nUpdate field (type/endpoint/model/temp/max_tokens/api-key) or 'done': ")
-		scanner.Scan()
-		field := strings.TrimSpace(scanner.Text())
+		fmt.Printf("\nUpdate field (type/endpoint/model/temp/max_tokens/api-key) or 'done' to finish: ")
+		field := prompt("")
+		field = strings.TrimSpace(strings.ToLower(field))
 		if field == "done" || field == "" {
 			break
 		}
 
-		fmt.Printf("  New value: ")
-		scanner.Scan()
-		value := strings.TrimSpace(scanner.Text())
-
 		switch field {
 		case "type":
-			req["type"] = value
+			fmt.Printf("  Current: %v\n", req["type"])
+			fmt.Printf("  New value (or 'skip'): ")
+			value := prompt("")
+			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
+				req["type"] = strings.TrimSpace(value)
+			}
+
 		case "endpoint":
-			req["endpoint"] = value
+			fmt.Printf("  Current: %v\n", req["endpoint"])
+			fmt.Printf("  New value (or 'skip'): ")
+			value := prompt("")
+			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
+				req["endpoint"] = strings.TrimSpace(value)
+			}
+
 		case "model":
-			req["model"] = value
+			// Fetch available models from the server
+			modelBody, err := httpGet("/api/providers/" + name + "/models")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  Warning: could not fetch model list: %v\n", err)
+			} else {
+				var resp map[string]interface{}
+				if json.Unmarshal(modelBody, &resp) == nil {
+					if modelsArr, ok := resp["models"].([]interface{}); ok {
+						fmt.Printf("  Available models:\n")
+						for i, m := range modelsArr {
+							if mm, ok := m.(map[string]interface{}); ok {
+								modelID, _ := mm["id"].(string)
+								modelName, _ := mm["name"].(string)
+								fmt.Printf("    %d. %s", i+1, modelName)
+								if modelID != "" && modelID != modelName {
+									fmt.Printf(" (%s)", modelID)
+								}
+								fmt.Printf("\n")
+							}
+						}
+					}
+				}
+			}
+			fmt.Printf("  Current: %v\n", req["model"])
+			fmt.Printf("  New value or selection number (or 'skip'): ")
+			value := prompt("")
+			value = strings.TrimSpace(value)
+			if value != "skip" && value != "" {
+				// Check if input is a number (selection index)
+				if idx, err := strconv.Atoi(value); err == nil {
+					// Fetch models again to resolve by index
+					modelBody2, err2 := httpGet("/api/providers/" + name + "/models")
+					if err2 == nil {
+						var resp2 map[string]interface{}
+						if json.Unmarshal(modelBody2, &resp2) == nil {
+							if modelsArr, ok := resp2["models"].([]interface{}); ok {
+								if idx >= 1 && idx <= len(modelsArr) {
+									if mm, ok := modelsArr[idx-1].(map[string]interface{}); ok {
+										modelID, _ := mm["id"].(string)
+										req["model"] = modelID
+									}
+								}
+							}
+						}
+					}
+				} else {
+					req["model"] = value
+				}
+			}
+
 		case "temp":
-			if v, err := strconv.ParseFloat(value, 64); err == nil {
-				req["temperature"] = v
+			fmt.Printf("  Current: %v\n", req["temperature"])
+			fmt.Printf("  New value (or 'skip'): ")
+			value := prompt("")
+			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
+				if v, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
+					req["temperature"] = v
+				} else {
+					fmt.Fprintf(os.Stderr, "  Invalid number: %s\n", value)
+				}
 			}
+
 		case "max_tokens":
-			if v, err := strconv.Atoi(value); err == nil {
-				req["max_tokens"] = v
+			fmt.Printf("  Current: %v\n", req["max_tokens"])
+			fmt.Printf("  New value (or 'skip'): ")
+			value := prompt("")
+			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
+				if v, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+					req["max_tokens"] = v
+				} else {
+					fmt.Fprintf(os.Stderr, "  Invalid number: %s\n", value)
+				}
 			}
+
 		case "api-key":
-			req["api_key"] = value
+			fmt.Printf("  Current: %v\n", req["api_key"])
+			fmt.Printf("  New value (or 'skip'): ")
+			value := prompt("")
+			if strings.TrimSpace(value) != "skip" && strings.TrimSpace(value) != "" {
+				req["api_key"] = strings.TrimSpace(value)
+			}
+
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown field: %s\n", field)
 		}
 	}
 
-	body, err := httpPutJSON("/api/providers/"+name, req)
+	body, err = httpPutJSON("/api/providers/"+name, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error updating provider '%s': %v\n", name, err)
 		os.Exit(1)
