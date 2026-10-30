@@ -9,15 +9,18 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/norman/norman/pkg/config"
 )
 
 // serverURL returns the configured server URL (with fallback).
+// Reads directly from local config file to avoid circular dependency with getConfig().
 func serverURL() string {
-	cfg, _, err := getConfig()
-	if err != nil || cfg == nil || cfg.ServerURL == "" {
+	cfg, err := config.LoadDefault()
+	if err != nil || cfg == nil || cfg.System == nil || cfg.System.ServerURL == "" {
 		return "http://127.0.0.1:8090"
 	}
-	return cfg.ServerURL
+	return cfg.System.ServerURL
 }
 
 // logRequest logs a debug message when verbose mode is enabled.
