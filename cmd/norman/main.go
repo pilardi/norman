@@ -10,7 +10,6 @@ import (
 )
 
 var (
-	verbose          bool   = false
 	selectedProvider string = ""
 )
 
@@ -18,9 +17,6 @@ func main() {
 	app := &cli.Command{
 		EnableShellCompletion: true,
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			if cmd.Bool("verbose") {
-				verbose = true
-			}
 			if cmd.String("provider") != "" {
 				selectedProvider = cmd.String("provider")
 			}

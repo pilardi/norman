@@ -66,20 +66,23 @@
 | `httpGet("/api/sessions")` | `client.ListSessions(ctx)` → parse with `ParseListSessionsResponse` |
 | Raw POST `/api/sessions/{id}` | `client.ArchiveSession(ctx, ArchiveSessionRequest{SessionId: actualID})` |
 
-### Phase 2 — Chat (`chat.go`)
+### Phase 2 — Chat (`chat.go`) ✅ **DONE**
 
 **Changes:**
 - Replace raw POST to `/api/sessions` (session creation) → `client.CreateSession(ctx, SessionCreateRequest{...})`
 - Replace raw POST to `/api/sessions/{id}/messages` → `client.SendMessage(ctx, id, SendMessageRequest{...})`
 - Replace `httpGet("/api/tasks")` in `listEmergentTasks` → `client.ListTasks(ctx, params)`
+- Replace `httpGet("/api/sessions/{id}/history")` → `client.SessionHistory(ctx, id, &SessionHistoryParams{Limit: n})`
+- Replace raw session listing → `client.ListSessions(ctx, nil)` + `ParseListSessionsResponse`
 
 **Migration map:**
 
 | Current | Replacement |
 |---------|-------------|
-| Raw POST `/api/sessions` | `client.CreateSession(ctx, SessionCreateRequest{WorkspaceId: foundID, ClientType: "cli"})` |
+| Raw POST `/api/sessions` | `client.CreateSession(ctx, SessionCreateRequest{WorkspaceId: foundID, ClientType: &protocol.Cli})` |
 | Raw POST `/api/sessions/{id}/messages` | `client.SendMessage(ctx, sessionID, SendMessageRequest{Message: line})` |
 | `httpGet("/api/tasks")` | `client.ListTasks(ctx, nil)` → parse with `ParseListTasksResponse` |
+| `httpGet("/api/sessions/{id}/history")` | `client.SessionHistory(ctx, id, &SessionHistoryParams{Limit: n})` |
 
 ### Phase 3 — Workspaces (`workspaces.go`) ✅ **DONE**
 

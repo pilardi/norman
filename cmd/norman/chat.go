@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -109,6 +108,12 @@ func handleChat(args []string) {
 	workspaceName := ""
 	sessionID := ""
 
+	client, err := newProtocolClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
+		os.Exit(1)
+	}
+
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, sessionHelpText)
 		os.Exit(1)
@@ -146,12 +151,6 @@ func handleChat(args []string) {
 		fmt.Printf("Resolving workspace '%s'...\n", workspaceName)
 
 		// Resolve workspace name to ID using typed client methods.
-		client, err := newProtocolClient()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
-			os.Exit(1)
-		}
-
 		rsp, err := client.ListWorkspaces(context.Background(), nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
@@ -168,7 +167,7 @@ func handleChat(args []string) {
 		for _, w := range *workspaces {
 			name := strVal(w.Name)
 			if name == workspaceName {
-				foundID = strVal(w.Id)
+				foundID = w.Id.String()
 				break
 			}
 		}
@@ -191,7 +190,7 @@ func handleChat(args []string) {
 		sessions := parsedSessions.GetJSON200()
 
 		for _, s := range *sessions {
-			sid := strVal(s.Id)
+			sid := s.Id.String()
 			status := ""
 			if s.SessionStatus != nil {
 				status = string(*s.SessionStatus)
@@ -206,9 +205,10 @@ func handleChat(args []string) {
 		// No active session — create one.
 		if sessionID == "" {
 			fmt.Printf("Creating new session for workspace '%s'...\n", workspaceName)
+			ct := protocol.Cli
 			body := protocol.SessionCreateRequest{
 				WorkspaceId: foundID,
-				ClientType:  strPtr("cli"),
+				ClientType:  &ct,
 			}
 
 			sessRsp, err := client.CreateSession(context.Background(), body)
@@ -222,7 +222,7 @@ func handleChat(args []string) {
 				os.Exit(1)
 			}
 			sess := parsedSess.GetJSON201()
-			sessionID = strVal(sess.Id)
+			sessionID = sess.Id.String()
 			fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
 		}
 	}
@@ -255,8 +255,9 @@ func handleChat(args []string) {
 			case "new":
 				// Start a new session (auto-create).
 				fmt.Printf("Creating new session...\n")
+				ct := protocol.Cli
 				body := protocol.SessionCreateRequest{
-					ClientType: strPtr("cli"),
+					ClientType: &ct,
 				}
 
 				newSessRsp, err := client.CreateSession(context.Background(), body)
@@ -270,7 +271,7 @@ func handleChat(args []string) {
 					continue
 				}
 				newSess := parsedNewSess.GetJSON201()
-				sessionID = strVal(newSess.Id)
+				sessionID = newSess.Id.String()
 				fmt.Printf("New session '%s' created.\n", sessionID)
 			case "history":
 				showHistory(sessionID, cmdArgs)
@@ -382,7 +383,7 @@ func listEmergentTasks(sessionID string) {
 	tasks := parsed.GetJSON200()
 	fmt.Println("Emergent scheduled tasks:")
 	for _, t := range *tasks {
-		fmt.Printf("  Task %s\n", strVal(t.Id))
+		fmt.Printf("  Task %s\n", t.Id.String())
 	}
 }
 
@@ -409,7 +410,7 @@ func showHistory(sessionID string, args []string) {
 		return
 	}
 
-	params := protocol.SessionHistoryParams{
+	params := &protocol.SessionHistoryParams{
 		Limit: intPtr(n),
 	}
 
@@ -469,7 +470,7 @@ func resolveSessionID(input string) (string, bool) {
 	sessions := parsed.GetJSON200()
 	for _, s := range *sessions {
 		name := strVal(s.Name)
-		id := strVal(s.Id)
+		id := s.Id.String()
 		if name == input || strings.HasPrefix(id[:8], input[:8]) {
 			return id, true
 		}
