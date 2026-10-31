@@ -1,104 +1,49 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+
+	"github.com/urfave/cli/v3"
 )
 
-// handleWorkspaces handles workspace subcommands.
-func handleWorkspaces(args []string) {
-	if len(args) == 0 {
-		printWorkspacesHelp()
-		return
+// handleWorkspacesCreate delegates workspace creation to the agent server.
+func handleWorkspacesCreate(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.Args().First()
+	if name == "" {
+		return fmt.Errorf("usage: norman workspaces create <name>")
 	}
 
-	sub := args[0]
-	switch sub {
-	case "create":
-		handleWorkspacesCreate(args[1:])
-	case "list":
-		handleWorkspacesList(args[1:])
-	case "stop":
-		handleWorkspaceStop(args[1:])
-	case "restore":
-		handleWorkspaceRestore(args[1:])
-	case "purge":
-		handleWorkspacePurge(args[1:])
-	case "--help", "-h":
-		printWorkspacesHelp()
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown workspace subcommand: %s\n\n", sub)
-		printWorkspacesHelp()
-		os.Exit(1)
-	}
-}
-
-func printWorkspacesHelp() {
-	fmt.Println(`workspaces — Manage workspaces
-
-Usage: norman workspaces <subcommand> [args...]
-
-Subcommands:
-  create <name>       Create a new workspace directory
-  list                List available workspaces and their sessions
-  stop <name>         Stop a workspace (write snapshot + free sandbox)
-  restore <name>      Restore a stopped workspace to active (replay snapshot)
-  purge <name>        Permanently delete a workspace (requires --confirm)`)
-}
-
-// handleWorkspaceCreate delegates workspace creation to the agent server.
-func handleWorkspacesCreate(args []string) {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "Usage: norman workspaces create <name>")
-		fmt.Fprintln(os.Stderr, "\nCreates a new workspace directory and registers it with the agent server.")
-		fmt.Fprintln(os.Stderr, "The workspace name must be alphanumeric (underscores and hyphens allowed).")
-		os.Exit(1)
-	}
-
-	name := args[0]
-
-	// Submit workspace creation request to server
 	req := map[string]string{
 		"name":        name,
 		"client_type": "cli",
 	}
 
 	if err := httpPost("/api/workspaces", req); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating workspace: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error creating workspace: %v", err)
 	}
 
 	fmt.Printf("Created workspace '%s' (delegated to agent server)\n", name)
 	fmt.Println("(Server manages OpenShell sandbox lifecycle)")
+	return nil
 }
 
-// handleWorkspaceList fetches workspace info from the server.
-func handleWorkspacesList(args []string) {
-	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println(`workspace list — List available workspaces and sessions
-
-Usage: norman workspace list [--json]
-
-Queries the agent server for workspace information.`)
-		return
-	}
-
+// handleWorkspacesList fetches workspace info from the server.
+func handleWorkspacesList(ctx context.Context, c *cli.Command) error {
 	body, err := httpGet("/api/workspaces")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error fetching workspaces: %v", err)
 	}
 
 	var workspaces []map[string]interface{}
 	if err := json.Unmarshal(body, &workspaces); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing workspace response: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error parsing workspace response: %v", err)
 	}
 
 	if len(workspaces) == 0 {
 		fmt.Println("No workspaces found.")
-		return
+		return nil
 	}
 
 	fmt.Println("Available workspaces:")
@@ -108,22 +53,18 @@ Queries the agent server for workspace information.`)
 		status, _ := w["status"].(string)
 		fmt.Printf("  %-20s %s [%s]\n", name, path, status)
 	}
+	return nil
 }
 
-// --- Lifecycle Subcommands ---
-
 // handleWorkspaceStop stops a workspace (frees sandbox, keeps data).
-func handleWorkspaceStop(args []string) {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "Error: 'stop' requires a workspace name argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman workspaces stop <name> [--reason \"text\"]")
-		os.Exit(1)
+func handleWorkspaceStop(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: norman workspaces stop <name> [--reason \"text\"]")
 	}
 
 	name := args[0]
 	reason := ""
 
-	// Parse optional --reason flag
 	for i := 1; i < len(args); i++ {
 		if args[i] == "--reason" && i+1 < len(args) {
 			reason = args[i+1]
@@ -131,76 +72,62 @@ func handleWorkspaceStop(args []string) {
 		}
 	}
 
-	reqBody := map[string]interface{}{
-		"reason": reason,
-	}
-
+	reqBody := map[string]interface{}{"reason": reason}
 	body, err := httpPostJSON("/api/workspaces/"+name+"/stop", reqBody)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error stopping workspace '%s': %v\n", name, err)
-		os.Exit(1)
+		return fmt.Errorf("error stopping workspace '%s': %v", name, err)
 	}
 
 	var ws map[string]interface{}
 	if err := json.Unmarshal(body, &ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error parsing response: %v", err)
 	}
 
 	status, _ := ws["status"].(string)
 	fmt.Printf("Workspace '%s' stopped successfully (status=%s)\n", name, status)
+	return nil
 }
 
 // handleWorkspaceRestore restores a stopped workspace to active.
-func handleWorkspaceRestore(args []string) {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "Error: 'restore' requires a workspace name argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman workspaces restore <name> [--recreate-sandbox]")
-		os.Exit(1)
+func handleWorkspaceRestore(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: norman workspaces restore <name> [--no-recreate]")
 	}
 
 	name := args[0]
 	recreateSandbox := true
 
-	// Parse optional --recreate-sandbox flag (default is true)
 	for i := 1; i < len(args); i++ {
 		if args[i] == "--no-recreate" {
 			recreateSandbox = false
 		}
 	}
 
-	reqBody := map[string]interface{}{
-		"recreate_sandbox": recreateSandbox,
-	}
-
+	reqBody := map[string]interface{}{"recreate_sandbox": recreateSandbox}
 	body, err := httpPostJSON("/api/workspaces/"+name+"/restore", reqBody)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error restoring workspace '%s': %v\n", name, err)
-		os.Exit(1)
+		return fmt.Errorf("error restoring workspace '%s': %v", name, err)
 	}
 
 	var ws map[string]interface{}
 	if err := json.Unmarshal(body, &ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error parsing response: %v", err)
 	}
 
 	status, _ := ws["status"].(string)
 	fmt.Printf("Workspace '%s' restored to active (status=%s)\n", name, status)
+	return nil
 }
 
 // handleWorkspacePurge permanently deletes a workspace.
-func handleWorkspacePurge(args []string) {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(os.Stderr, "Error: 'purge' requires a workspace name argument")
-		fmt.Fprintln(os.Stderr, "Usage: norman workspaces purge <name> [--confirm]")
-		os.Exit(1)
+func handleWorkspacePurge(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: norman workspaces purge <name> [--confirm]")
 	}
 
 	name := args[0]
 	confirm := false
 
-	// Parse optional --confirm flag
 	for i := 1; i < len(args); i++ {
 		if args[i] == "--confirm" {
 			confirm = true
@@ -208,33 +135,21 @@ func handleWorkspacePurge(args []string) {
 	}
 
 	if !confirm {
-		fmt.Fprintf(os.Stderr, "Error: 'purge' requires --confirm flag to proceed (destructive operation)\n")
-		os.Exit(1)
+		return fmt.Errorf("'purge' requires --confirm flag to proceed (destructive operation)")
 	}
 
-	reqBody := map[string]interface{}{
-		"confirm": true,
-	}
-
-	// Use POST with JSON body since the DELETE handler expects a body via Bind()
+	reqBody := map[string]interface{}{"confirm": true}
 	body, err := httpPostJSON("/api/workspaces/"+name+"/purge", reqBody)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error purging workspace '%s': %v\n", name, err)
-		os.Exit(1)
-	}
-
-	// Purge returns JSON success response.
-	if len(body) == 0 {
-		fmt.Printf("Workspace '%s' purged successfully.\n", name)
-		return
+		return fmt.Errorf("error purging workspace '%s': %v", name, err)
 	}
 
 	var ws map[string]interface{}
 	if err := json.Unmarshal(body, &ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error parsing response: %v", err)
 	}
 
 	status, _ := ws["status"].(string)
 	fmt.Printf("Workspace '%s' purged successfully (status=%s)\n", name, status)
+	return nil
 }

@@ -3,7 +3,8 @@
 [![CI](https://github.com/pilardi/norman/actions/workflows/go.yml/badge.svg)](https://github.com/pilardi/norman/actions/workflows/go.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
-[![Last Commit](https://img.shields.io/github/last-commit/pilardi/norman.svg)](https://github.com/pilardi/norman/commits/master)
+[![Last Commit](https://github.com/pilardi/norman/commits/master/badge.svg)](https://github.com/pilardi/norman/commits/master)
+[![Go Coverage](https://github.com/pilardi/norman/wiki/coverage.svg)](https://raw.githack.com/wiki/pilardi/norman/coverage.html)
 
 ## The poor man's agent
 
@@ -73,9 +74,31 @@ echo "What files changed this week?" | ./dist/norman sessions open my-project
 **5. API reference docs:**
 The server exposes a live Scalar-powered API reference at `http://localhost:8080/docs`. You can also generate a static HTML file with `make generate-docs`.
 
+**CLI flags (global):**
+All commands share two global flags available on every subcommand:
+- `-v, --verbose` — enable verbose/debug output (request details)
+- `-p, --provider NAME` — select a configured LLM provider (overrides default)
+
 ### What matters most: agent isolation
 
 The agent lives entirely inside an OpenShell environment (`.norman/`). The host OS never sees it directly. Each workspace has its own session state, memory store, and skill set. This is the design constraint everything else follows — the server and client are just thin interfaces over that isolated runtime.
+
+### Configuration & Connectivity
+
+Norman supports three layers of configuration (priority: env vars > `.env` files > `config.yaml` > embedded defaults):
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| **Env vars** | Shell or `.env` files | Runtime overrides (`NORMAN_HOST`, `NORMAN_PORT`, `OPENSHELL_GATEWAY_ADDRESS`, etc.) |
+| **`.env` files** | `./.env` (cwd) or `$HOME/.norman/.env` | Per-workspace or global key-value defaults |
+| **`config.yaml`** | `~/.norman/config.yaml` | Full system config: LLM providers, workspace paths, skill discovery, gateway address |
+
+**Key env vars for connectivity:**
+- `NORMAN_HOST` / `NORMAN_PORT` — server bind address and port (defaults: `127.0.0.1:8080`)
+- `NORMAN_SERVER_URL` — external-facing URL; overrides auto-derived `http://host:port`
+- `OPENSHELL_GATEWAY_ADDRESS` — explicit OpenShell gateway endpoint (overrides metadata.json discovery)
+
+The server auto-discovers the OpenShell gateway from `~/.config/openshell/gateways/openshell/metadata.json` when no explicit address is set.
 
 ### Build & test
 

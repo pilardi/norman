@@ -26,8 +26,8 @@ var allEnvVars = []EnvVar{
 	{
 		Name:     "NORMAN_HOST",
 		Type:     "string",
-		Default:  "127.0.0.1",
-		HelpText: "Server bind address (default: \"127.0.0.1\")",
+		Default:  EmbeddedDefaults().System.Host,
+		HelpText: fmt.Sprintf("Server bind address (default: %q)", EmbeddedDefaults().System.Host),
 		Apply: func(sc *SystemConfig, raw string) error {
 			sc.Host = raw
 			return nil
@@ -36,8 +36,8 @@ var allEnvVars = []EnvVar{
 	{
 		Name:     "NORMAN_PORT",
 		Type:     "int",
-		Default:  "8080",
-		HelpText: "Server port number (default: 8080)",
+		Default:  strconv.Itoa(EmbeddedDefaults().System.ServerPort),
+		HelpText: fmt.Sprintf("Server port number (default: %d)", EmbeddedDefaults().System.ServerPort),
 		Apply: func(sc *SystemConfig, raw string) error {
 			n, err := strconv.Atoi(raw)
 			if err != nil {
@@ -60,8 +60,8 @@ var allEnvVars = []EnvVar{
 	{
 		Name:     "NORMAN_BASE_DIR",
 		Type:     "string",
-		Default:  "~/.norman/workspaces",
-		HelpText: "Base directory for workspaces (default: ~/.norman/workspaces)",
+		Default:  EmbeddedDefaults().System.BaseDir,
+		HelpText: fmt.Sprintf("Base directory for workspaces (default: %s)", EmbeddedDefaults().System.BaseDir),
 		Apply: func(sc *SystemConfig, raw string) error {
 			sc.BaseDir = raw
 			return nil
@@ -80,8 +80,8 @@ var allEnvVars = []EnvVar{
 	{
 		Name:     "NORMAN_STORE_DIR",
 		Type:     "string",
-		Default:  "$HOME/.norman/store",
-		HelpText: "Path to the memory store directory (default: $HOME/.norman/store)",
+		Default:  filepath.Join(filepath.Dir(EmbeddedDefaults().System.BaseDir), "store"),
+		HelpText: fmt.Sprintf("Path to the memory store directory (default: %s)", filepath.Join(filepath.Dir(EmbeddedDefaults().System.BaseDir), "store")),
 		Apply: func(sc *SystemConfig, raw string) error {
 			// This is consumed by the caller; we just return it for discovery.
 			_ = os.Setenv("NORMAN_STORE_DIR", raw)
@@ -91,8 +91,8 @@ var allEnvVars = []EnvVar{
 	{
 		Name:     "NORMAN_RAW_SOURCES_DIR",
 		Type:     "string",
-		Default:  "$HOME/.norman/raw_sources",
-		HelpText: "Path to the raw sources store directory (default: $HOME/.norman/raw_sources)",
+		Default:  filepath.Join(filepath.Dir(EmbeddedDefaults().System.BaseDir), "raw_sources"),
+		HelpText: fmt.Sprintf("Path to the raw sources store directory (default: %s)", filepath.Join(filepath.Dir(EmbeddedDefaults().System.BaseDir), "raw_sources")),
 		Apply: func(sc *SystemConfig, raw string) error {
 			_ = os.Setenv("NORMAN_RAW_SOURCES_DIR", raw)
 			return nil
@@ -215,8 +215,8 @@ func ClientEnvVars() []EnvVar {
 		{
 			Name:     "NORMAN_HOST",
 			Type:     "string",
-			Default:  "127.0.0.1",
-			HelpText: "Fallback server bind address (used only when NORMAN_SERVER_URL is not set)",
+			Default:  EmbeddedDefaults().System.Host,
+			HelpText: fmt.Sprintf("Fallback server bind address (used only when NORMAN_SERVER_URL is not set; default: %q)", EmbeddedDefaults().System.Host),
 			Apply: func(sc *SystemConfig, raw string) error {
 				sc.Host = raw
 				return nil
@@ -225,8 +225,8 @@ func ClientEnvVars() []EnvVar {
 		{
 			Name:     "NORMAN_PORT",
 			Type:     "int",
-			Default:  "8080",
-			HelpText: "Fallback server port (used only when NORMAN_SERVER_URL is not set)",
+			Default:  strconv.Itoa(EmbeddedDefaults().System.ServerPort),
+			HelpText: fmt.Sprintf("Fallback server port (used only when NORMAN_SERVER_URL is not set; default: %d)", EmbeddedDefaults().System.ServerPort),
 			Apply: func(sc *SystemConfig, raw string) error {
 				n, err := strconv.Atoi(raw)
 				if err != nil {

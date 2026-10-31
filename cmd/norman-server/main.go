@@ -23,6 +23,7 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/scheduler"
 	"github.com/norman/norman/pkg/skills"
+	"github.com/urfave/cli/v3"
 )
 
 // server holds all dependencies injected at startup.
@@ -46,18 +47,53 @@ type server struct {
 }
 
 func main() {
-	// --help / -h: print usage and exit.
-	for _, arg := range os.Args[1:] {
-		if arg == "--help" || arg == "-h" {
-			fmt.Fprint(os.Stderr, config.ServerHelpText())
-			os.Exit(0)
-		}
+	app := &cli.Command{
+		Name: "norman-server",
+		Description: `Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via Echo
+
+Configuration loaded from (priority order):
+- environment variables (NORMAN_HOST, NORMAN_PORT, OPENSHELL_GATEWAY_ADDRESS)
+- .env files (~/.norman/.env, ././.env)
+- config.yaml (~/.config/norman/config.yaml)
+- embedded defaults
+
+OpenShell gateway auto-discovered from ~/.config/openshell/gateways/opensshell/metadata.json when address is empty.`,
+		EnableShellCompletion: true,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "verbose",
+				Aliases: []string{"v"},
+				Usage:   "Enable verbose debug output (overrides config.yaml Logging.Verbose)",
+			},
+			&cli.StringFlag{
+				Name:    "provider",
+				Aliases: []string{"p"},
+				Usage:   "Select which configured provider to use (overrides default_provider)",
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := runServer(cmd.Bool("verbose"), cmd.String("provider")); err != nil {
+				return err
+			}
+			return nil
+		},
 	}
 
+	if err := app.Run(context.Background(), os.Args); err != nil {
+		os.Exit(1)
+	}
+}
+
+// strPtr returns a pointer to the given string.
+func strPtr(s string) *string { return &s }
+
+// intPtr returns a pointer to the given int.
+func intPtr(i int) *int { return &i }
+
+func runServer(verbose bool, selectedProvider string) error {
 	fmt.Fprintf(os.Stderr, "Norman agent server starting...\n")
 
-	// Bootstrap all dependencies (config, providers, stores, loops, schedulers).
-	srv := bootstrap()
+	srv := bootstrap(verbose, selectedProvider)
 
 	host := srv.cfg.System.Host
 	port := srv.cfg.System.ServerPort
@@ -71,6 +107,13 @@ func main() {
 
 	log.Printf("Norman Agent Server starting on %s:%d", host, port)
 
+	// Start HTTP listener.
+	go func() {
+		if err := e.Start(fmt.Sprintf("%s:%d", host, port)); err != nil && err != http.ErrServerClosed {
+			log.Printf("http server error: %v", err)
+		}
+	}()
+
 	// Start scheduler background goroutine.
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	srv.scheduler.Start(schedCtx)
@@ -78,25 +121,13 @@ func main() {
 	// Start idle timeout auto-cleanup goroutine (cleanup sessions inactive for >30min by default).
 	go srv.idleCleanupLoop(30 * time.Minute)
 
-	if err := e.Start(host + ":" + fmt.Sprintf("%d", port)); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("server error: %v", err)
-	}
-
 	// Graceful shutdown.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-ctx.Done()
-		stop()
-		schedCancel() // stop scheduler goroutine
-		e.Logger.Info("shutting down...")
-		_ = e.Shutdown(context.Background())
-	}()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
 
-	<-ctx.Done()
+	log.Println("shutting down...")
+	schedCancel()
+	_ = e.Close()
+	return nil
 }
-
-// strPtr returns a pointer to the given string.
-func strPtr(s string) *string { return &s }
-
-// intPtr returns a pointer to the given int.
-func intPtr(i int) *int { return &i }

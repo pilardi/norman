@@ -26,6 +26,15 @@ func registerRoutes(e *echo.Echo, srv *server) {
 			LogLatency: true,
 			LogMethod:  true,
 			LogURI:     true,
+			LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+				log.Printf("[http] %s %s - status=%d latency=%v",
+					v.Method,
+					v.URI,
+					v.Status,
+					v.Latency,
+				)
+				return nil
+			},
 		}))
 	}
 

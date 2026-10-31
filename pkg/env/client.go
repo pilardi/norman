@@ -118,11 +118,15 @@ func NewClient(gateway string) (*Client, error) {
 
 // NewClientWithTLS creates a new OpenShell client with optional mTLS configuration.
 func NewClientWithTLS(gateway string, tlsCfg *v1.TLSConfig) (*Client, error) {
-	c, err := v1.NewClient(v1.Config{
+	cfg := v1.Config{
 		Address: gateway,
-		TLS:     tlsCfg,
 		Auth:    v1.NoAuth(),
-	})
+	}
+	// Only pass TLS config if the address uses https (not http).
+	if strings.HasPrefix(gateway, "https://") && tlsCfg != nil {
+		cfg.TLS = tlsCfg
+	}
+	c, err := v1.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create OpenShell client with TLS: %w", err)
 	}

@@ -145,11 +145,9 @@ func TestAskUserBlocking(t *testing.T) {
 }
 
 func TestAskUserBlockingNoWS(t *testing.T) {
-	n := New(nil, false, "", 10) // nil WS hub
+	n := New(nil, false, "", 10, WithTimeout(2*time.Second)) // nil WS hub, short timeout
 
-	// With nil hub, the blocking call will timeout after 60s.
-	// Use a context with timeout slightly longer than the internal 60s to capture the actual error.
-	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	done := make(chan error, 1)
@@ -243,12 +241,11 @@ func TestAskUser(t *testing.T) {
 
 func TestAskUserTimeout(t *testing.T) {
 	wh := &mockWSHub{}
-	n := New(wh, false, "", 10)
+	n := New(wh, false, "", 10, WithTimeout(2*time.Second))
 
 	respCh := make(chan string, 1) // no one sends to this channel
 
-	// Internal timeout is 60s; use a context that exceeds it to capture the actual error.
-	ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	done := make(chan error, 1)

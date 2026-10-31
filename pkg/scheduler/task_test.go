@@ -140,16 +140,32 @@ func TestToInterfaceSlice(t *testing.T) {
 		t.Errorf("expected 2 items, got %d", len(slice))
 	}
 
-	// Check structure of first item
-	m, ok := slice[0].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected map[string]interface{}")
+	// Build a lookup map by ID (iteration order is non-deterministic since it comes from a Go map)
+	itemsByID := make(map[string]map[string]interface{})
+	for _, item := range slice {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatal("expected map[string]interface{}")
+		}
+		id, _ := m["id"].(string)
+		itemsByID[id] = m
 	}
-	if m["id"] != "slice-1" {
-		t.Errorf("expected id 'slice-1', got %v", m["id"])
+
+	// Verify both tasks are present regardless of order
+	m1, exists := itemsByID["slice-1"]
+	if !exists {
+		t.Fatal("expected item with id 'slice-1'")
 	}
-	if m["name"] != "task-one" {
-		t.Errorf("expected name 'task-one', got %v", m["name"])
+	if m1["name"] != "task-one" {
+		t.Errorf("expected name 'task-one', got %v", m1["name"])
+	}
+
+	m2, exists := itemsByID["slice-2"]
+	if !exists {
+		t.Fatal("expected item with id 'slice-2'")
+	}
+	if m2["name"] != "task-two" {
+		t.Errorf("expected name 'task-two', got %v", m2["name"])
 	}
 }
 

@@ -111,14 +111,14 @@ func handleChat(args []string) {
 	sessionID := ""
 
 	if len(args) == 0 {
-		printChatHelp()
+		fmt.Fprintln(os.Stderr, sessionHelpText)
 		os.Exit(1)
 	}
 
 	// Parse args: first is workspace name, second optional is session ID.
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-h" || args[i] == "--help" {
-			printChatHelp()
+			fmt.Fprintln(os.Stderr, sessionHelpText)
 			return
 		} else if workspaceName == "" {
 			workspaceName = args[i]
@@ -131,14 +131,14 @@ func handleChat(args []string) {
 			}
 		} else {
 			fmt.Fprintf(os.Stderr, "Too many arguments. Usage: norman sessions open <workspace_name> [<session_id>]\n")
-			printChatHelp()
+			fmt.Fprintln(os.Stderr, sessionHelpText)
 			os.Exit(1)
 		}
 	}
 
 	if workspaceName == "" {
 		fmt.Fprintln(os.Stderr, "Error: workspace name is required")
-		printChatHelp()
+		fmt.Fprintln(os.Stderr, sessionHelpText)
 		os.Exit(1)
 	}
 
@@ -237,7 +237,7 @@ func handleChat(args []string) {
 		if isSlash {
 			switch cmd {
 			case "help":
-				printChatHelp()
+				fmt.Fprintln(os.Stderr, sessionHelpText)
 			case "list", "tasks":
 				listEmergentTasks(sessionID)
 			case "close":
@@ -361,27 +361,6 @@ func handleChat(args []string) {
 		fmt.Fprintf(os.Stderr, "Read error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-// printChatHelp displays help for the sessions open REPL.
-func printChatHelp() {
-	fmt.Println(`sessions open — Interactive REPL chat mode
-
-Usage: norman sessions open <workspace_name> [<session_id>]
-
-Slash-commands (prefix with /):
-  /help             Show this help
-  /tasks            List emergent scheduled tasks for current session
-  /close            Close the current session (save transcript)
-  /new              Start a new chat session
-  /history [N]      Show last N messages of current session
-  /sessions         List all active sessions
-  /switch <id>      Switch to another session by ID
-  /archive <id>     Archive a session's transcript by session ID
-
-Examples:
-  norman sessions open my-project
-  norman sessions open my-project abc12345`)
 }
 
 // listEmergentTasks lists tasks for the given session.

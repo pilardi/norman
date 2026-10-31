@@ -7,8 +7,44 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
+
+	"github.com/norman/norman/pkg/config"
 )
+
+// serverURL returns the configured server URL (with fallback).
+// Reads directly from local config file to avoid circular dependency with getConfig().
+func serverURL() string {
+	cfg, err := config.LoadDefault()
+	if err != nil || cfg == nil || cfg.System == nil {
+		return fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+	if cfg.System.ServerURL != "" {
+		return cfg.System.ServerURL
+	}
+	def := config.EmbeddedDefaults()
+	host := cfg.System.Host
+	port := cfg.System.ServerPort
+	if host == "" {
+		host = def.System.Host
+	}
+	if port == 0 {
+		port = def.System.ServerPort
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
+}
+
+// urlPathEscape safely escapes a name for URL path segments.
+func urlPathEscape(s string) string {
+	return strings.ReplaceAll(s, "/", "%2F")
+}
+
+// logRequest logs a debug message when verbose mode is enabled.
+func logRequest(method, url string) {
+	fmt.Fprintf(os.Stderr, "[debug] %s %s\n", method, url)
+}
 
 // httpGet performs a GET request to the server and returns JSON bytes.
 func httpGet(path string) ([]byte, error) {
@@ -20,7 +56,7 @@ func httpGet(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET %s: %w", url, err)
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -85,7 +121,7 @@ func httpPostJSON(path string, body interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", url, err)
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -111,7 +147,7 @@ func httpDelete(path string) error {
 	if err != nil {
 		return fmt.Errorf("DELETE %s: %w", url, err)
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -121,6 +157,8 @@ func httpDelete(path string) error {
 }
 
 // httpPutJSON performs a PUT request with JSON body and returns the response body.
+var _ = httpPutJSON
+
 func httpPutJSON(path string, body interface{}) ([]byte, error) {
 	url := serverURL() + path
 	if verbose {
@@ -142,7 +180,7 @@ func httpPutJSON(path string, body interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("PUT %s: %w", url, err)
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)

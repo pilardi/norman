@@ -39,6 +39,8 @@ type Notifier struct {
 	rateLimit  int
 	tokens     float64
 	lastRefill time.Time
+	// timeout is the maximum wait duration for AskUser/AskUserBlocking.
+	timeout time.Duration
 }
 
 // WSHubPublisher interface for pushing WebSocket events and routing responses.
@@ -51,19 +53,32 @@ type WSHubPublisher interface {
 	SendResponse(id string, message string) bool
 }
 
-// New creates a Notifier with the given dependencies.
-func New(wsHub WSHubPublisher, bellEnabled bool, slackURL string, rateLimitPerMinute int) *Notifier {
+// WithTimeout sets the maximum wait duration for AskUser/AskUserBlocking.
+// Default is 60 seconds if not specified.
+func WithTimeout(dur time.Duration) func(*Notifier) {
+	return func(n *Notifier) {
+		n.timeout = dur
+	}
+}
+
+// New creates a Notifier with the given dependencies and optional configuration.
+func New(wsHub WSHubPublisher, bellEnabled bool, slackURL string, rateLimitPerMinute int, opts ...func(*Notifier)) *Notifier {
 	if rateLimitPerMinute <= 0 {
 		rateLimitPerMinute = 10 // default
 	}
-	return &Notifier{
+	n := &Notifier{
 		wsHub:       wsHub,
 		bellEnabled: bellEnabled,
 		slackURL:    slackURL,
 		rateLimit:   rateLimitPerMinute,
 		tokens:      float64(rateLimitPerMinute),
 		lastRefill:  time.Now(),
+		timeout:     60 * time.Second, // default timeout
 	}
+	for _, opt := range opts {
+		opt(n)
+	}
+	return n
 }
 
 // Notify sends a notification through all configured channels.
@@ -147,8 +162,8 @@ func (n *Notifier) AskUser(question string, taskID string, respCh chan string) (
 	select {
 	case resp := <-respCh:
 		return resp, nil
-	case <-time.After(60 * time.Second):
-		return "", fmt.Errorf("ask_user: no response within 60s")
+	case <-time.After(n.timeout):
+		return "", fmt.Errorf("ask_user: no response within %s", n.timeout.String())
 	}
 }
 
@@ -175,8 +190,8 @@ func (n *Notifier) AskUserBlocking(question string) (string, error) {
 		select {
 		case resp := <-respCh:
 			return resp, nil
-		case <-time.After(60 * time.Second):
-			return "", fmt.Errorf("ask_user_blocking: no response within 60s")
+		case <-time.After(n.timeout):
+			return "", fmt.Errorf("ask_user_blocking: no response within %s", n.timeout.String())
 		}
 	}
 
@@ -186,8 +201,8 @@ func (n *Notifier) AskUserBlocking(question string) (string, error) {
 	select {
 	case resp := <-respCh:
 		return resp, nil
-	case <-time.After(60 * time.Second):
-		return "", fmt.Errorf("ask_user_blocking: no response within 60s")
+	case <-time.After(n.timeout):
+		return "", fmt.Errorf("ask_user_blocking: no response within %s", n.timeout.String())
 	}
 }
 

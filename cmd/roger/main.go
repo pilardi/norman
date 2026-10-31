@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/urfave/cli/v3"
 )
 
 // ContextFile is the workspace context file injected at sandbox creation.
@@ -37,51 +40,222 @@ type NotificationResponse struct {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(0)
+	app := &cli.Command{
+		Name:    "roger",
+		Suggest: true,
+		Description: `Roger — Norman workspace client
+
+Configuration loaded from environment variables:
+- SESSION_ID (target session ID; default "*" broadcasts to all sessions)`,
+		EnableShellCompletion: true,
+		Commands: []*cli.Command{
+			notifyCommand(),
+			pingCommand(),
+			statusCommand(),
+			logCommand(),
+		},
 	}
 
-	command := os.Args[1]
-	args := os.Args[2:]
-
-	switch command {
-	case "notify":
-		handleNotify(args)
-	case "ping":
-		handlePing(args)
-	case "status":
-		handleStatus(args)
-	case "log":
-		handleLog(args)
-	case "--help", "-h", "help":
-		printUsage()
-	default:
-		fmt.Fprintf(os.Stderr, "roger: unknown command %q\n", command)
-		fmt.Fprintln(os.Stderr, "Available commands: notify, ping, status, log")
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		os.Exit(1)
 	}
 }
 
-// printUsage outputs a brief help message to stderr.
-func printUsage() {
-	fmt.Fprint(os.Stderr, `roger — Norman workspace client
+// notifyCommand returns the "notify" subcommand.
+func notifyCommand() *cli.Command {
+	var title, body, severity string
 
-Usage:
-  roger <command> [flags]
+	return &cli.Command{
+		Name:        "notify",
+		Description: "Push a notification to the connected user",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "title",
+				Usage:    "Notification title (required)",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:  "body",
+				Usage: "Notification body text",
+			},
+			&cli.StringFlag{
+				Name:  "severity",
+				Usage: "Severity level: info, warn, error",
+			},
+			&cli.StringFlag{
+				Name:  "task-id",
+				Usage: "Associated task ID (reserved for future use)",
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			title = cmd.String("title")
+			body = cmd.String("body")
+			severity = cmd.String("severity")
 
-Commands:
-  notify    Push a notification to the connected user
-  ping      Send a health-check event to the current session
-  status    Query workspace state (JSON on stdout)
-  log       Tail recent events for the current session
+			if title == "" {
+				return fmt.Errorf("--title is required")
+			}
 
-Environment variables:
-  SESSION_ID        Target session ID (default: "*" broadcasts to all sessions)
+			envCtx, err := ensureEnv()
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
 
-Flags:
-  --help, -h   Show this help message
-`)
+			req := NotificationRequest{
+				Title:    title,
+				Body:     body,
+				Severity: severity,
+			}
+
+			client := buildClient(envCtx)
+			jsonData, _ := json.Marshal(req)
+
+			apiURL, err := apiURL(envCtx, "/api/notifications")
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
+			resp, err := client.Post(apiURL, "application/json", strings.NewReader(string(jsonData)))
+			if err != nil {
+				return fmt.Errorf("API error: %v", err)
+			}
+			defer resp.Body.Close()
+
+			var apiResp NotificationResponse
+			_ = json.NewDecoder(resp.Body).Decode(&apiResp)
+
+			outputJSON(apiResp)
+			outputText("✓ notification sent (id=%d, severity=%s)", apiResp.ID, apiResp.Severity)
+			return nil
+		},
+	}
+}
+
+// pingCommand returns the "ping" subcommand.
+func pingCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "ping",
+		Description: "Send a health-check event to the current session",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			envCtx, err := ensureEnv()
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
+
+			client := buildClient(envCtx)
+
+			sessionID := os.Getenv("SESSION_ID")
+			if sessionID == "" {
+				outputText("warning: SESSION_ID not set, broadcasting to all sessions")
+				sessionID = "*"
+			}
+
+			event := map[string]string{
+				"event":   "ping",
+				"message": "roger health check",
+			}
+			jsonData, _ := json.Marshal(event)
+
+			apiURL, err := apiURL(envCtx, "/api/sessions/"+url.PathEscape(sessionID)+"/events")
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
+			resp, err := client.Post(
+				apiURL,
+				"application/json",
+				strings.NewReader(string(jsonData)),
+			)
+			if err != nil {
+				return fmt.Errorf("API error: %v", err)
+			}
+			defer resp.Body.Close()
+
+			outputText("✓ ping sent to session %s", sessionID)
+			return nil
+		},
+	}
+}
+
+// statusCommand returns the "status" subcommand.
+func statusCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "status",
+		Description: "Query workspace state (JSON on stdout)",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			envCtx, err := ensureEnv()
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
+
+			client := buildClient(envCtx)
+
+			apiURL, err := apiURL(envCtx, "/api/workspaces/"+url.PathEscape(envCtx.WorkspaceID))
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
+			resp, err := client.Get(apiURL)
+			if err != nil {
+				return fmt.Errorf("API error: %v", err)
+			}
+			defer resp.Body.Close()
+
+			var workspace map[string]interface{}
+			_ = json.NewDecoder(resp.Body).Decode(&workspace)
+
+			outputJSON(workspace)
+			outputText("✓ workspace %s is active", envCtx.WorkspaceName)
+			return nil
+		},
+	}
+}
+
+// logCommand returns the "log" subcommand.
+func logCommand() *cli.Command {
+	var lines = 20 // default
+
+	return &cli.Command{
+		Name:        "log",
+		Description: "Tail recent events for the current session",
+		Flags: []cli.Flag{
+			&cli.IntFlag{
+				Name:  "lines",
+				Usage: "Number of lines to show (default: 20)",
+				Value: 20,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			lines = cmd.Int("lines")
+
+			envCtx, err := ensureEnv()
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
+
+			sessionID := os.Getenv("SESSION_ID")
+			if sessionID == "" {
+				outputText("warning: SESSION_ID not set, showing global events")
+				sessionID = "*"
+			}
+
+			client := buildClient(envCtx)
+
+			apiURL, err := apiURL(envCtx, "/api/sessions/"+url.PathEscape(sessionID)+"/events?lines="+fmt.Sprintf("%d", lines))
+			if err != nil {
+				return fmt.Errorf("error: %v", err)
+			}
+			resp, err := client.Get(apiURL)
+			if err != nil {
+				return fmt.Errorf("API error: %v", err)
+			}
+			defer resp.Body.Close()
+
+			var events []map[string]interface{}
+			_ = json.NewDecoder(resp.Body).Decode(&events)
+
+			outputJSON(events)
+			outputText("✓ showed %d events for session %s", len(events), sessionID)
+			return nil
+		},
+	}
 }
 
 // ensureEnv checks that roger has a valid environment (context.json or NORMAN_SERVER_URL).
@@ -141,185 +315,4 @@ func outputJSON(v interface{}) {
 func outputText(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, msg)
-}
-
-// handleNotify processes the "notify" subcommand.
-func handleNotify(args []string) {
-	var title, body, severity string
-
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--title":
-			i++
-			if i < len(args) {
-				title = args[i]
-			}
-		case "--body":
-			i++
-			if i < len(args) {
-				body = args[i]
-			}
-		case "--severity":
-			i++
-			if i < len(args) {
-				severity = args[i]
-			}
-		case "--task-id":
-			i++
-			// ignored for now — stored for future use
-			_ = args[i]
-		}
-	}
-
-	if title == "" {
-		outputText("error: --title is required")
-		os.Exit(1)
-	}
-
-	ctx, err := ensureEnv()
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-
-	req := NotificationRequest{
-		Title:    title,
-		Body:     body,
-		Severity: severity,
-	}
-
-	client := buildClient(ctx)
-	jsonData, _ := json.Marshal(req)
-
-	url, err := apiURL(ctx, "/api/notifications")
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-	resp, err := client.Post(url, "application/json", strings.NewReader(string(jsonData)))
-	if err != nil {
-		outputText("API error: %v", err)
-		os.Exit(1)
-	}
-	_ = resp.Body.Close()
-
-	var apiResp NotificationResponse
-	_ = json.NewDecoder(resp.Body).Decode(&apiResp)
-
-	outputJSON(apiResp)
-	outputText("✓ notification sent (id=%d, severity=%s)", apiResp.ID, apiResp.Severity)
-}
-
-// handlePing sends a lightweight health-check event.
-func handlePing(args []string) {
-	ctx, err := ensureEnv()
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-
-	client := buildClient(ctx)
-
-	// POST to /api/sessions/{id}/events with a "ping" event type
-	sessionID := os.Getenv("SESSION_ID")
-	if sessionID == "" {
-		outputText("warning: SESSION_ID not set, broadcasting to all sessions")
-		sessionID = "*"
-	}
-
-	event := map[string]string{
-		"event":   "ping",
-		"message": "roger health check",
-	}
-	jsonData, _ := json.Marshal(event)
-
-	url, err := apiURL(ctx, "/api/sessions/"+url.PathEscape(sessionID)+"/events")
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-	resp, err := client.Post(
-		url,
-		"application/json",
-		strings.NewReader(string(jsonData)),
-	)
-	if err != nil {
-		outputText("API error: %v", err)
-		os.Exit(1)
-	}
-	_ = resp.Body.Close()
-
-	outputText("✓ ping sent to session %s", sessionID)
-}
-
-// handleStatus queries workspace state.
-func handleStatus(args []string) {
-	ctx, err := ensureEnv()
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-
-	client := buildClient(ctx)
-
-	url, err := apiURL(ctx, "/api/workspaces/"+url.PathEscape(ctx.WorkspaceID))
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-	resp, err := client.Get(url)
-	if err != nil {
-		outputText("API error: %v", err)
-		os.Exit(1)
-	}
-	_ = resp.Body.Close()
-
-	var workspace map[string]interface{}
-	_ = json.NewDecoder(resp.Body).Decode(&workspace)
-
-	outputJSON(workspace)
-	outputText("✓ workspace %s is active", ctx.WorkspaceName)
-}
-
-// handleLog tails recent events.
-func handleLog(args []string) {
-	ctx, err := ensureEnv()
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-
-	lines := 20 // default
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--lines" && i+1 < len(args) {
-			lines, _ = fmt.Sscanf(args[i+1], "%d", &lines)
-			i++
-		}
-	}
-
-	sessionID := os.Getenv("SESSION_ID")
-	if sessionID == "" {
-		outputText("warning: SESSION_ID not set, showing global events")
-		sessionID = "*"
-	}
-
-	client := buildClient(ctx)
-
-	url, err := apiURL(ctx, "/api/sessions/"+url.PathEscape(sessionID)+"/events?lines="+fmt.Sprintf("%d", lines))
-	if err != nil {
-		outputText("error: %v", err)
-		os.Exit(2)
-	}
-	resp, err := client.Get(url)
-	if err != nil {
-		outputText("API error: %v", err)
-		os.Exit(1)
-	}
-	_ = resp.Body.Close()
-
-	var events []map[string]interface{}
-	_ = json.NewDecoder(resp.Body).Decode(&events)
-
-	outputJSON(events)
-	outputText("✓ showed %d events for session %s", len(events), sessionID)
 }
