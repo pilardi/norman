@@ -6,14 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/norman/norman/pkg/protocol"
 )
 
 // wsURL converts an HTTP server URL to its WebSocket equivalent (http→ws, https→wss).
@@ -145,22 +144,31 @@ func handleChat(args []string) {
 	// If only workspace provided (no session ID), resolve/create one.
 	if workspaceName != "" && sessionID == "" {
 		fmt.Printf("Resolving workspace '%s'...\n", workspaceName)
-		workspacesBody, err := httpGet("/api/workspaces")
+
+		// Resolve workspace name to ID using typed client methods.
+		client, err := newProtocolClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
+			os.Exit(1)
+		}
+
+		rsp, err := client.ListWorkspaces(context.Background(), nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
 			os.Exit(1)
 		}
-		var workspaces []map[string]interface{}
-		if err := json.Unmarshal(workspacesBody, &workspaces); err != nil {
+		parsed, err := protocol.ParseListWorkspacesResponse(rsp)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error parsing workspaces response: %v\n", err)
 			os.Exit(1)
 		}
+		workspaces := parsed.GetJSON200()
+
 		foundID := ""
-		for _, w := range workspaces {
-			name, _ := w["name"].(string)
+		for _, w := range *workspaces {
+			name := strVal(w.Name)
 			if name == workspaceName {
-				idStr, _ := w["id"].(string)
-				foundID = idStr
+				foundID = strVal(w.Id)
 				break
 			}
 		}
@@ -170,19 +178,24 @@ func handleChat(args []string) {
 		}
 
 		// Check if an active session already exists for this workspace.
-		sessionsBody, err := httpGet("/api/sessions")
+		sessionsRsp, err := client.ListSessions(context.Background(), nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
 			os.Exit(1)
 		}
-		var sessions []map[string]interface{}
-		if err := json.Unmarshal(sessionsBody, &sessions); err != nil {
+		parsedSessions, err := protocol.ParseListSessionsResponse(sessionsRsp)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error parsing sessions response: %v\n", err)
 			os.Exit(1)
 		}
-		for _, s := range sessions {
-			sid, _ := s["id"].(string)
-			status, _ := s["status"].(string)
+		sessions := parsedSessions.GetJSON200()
+
+		for _, s := range *sessions {
+			sid := strVal(s.Id)
+			status := ""
+			if s.SessionStatus != nil {
+				status = string(*s.SessionStatus)
+			}
 			if status == "active" {
 				sessionID = sid
 				fmt.Printf("Reusing existing active session '%s' for workspace '%s'\n", sid, workspaceName)
@@ -193,27 +206,23 @@ func handleChat(args []string) {
 		// No active session — create one.
 		if sessionID == "" {
 			fmt.Printf("Creating new session for workspace '%s'...\n", workspaceName)
-			sessBody := map[string]string{"workspace_id": foundID, "client_type": "cli"}
-			sessJSON, _ := json.Marshal(sessBody)
-			sessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(sessJSON))
-			sessReq.Header.Set("Content-Type", "application/json")
-			sessResp, err := (&http.Client{Timeout: 10 * time.Second}).Do(sessReq)
+			body := protocol.SessionCreateRequest{
+				WorkspaceId: foundID,
+				ClientType:  strPtr("cli"),
+			}
+
+			sessRsp, err := client.CreateSession(context.Background(), body)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
 				os.Exit(1)
 			}
-			_ = sessResp.Body.Close()
-			if sessResp.StatusCode >= 400 {
-				bodyBytes, _ := io.ReadAll(sessResp.Body)
-				fmt.Fprintf(os.Stderr, "Session create failed (HTTP %d): %s\n", sessResp.StatusCode, string(bodyBytes))
-				os.Exit(1)
-			}
-			var sess map[string]interface{}
-			if err := json.NewDecoder(sessResp.Body).Decode(&sess); err != nil {
+			parsedSess, err := protocol.ParseCreateSessionResponse(sessRsp)
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
 				os.Exit(1)
 			}
-			sessionID = sess["id"].(string)
+			sess := parsedSess.GetJSON201()
+			sessionID = strVal(sess.Id)
 			fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
 		}
 	}
@@ -246,22 +255,22 @@ func handleChat(args []string) {
 			case "new":
 				// Start a new session (auto-create).
 				fmt.Printf("Creating new session...\n")
-				newSessBody := map[string]string{"client_type": "cli"}
-				newSessJSON, _ := json.Marshal(newSessBody)
-				newSessReq, _ := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions", bytes.NewReader(newSessJSON))
-				newSessReq.Header.Set("Content-Type", "application/json")
-				newSessResp, err := (&http.Client{Timeout: 10 * time.Second}).Do(newSessReq)
+				body := protocol.SessionCreateRequest{
+					ClientType: strPtr("cli"),
+				}
+
+				newSessRsp, err := client.CreateSession(context.Background(), body)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to create new session: %v\n", err)
 					continue
 				}
-				_ = newSessResp.Body.Close()
-				var newSess map[string]interface{}
-				if err := json.NewDecoder(newSessResp.Body).Decode(&newSess); err != nil {
+				parsedNewSess, err := protocol.ParseCreateSessionResponse(newSessRsp)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error parsing new session response: %v\n", err)
 					continue
 				}
-				sessionID = newSess["id"].(string)
+				newSess := parsedNewSess.GetJSON201()
+				sessionID = strVal(newSess.Id)
 				fmt.Printf("New session '%s' created.\n", sessionID)
 			case "history":
 				showHistory(sessionID, cmdArgs)
@@ -294,54 +303,39 @@ func handleChat(args []string) {
 			continue
 		}
 
-		// POST to session messages endpoint (Phase 1).
-		body := map[string]interface{}{"message": line}
+		// POST to session messages endpoint (Phase 2).
+		body := protocol.SendMessageRequest{
+			Message: line,
+		}
 		if selectedProvider != "" {
-			body["provider"] = selectedProvider
+			body.Provider = strPtr(selectedProvider)
 		}
-		jsonBody, err := json.Marshal(body)
+
+		client, err := newProtocolClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error marshaling request: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error creating client: %v\n", err)
 			continue
 		}
 
-		req, err := http.NewRequestWithContext(context.Background(), "POST", serverURL()+"/api/sessions/"+url.PathEscape(sessionID)+"/messages", bytes.NewReader(jsonBody))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-			continue
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		resp, err := client.Do(req)
+		msgRsp, err := client.SendMessage(context.Background(), sessionID, body)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "POST /api/sessions/%s/messages failed: %v\n", sessionID, err)
 			continue
 		}
 
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-
-		if resp.StatusCode >= 400 {
-			fmt.Fprintf(os.Stderr, "HTTP %d: %s\n", resp.StatusCode, string(bodyBytes))
+		parsedMsg, err := protocol.ParseSendMessageResponse(msgRsp)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing message response: %v\n", err)
 			continue
 		}
 
-		// Parse and display response.
-		var result map[string]interface{}
-		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&result); err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
-			continue
+		result := parsedMsg.GetJSON200()
+		responseText := ""
+		if result != nil && result.Response != nil {
+			responseText = *result.Response
 		}
 
 		// Track turn for transcript persistence.
-		responseText := ""
-		if resp, ok := result["response"].(string); ok {
-			responseText = resp
-		} else if msg, ok := result["message"].(string); ok {
-			responseText = msg
-		}
-
 		_ = append(turns, map[string]interface{}{
 			"role":      "user",
 			"content":   line,
@@ -356,7 +350,7 @@ func handleChat(args []string) {
 		}
 
 		// Display agent response (structured or raw).
-		displayResponse(result)
+		displayResponseTyped(result)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -367,13 +361,29 @@ func handleChat(args []string) {
 
 // listEmergentTasks lists tasks for the given session.
 func listEmergentTasks(sessionID string) {
-	body, err := httpGet("/api/tasks")
+	client, err := newProtocolClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
+		return
+	}
+
+	rsp, err := client.ListTasks(context.Background(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching tasks: %v\n", err)
 		return
 	}
+
+	parsed, err := protocol.ParseListTasksResponse(rsp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing tasks response: %v\n", err)
+		return
+	}
+
+	tasks := parsed.GetJSON200()
 	fmt.Println("Emergent scheduled tasks:")
-	fmt.Printf("%s\n", string(body))
+	for _, t := range *tasks {
+		fmt.Printf("  Task %s\n", strVal(t.Id))
+	}
 }
 
 // showHistory displays the last N messages of a session.
@@ -393,29 +403,46 @@ func showHistory(sessionID string, args []string) {
 		return
 	}
 
-	body, err := httpGet("/api/sessions/" + url.PathEscape(actualID) + "/history?limit=" + fmt.Sprintf("%d", n))
+	client, err := newProtocolClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
+		return
+	}
+
+	params := protocol.SessionHistoryParams{
+		Limit: intPtr(n),
+	}
+
+	rsp, err := client.SessionHistory(context.Background(), actualID, params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching history: %v\n", err)
 		return
 	}
 
-	var turns []map[string]interface{}
-	if err := json.Unmarshal(body, &turns); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing history: %v\n", err)
+	parsed, err := protocol.ParseSessionHistoryResponse(rsp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing history response: %v\n", err)
 		return
 	}
 
+	turns := parsed.GetJSON200()
 	fmt.Printf("\n--- Last %d messages ---\n", n)
-	for i, t := range turns {
-		role, _ := t["role"].(string)
-		content, _ := t["content"].(string)
-		ts, _ := t["timestamp"].(string)
+	for i, t := range *turns {
+		role := ""
+		if t.Role != nil {
+			role = string(*t.Role)
+		}
+		content := strVal(t.Content)
+		ts := ""
+		if t.Timestamp != nil {
+			ts = t.Timestamp.Format(time.RFC3339)
+		}
 		if ts != "" {
 			fmt.Printf("[%s] %s: %s\n", ts, role, content)
 		} else {
 			fmt.Printf("%s: %s\n", role, content)
 		}
-		if i < len(turns)-1 {
+		if i < len(*turns)-1 {
 			fmt.Println("---")
 		}
 	}
@@ -424,17 +451,25 @@ func showHistory(sessionID string, args []string) {
 
 // resolveSessionID resolves a session name/short ID to the actual UUID.
 func resolveSessionID(input string) (string, bool) {
-	body, err := httpGet("/api/sessions")
+	client, err := newProtocolClient()
 	if err != nil {
 		return input, false // fall back to original
 	}
-	var sessions []map[string]interface{}
-	if err := json.Unmarshal(body, &sessions); err != nil {
+
+	rsp, err := client.ListSessions(context.Background(), nil)
+	if err != nil {
 		return input, false
 	}
-	for _, s := range sessions {
-		name, _ := s["name"].(string)
-		id, _ := s["id"].(string)
+
+	parsed, err := protocol.ParseListSessionsResponse(rsp)
+	if err != nil {
+		return input, false
+	}
+
+	sessions := parsed.GetJSON200()
+	for _, s := range *sessions {
+		name := strVal(s.Name)
+		id := strVal(s.Id)
 		if name == input || strings.HasPrefix(id[:8], input[:8]) {
 			return id, true
 		}
@@ -442,17 +477,13 @@ func resolveSessionID(input string) (string, bool) {
 	return input, false
 }
 
-// displayResponse formats and prints the agent's response.
-func displayResponse(result map[string]interface{}) {
-	if resp, ok := result["response"].(string); ok {
-		fmt.Println(resp)
+// displayResponseTyped formats and prints the agent's typed response.
+func displayResponseTyped(result *protocol.AgentResponse) {
+	if result != nil && result.Response != nil {
+		fmt.Println(*result.Response)
 		return
 	}
-	if msg, ok := result["message"].(string); ok {
-		fmt.Println(msg)
-		return
-	}
-	// Fallback: print as formatted JSON.
-	data, _ := json.MarshalIndent(result, "", "  ")
+	// Fallback: print as formatted JSON (for backward compat).
+	data, _ := json.MarshalIndent(map[string]interface{}{}, "", "  ")
 	fmt.Println(string(data))
 }

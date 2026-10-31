@@ -81,7 +81,7 @@
 | Raw POST `/api/sessions/{id}/messages` | `client.SendMessage(ctx, sessionID, SendMessageRequest{Message: line})` |
 | `httpGet("/api/tasks")` | `client.ListTasks(ctx, nil)` → parse with `ParseListTasksResponse` |
 
-### Phase 3 — Workspaces (`workspaces.go`)
+### Phase 3 — Workspaces (`workspaces.go`) ✅ **DONE**
 
 **Changes:**
 - Replace `httpPost("/api/workspaces", ...)` → `client.CreateWorkspace(ctx, body)`
@@ -100,12 +100,12 @@
 | `httpPostJSON("/api/workspaces/{name}/restore", reqBody)` | `client.RestoreWorkspace(ctx, name, RestoreRequest{RecreateSandbox: recreateSandbox})` |
 | `httpPostJSON("/api/workspaces/{name}/purge", reqBody)` | `client.PurgeWorkspace(ctx, name, PurgeRequest{Confirm: true})` |
 
-### Phase 4 — Skills (`skills.go`)
+### Phase 4 — Skills (`skills.go`) ✅ **DONE**
 
 **Changes:**
-- Replace `httpGet("/api/skills")` → `client.ListSkills(ctx)`
-- Replace `httpPost("/api/skills/install", ...)` → `client.InstallSkill(ctx, body)`
-- Replace `httpDelete("/api/skills/{name}")` → `client.RemoveSkill(ctx, name)`
+- Replace `httpGet("/api/skills")` → `client.ListSkills(ctx)` + `ParseListSkillsResponse()`
+- Replace `httpPost("/api/skills/install", payload)` → `client.InstallSkill(ctx, body)` + `ParseInstallSkillResponse()`
+- Replace `httpDelete("/api/skills/{name}")` → `client.RemoveSkill(ctx, name)` + `ParseRemoveSkillResponse()`
 
 **Migration map:**
 
