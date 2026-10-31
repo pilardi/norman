@@ -46,3 +46,13 @@ jobs:
 
     - name: Integration Tests
       run: make test-integration
+
+    - name: Coverage Badge
+      run: make badge
+      if: always()
+
+    - name: Commit Coverage Badge
+      run: |
+        git add docs/coverage-badge.svg
+        git diff --cached --quiet || git commit -m "ci: update coverage badge"
+      working-directory: .

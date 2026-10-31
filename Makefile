@@ -67,6 +67,10 @@ test-race:
 	@echo "Running all tests with race detector..."
 	go test -race -count=1 ./...
 
+badge:
+	@echo "Generating coverage badge..."
+	go run ./cmd/badge-gen -input coverage.out -output docs/coverage-badge.svg
+
 test-short:
 	go test -short ./...
 

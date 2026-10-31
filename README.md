@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
 [![Last Commit](https://img.shields.io/github/last-commit/pilardi/norman.svg)](https://github.com/pilardi/norman/commits/master)
+[![Coverage](https://gocover.io/github.com/norman/norman/badge.svg)](https://gocover.io/github.com/norman/norman)
 
 ## The poor man's agent
 
