@@ -120,10 +120,6 @@ func TestClientServerCommunication(t *testing.T) {
 
 // TestHealthEndpoint verifies the /health endpoint returns valid JSON.
 func TestHealthEndpoint(t *testing.T) {
-	bin := filepath.Join("..", "..", "dist", "norman-server")
-	if _, err := os.Stat(bin); err != nil {
-		t.Skipf("%s not found; run 'make build' first", bin)
-	}
 	waitForServer(t)
 
 	resp, err := http.Get("http://127.0.0.1:8080/health")

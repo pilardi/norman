@@ -70,7 +70,7 @@ test-race:
 test-short:
 	go test -short ./...
 
-test-integration:
+test-integration: build
 	@echo "Running integration tests (client-server communication)..."
 	go test -v -count=1 ./cmd/norman/...
 
