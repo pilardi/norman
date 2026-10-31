@@ -177,7 +177,7 @@ func handleChat(args []string) {
 		}
 
 		// Check if an active session already exists for this workspace.
-		sessionsRsp, err := client.ListSessions(context.Background(), nil)
+		sessionsRsp, err := client.ListSessions(context.Background())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
 			os.Exit(1)
@@ -457,7 +457,7 @@ func resolveSessionID(input string) (string, bool) {
 		return input, false // fall back to original
 	}
 
-	rsp, err := client.ListSessions(context.Background(), nil)
+	rsp, err := client.ListSessions(context.Background())
 	if err != nil {
 		return input, false
 	}
