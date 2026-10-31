@@ -72,10 +72,17 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 						Name:  "json",
 						Usage: "Output configuration as JSON",
 					},
+					&cli.StringFlag{
+						Name:  "set",
+						Usage: "Set a config value (e.g., --set server_port=9090)",
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					if cmd.Bool("json") {
 						return handleConfigJSON(ctx, cmd)
+					}
+					if setVal := cmd.String("set"); setVal != "" {
+						return handleConfigSet(ctx, []string{setVal})
 					}
 					return handleConfig(ctx, cmd)
 				},

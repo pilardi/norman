@@ -87,3 +87,27 @@ func parseInt(s string) *int {
 	}
 	return &v
 }
+
+// derefInt returns the value of i, or 0 if nil.
+func derefInt(i *int) int {
+	if i == nil {
+		return 0
+	}
+	return *i
+}
+
+// derefBool returns the value of b, or false if nil.
+func derefBool(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
+}
+
+// derefFloat32 returns the value of f as float64, or 0 if nil.
+func derefFloat32(f *float32) float64 {
+	if f == nil {
+		return 0
+	}
+	return float64(*f)
+}
