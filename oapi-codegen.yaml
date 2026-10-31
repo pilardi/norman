@@ -1,6 +1,7 @@
 package: protocol
 generate:
+  client: true
   models: true
 output-options:
   skip-prune: true
-output: pkg/protocol/types.go
+output: pkg/protocol/client.go
