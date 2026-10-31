@@ -31,11 +31,9 @@ help:
 
 generate:
 	@mkdir -p pkg/protocol internal/api
-	@echo "Generating protocol types..."
-	$(CODEGEN) -package protocol -generate types api-spec.yaml > pkg/protocol/types.go
-	@echo "Generating client library..."
-	$(CODEGEN) -package protocol -generate client api-spec.yaml > pkg/protocol/client.go
-	@echo "Generating server handlers..."
+	@echo "Generating protocol types, client, and server handlers..."
+	$(CODEGEN) -config oapi-codegen-types.yaml api-spec.yaml
+	$(CODEGEN) -config oapi-codegen-client.yaml api-spec.yaml
 	$(CODEGEN) -package api -generate server api-spec.yaml > internal/api/handlers.go
 	@echo "Fixing cross-package type references in handlers..."
 	sed -i '/^import (/a\\t"github.com/norman/norman/pkg/protocol"' internal/api/handlers.go
