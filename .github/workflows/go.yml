@@ -6,6 +6,8 @@ name: Go
 on:
   push:
     branches: [ "master" ]
+    paths-ignore:
+      - "docs/coverage-badge.svg"
   pull_request:
     branches: [ "master" ]
 
@@ -47,12 +49,10 @@ jobs:
     - name: Integration Tests
       run: make test-integration
 
-    - name: Coverage Badge
-      run: make badge
-      if: always()
-
-    - name: Commit Coverage Badge
-      run: |
-        git add docs/coverage-badge.svg
-        git diff --cached --quiet || git commit -m "ci: update coverage badge"
-      working-directory: .
+    - name: Coverage Report
+      uses: ncruces/go-coverage-report@v0.3.3
+      with:
+        coverage-file: coverage.out
+        amend: true
+      if: github.event_name == 'push'
+      continue-on-error: true

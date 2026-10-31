@@ -67,6 +67,10 @@ test-race:
 	@echo "Running all tests with race detector..."
 	go test -race -count=1 ./...
 
+coverage:
+	@echo "Running tests with race detection and coverage..."
+	go test -race -count=1 -coverprofile=coverage.out ./...
+
 badge:
 	@echo "Generating coverage badge..."
 	go run ./cmd/badge-gen -input coverage.out -output docs/coverage-badge.svg
