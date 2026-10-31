@@ -15,7 +15,7 @@ func handleWorkspacesCreate(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("usage: norman workspaces create <name>")
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -48,7 +48,7 @@ func handleWorkspacesCreate(ctx context.Context, cmd *cli.Command) error {
 
 // handleWorkspacesList fetches workspace info from the server.
 func handleWorkspacesList(ctx context.Context, c *cli.Command) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -98,7 +98,7 @@ func handleWorkspaceStop(ctx context.Context, args []string) error {
 		}
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -141,7 +141,7 @@ func handleWorkspaceRestore(ctx context.Context, args []string) error {
 		}
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -188,7 +188,7 @@ func handleWorkspacePurge(ctx context.Context, args []string) error {
 		return fmt.Errorf("'purge' requires --confirm flag to proceed (destructive operation)")
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}

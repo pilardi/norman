@@ -108,7 +108,7 @@ func handleChat(args []string) {
 	workspaceName := ""
 	sessionID := ""
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
 		os.Exit(1)
@@ -312,7 +312,7 @@ func handleChat(args []string) {
 			body.Provider = strPtr(selectedProvider)
 		}
 
-		client, err := newProtocolClient()
+		client, err := getProtocolClient()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating client: %v\n", err)
 			continue
@@ -362,7 +362,7 @@ func handleChat(args []string) {
 
 // listEmergentTasks lists tasks for the given session.
 func listEmergentTasks(sessionID string) {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
 		return
@@ -404,7 +404,7 @@ func showHistory(sessionID string, args []string) {
 		return
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
 		return
@@ -452,7 +452,7 @@ func showHistory(sessionID string, args []string) {
 
 // resolveSessionID resolves a session name/short ID to the actual UUID.
 func resolveSessionID(input string) (string, bool) {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return input, false // fall back to original
 	}
