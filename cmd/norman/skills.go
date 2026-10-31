@@ -65,7 +65,7 @@ Subcommands:
 
 // listSkills fetches installed skills from the server and displays provenance.
 func listSkills(ctx context.Context, cmd *cli.Command) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -113,7 +113,7 @@ func listSkills(ctx context.Context, cmd *cli.Command) error {
 
 // installSkill delegates to the server's /api/skills/install endpoint.
 func installSkill(ctx context.Context, sourcePath string) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -138,7 +138,7 @@ func installSkill(ctx context.Context, sourcePath string) error {
 
 // installRemote installs a skill from a git repository URL.
 func installRemote(ctx context.Context, repoURL string) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -163,7 +163,7 @@ func installRemote(ctx context.Context, repoURL string) error {
 
 // removeSkill delegates to the server's /api/skills/:name endpoint.
 func removeSkill(ctx context.Context, name string) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}

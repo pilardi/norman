@@ -94,7 +94,7 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 		req.Extra = &extraMap
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -116,7 +116,7 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 
 // handleProvidersList lists all configured providers.
 func handleProvidersList(ctx context.Context, cmd *cli.Command) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -156,7 +156,7 @@ func handleProvidersGet(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required")
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -212,7 +212,7 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 		req.Type = &v
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -239,7 +239,7 @@ func handleProvidersDelete(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required")
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -261,7 +261,7 @@ func handleProvidersSetDefault(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required\nUsage: norman providers set-default <name>")
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -285,7 +285,7 @@ func handleProvidersListModels(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required\nUsage: norman providers list-models <name>")
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -357,7 +357,7 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 	// Query available models via the server API.
 	var models []protocol.AvailableModelEntry
 	var resp *http.Response
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not create API client: %v\n", err)
 	} else {
@@ -447,7 +447,7 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		return nil
 	}
 
-	client, err = newProtocolClient()
+	client, err = getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create API client: %v\n", err)
 		os.Exit(1)
@@ -504,7 +504,7 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 		return strings.TrimSpace(scanner.Text())
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create API client: %v\n", err)
 		os.Exit(1)
@@ -550,7 +550,7 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 
 	if effectiveType != "" && effectiveEndpoint != "" {
 		var models []protocol.AvailableModelEntry
-		client, err := newProtocolClient()
+		client, err := getProtocolClient()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to create API client: %v\n", err)
 		} else {

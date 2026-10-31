@@ -175,7 +175,7 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 // Helper: safely dereference a *int pointer for display.
 // getConfig fetches the current system config from the server using the protocol client.
 func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, string, error) {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -352,7 +352,7 @@ func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, st
 
 // putConfig sends a partial system config update to the server using the protocol client.
 func putConfig(ctx context.Context, updates map[string]interface{}) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}

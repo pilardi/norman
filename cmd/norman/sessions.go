@@ -57,7 +57,7 @@ Subcommands:
 
 // handleSessionList lists active sessions using the generated protocol client.
 func handleSessionList(args []string) error {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -100,7 +100,7 @@ func handleSessionArchive(sessionID string) error {
 		return fmt.Errorf("session '%s' not found, run 'norman sessions list' to see available sessions", sessionID)
 	}
 
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
@@ -121,7 +121,7 @@ func handleSessionArchive(sessionID string) error {
 
 // listSessions lists all active sessions via GET /api/sessions.
 func listSessions() {
-	client, err := newProtocolClient()
+	client, err := getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create API client: %v\n", err)
 		return

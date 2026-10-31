@@ -7,12 +7,19 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
-// newProtocolClient creates a protocol client using the configured server URL.
-// It delegates to serverURL() from http.go for URL resolution, ensuring a single
-// source of truth across the codebase.
-func newProtocolClient() (*protocol.Client, error) {
-	url := serverURL()
-	return protocol.NewClient(url)
+var (
+	protocolClient    *protocol.Client
+	protocolClientErr error
+)
+
+// getProtocolClient returns a shared protocol client, lazily initialized on first call.
+// The client is created once using the configured server URL and reused for all requests.
+func getProtocolClient() (*protocol.Client, error) {
+	if protocolClient == nil {
+		url := serverURL()
+		protocolClient, protocolClientErr = protocol.NewClient(url)
+	}
+	return protocolClient, protocolClientErr
 }
 
 // strPtr returns a pointer to s if non-empty, otherwise nil.
