@@ -68,63 +68,7 @@ func httpGet(path string) ([]byte, error) {
 	return body, nil
 }
 
-// httpPost performs a POST request with JSON body to the server (no body return).
-func httpPost(path string, body interface{}) error {
-	url := serverURL() + path
-	if verbose {
-		logRequest("POST", url)
-	}
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("marshal body: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBody))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("POST %s: %w", url, err)
-	}
-	_ = resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-	return nil
-}
-
 // httpPostJSON performs a POST request with JSON body and returns the response body.
-// httpDelete performs a DELETE request to the server.
-func httpDelete(path string) error {
-	url := serverURL() + path
-	if verbose {
-		logRequest("DELETE", url)
-	}
-	req, err := http.NewRequestWithContext(context.Background(), "DELETE", url, nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("DELETE %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-	return nil
-}
-
 // httpPutJSON performs a PUT request with JSON body and returns the response body.
 var _ = httpPutJSON
 

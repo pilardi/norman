@@ -184,7 +184,7 @@ Commands:
 								fmt.Fprintf(os.Stderr, "Error: usage: norman skills install <path|repo>\n")
 								return fmt.Errorf("usage: norman skills install <path|repo>")
 							}
-							err := installSkill(cmd.Args().First())
+							err := installSkill(ctx, cmd.Args().First())
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: install failed: %v\n", err)
 								return fmt.Errorf("install failed: %v", err)
@@ -201,7 +201,7 @@ Commands:
 								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remote <git-url> [version]\n")
 								return fmt.Errorf("usage: norman skills remote <git-url> [version]")
 							}
-							err := installRemote(cmd.Args().First())
+							err := installRemote(ctx, cmd.Args().First())
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: remote install failed: %v\n", err)
 								return fmt.Errorf("remote install failed: %v", err)
@@ -217,7 +217,7 @@ Commands:
 								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remove <name>\n")
 								return fmt.Errorf("usage: norman skills remove <name>")
 							}
-							err := removeSkill(cmd.Args().First())
+							err := removeSkill(ctx, cmd.Args().First())
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: remove failed: %v\n", err)
 								return fmt.Errorf("remove failed: %v", err)

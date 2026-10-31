@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 
+	"github.com/norman/norman/pkg/protocol"
 	"github.com/urfave/cli/v3"
 )
 
@@ -23,7 +22,7 @@ func handleSkills(ctx context.Context, cmd *cli.Command) error {
 		if len(cmd.Args().Slice()) < 1 {
 			return fmt.Errorf("usage: norman skills install <path|repo>")
 		}
-		if err := installSkill(cmd.Args().First()); err != nil {
+		if err := installSkill(ctx, cmd.Args().First()); err != nil {
 			return fmt.Errorf("install failed: %v", err)
 		}
 		return nil
@@ -31,7 +30,7 @@ func handleSkills(ctx context.Context, cmd *cli.Command) error {
 		if len(cmd.Args().Slice()) < 1 {
 			return fmt.Errorf("usage: norman skills remote <git-url> [version]")
 		}
-		if err := installRemote(cmd.Args().First()); err != nil {
+		if err := installRemote(ctx, cmd.Args().First()); err != nil {
 			return fmt.Errorf("remote install failed: %v", err)
 		}
 		return nil
@@ -39,7 +38,7 @@ func handleSkills(ctx context.Context, cmd *cli.Command) error {
 		if len(cmd.Args().Slice()) < 1 {
 			return fmt.Errorf("usage: norman skills remove <name>")
 		}
-		if err := removeSkill(cmd.Args().First()); err != nil {
+		if err := removeSkill(ctx, cmd.Args().First()); err != nil {
 			return fmt.Errorf("remove failed: %v", err)
 		}
 		return nil
@@ -66,46 +65,43 @@ Subcommands:
 
 // listSkills fetches installed skills from the server and displays provenance.
 func listSkills(ctx context.Context, cmd *cli.Command) error {
-	body, err := httpGet("/api/skills")
+	client, err := newProtocolClient()
+	if err != nil {
+		return fmt.Errorf("failed to create client: %v", err)
+	}
+
+	rsp, err := client.ListSkills(ctx)
 	if err != nil {
 		return fmt.Errorf("error fetching skills: %v", err)
 	}
 
-	var skills []map[string]interface{}
-	if err := json.Unmarshal(body, &skills); err != nil {
-		return fmt.Errorf("error parsing skills response: %v", err)
+	parsed, err := protocol.ParseListSkillsResponse(rsp)
+	if err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
 	}
 
-	if len(skills) == 0 {
+	skills := parsed.GetJSON200()
+	if skills == nil || len(*skills) == 0 {
 		fmt.Println("No skills discovered.")
 		return nil
 	}
 
-	fmt.Printf("Discovered %d skill(s):\n\n", len(skills))
-	for _, s := range skills {
-		name, _ := s["name"].(string)
-		desc, _ := s["description"].(string)
-		path, _ := s["path"].(string)
-		sourceURL, _ := s["source_url"].(string)
-		version, _ := s["version"].(string)
-		tools, _ := s["tools"].([]interface{})
+	fmt.Printf("Discovered %d skill(s):\n\n", len(*skills))
+	for _, s := range *skills {
+		name := strVal(s.Name)
+		desc := strVal(s.Description)
+		version := strVal(s.Version)
 
 		fmt.Printf("  📦 %s\n", name)
-		fmt.Printf("     %s\n", desc)
-		if len(tools) > 0 {
-			toolNames := make([]string, len(tools))
-			for i, t := range tools {
-				if m, ok := t.(map[string]interface{}); ok {
-					if n, ok := m["name"].(string); ok {
-						toolNames[i] = n
-					}
-				}
-			}
-			fmt.Printf("     Tools: %s\n", strings.Join(toolNames, ", "))
+		if desc != "" {
+			fmt.Printf("     %s\n", desc)
 		}
-		fmt.Printf("     Path:    %s\n", path)
-		if sourceURL != "" {
-			fmt.Printf("     Source:  %s\n", sourceURL)
+		if len(*s.Tools) > 0 {
+			toolNames := make([]string, len(*s.Tools))
+			for i, t := range *s.Tools {
+				toolNames[i] = strVal(t.Name)
+			}
+			fmt.Printf("     Tools: %s\n", joinStrings(toolNames, ", "))
 		}
 		if version != "" {
 			fmt.Printf("     Version: %s\n", version)
@@ -116,30 +112,84 @@ func listSkills(ctx context.Context, cmd *cli.Command) error {
 }
 
 // installSkill delegates to the server's /api/skills/install endpoint.
-func installSkill(sourcePath string) error {
-	payload := map[string]string{"repo": sourcePath}
-	if err := httpPost("/api/skills/install", payload); err != nil {
+func installSkill(ctx context.Context, sourcePath string) error {
+	client, err := newProtocolClient()
+	if err != nil {
+		return fmt.Errorf("failed to create client: %v", err)
+	}
+
+	body := protocol.SkillInstallRequest{
+		Repo: sourcePath,
+	}
+
+	rsp, err := client.InstallSkill(ctx, body)
+	if err != nil {
 		return fmt.Errorf("error installing skill: %v", err)
 	}
+
+	_, err = protocol.ParseInstallSkillResponse(rsp)
+	if err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
+	}
+
 	fmt.Printf("Requesting server to install skill from '%s'\n", sourcePath)
 	return nil
 }
 
 // installRemote installs a skill from a git repository URL.
-func installRemote(repoURL string) error {
-	payload := map[string]string{"repo": repoURL}
-	if err := httpPost("/api/skills/install", payload); err != nil {
+func installRemote(ctx context.Context, repoURL string) error {
+	client, err := newProtocolClient()
+	if err != nil {
+		return fmt.Errorf("failed to create client: %v", err)
+	}
+
+	body := protocol.SkillInstallRequest{
+		Repo: repoURL,
+	}
+
+	rsp, err := client.InstallSkill(ctx, body)
+	if err != nil {
 		return fmt.Errorf("error installing skill: %v", err)
 	}
+
+	_, err = protocol.ParseInstallSkillResponse(rsp)
+	if err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
+	}
+
 	fmt.Printf("Requesting server to install skill from repo '%s'\n", repoURL)
 	return nil
 }
 
 // removeSkill delegates to the server's /api/skills/:name endpoint.
-func removeSkill(name string) error {
-	if err := httpDelete("/api/skills/" + name); err != nil {
+func removeSkill(ctx context.Context, name string) error {
+	client, err := newProtocolClient()
+	if err != nil {
+		return fmt.Errorf("failed to create client: %v", err)
+	}
+
+	rsp, err := client.RemoveSkill(ctx, name)
+	if err != nil {
 		return fmt.Errorf("error removing skill: %v", err)
 	}
+
+	_, err = protocol.ParseRemoveSkillResponse(rsp)
+	if err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
+	}
+
 	fmt.Printf("Requesting server to remove skill '%s'\n", name)
 	return nil
+}
+
+// joinStrings joins a slice of strings with the given separator.
+func joinStrings(ss []string, sep string) string {
+	if len(ss) == 0 {
+		return ""
+	}
+	result := ss[0]
+	for i := 1; i < len(ss); i++ {
+		result += sep + ss[i]
+	}
+	return result
 }
