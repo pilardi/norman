@@ -118,13 +118,13 @@
 | `httpPost("/api/skills/install", payload)` | `client.InstallSkill(ctx, SkillInstallRequest{Repo: sourcePath})` |
 | `httpDelete("/api/skills/{name}")` | `client.RemoveSkill(ctx, name)` |
 
-### Phase 5 — Cleanup (`http.go`)
+### Phase 5 — Cleanup (`http.go`) ✅ **DONE**
 
 **Changes:**
-- After all callers are migrated, evaluate whether helper functions (`httpGet`, `httpPost`, `httpPostJSON`, `httpDelete`, `httpPutJSON`) are still needed.
-- Likely candidates for removal: `httpPost`, `httpPostJSON`, `httpDelete` (all replaced by generated methods).
-- Keep `httpGet` only if WebSocket-related code needs it (unlikely — chat.go uses raw HTTP for session creation/messages, which will be replaced).
-- Consider removing the entire `http.go` file if no remaining callers exist.
+- Removed `httpGet`, `httpPutJSON` (all callers migrated to typed protocol methods).
+- Removed unused `verbose` package-level variable from `main.go`.
+- Kept `serverURL()` and `urlPathEscape()` as they are still needed by providers.go.
+- WebSocket code in chat.go intentionally left unchanged (real-time transport layer, not API).
 
 ---
 
@@ -163,9 +163,29 @@ After each phase:
 ## 6. Order of Execution
 
 1. ✅ **Phase 1** (Sessions) — DONE. Replaced `handleSessionList`, `handleSessionArchive`, `listSessions`; removed duplicate `archiveSession()`. Updated `chat.go` slash-command `/archive` to use typed call. All tests pass, lint clean.
-2. **Phase 3** (Workspaces) — lowest risk, most straightforward replacements
-3. **Phase 4** (Skills) — similar pattern to workspaces
-4. **Phase 2** (Chat) — most complex; involves message sending + session history
-5. **Phase 5** (Cleanup) — remove unused helpers from `http.go`
+2. ✅ **Phase 3** (Workspaces) — DONE. Replaced all `httpPost`/`httpPostJSON`/`httpDelete` calls with typed methods; added context.Context parameters to handlers.
+3. ✅ **Phase 4** (Skills) — DONE. Replaced `httpGet`/`httpPost`/`httpDelete` with typed methods; uses typed Skill struct fields.
+4. ✅ **Phase 2** (Chat) — DONE. Full rewrite replacing raw HTTP calls for session creation, message sending, task listing, and history. Fixed UUID→string conversions, ClientType enum typing, and SessionHistoryParams pointer passing.
+5. ✅ **Phase 5** (Cleanup) — DONE. Removed `httpGet`, `httpPutJSON` from http.go; removed unused `verbose` var from main.go. Kept `serverURL()` and `urlPathEscape()`.
 
-This order allows incremental verification after each phase.
+---
+
+## Summary: Migration Complete ✅
+
+All raw HTTP calls in the Norman CLI client have been replaced with typed `protocol.Client` methods generated from `api-spec.yaml`. The remaining codebase uses only the generated API layer for server communication, except for:
+- **WebSocket transport** (`gorilla/websocket`) — intentionally kept as-is (real-time layer, not API)
+- **`serverURL()` and `urlPathEscape()` helpers** — still needed by providers.go
+
+**Files modified across all phases:**
+| File | Status |
+|------|--------|
+| `cmd/norman/sessions.go` | ✅ Migrated |
+| `cmd/norman/chat.go` | ✅ Migrated + type fixes |
+| `cmd/norman/workspaces.go` | ✅ Migrated |
+| `cmd/norman/skills.go` | ✅ Migrated |
+| `cmd/norman/http.go` | ✅ Cleaned up (kept 2 helpers) |
+| `cmd/norman/main.go` | ✅ Removed unused `verbose` var |
+| `pkg/protocol/client.go` | Generated (no changes needed) |
+| `pkg/protocol/types.go` | Generated (no changes needed) |
+
+**Verification:** `make build` and `go test ./...` both pass cleanly.
