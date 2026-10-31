@@ -46,11 +46,3 @@ jobs:
 
     - name: Integration Tests
       run: make test-integration
-
-    - name: Coverage Report
-      uses: ncruces/go-coverage-report@v0.3.3
-      with:
-        coverage-file: coverage.out
-        amend: true
-      if: github.event_name == 'push'
-      continue-on-error: true

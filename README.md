@@ -3,8 +3,6 @@
 [![CI](https://github.com/pilardi/norman/actions/workflows/go.yml/badge.svg)](https://github.com/pilardi/norman/actions/workflows/go.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.25-blue.svg)](https://go.dev/)
-[![Last Commit](https://github.com/pilardi/norman/commits/master/badge.svg)](https://github.com/pilardi/norman/commits/master)
-[![Go Coverage](https://github.com/pilardi/norman/wiki/coverage.svg)](https://raw.githack.com/wiki/pilardi/norman/coverage.html)
 
 ## The poor man's agent
 
