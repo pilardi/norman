@@ -6,8 +6,6 @@ name: Go
 on:
   push:
     branches: [ "master" ]
-    paths-ignore:
-      - "docs/coverage-badge.svg"
   pull_request:
     branches: [ "master" ]
 
