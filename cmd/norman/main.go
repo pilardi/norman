@@ -10,7 +10,6 @@ import (
 )
 
 var (
-	verbose          bool   = false
 	selectedProvider string = ""
 )
 
@@ -18,9 +17,6 @@ func main() {
 	app := &cli.Command{
 		EnableShellCompletion: true,
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			if cmd.Bool("verbose") {
-				verbose = true
-			}
 			if cmd.String("provider") != "" {
 				selectedProvider = cmd.String("provider")
 			}
@@ -120,7 +116,7 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "stop",
 						Usage: "Stop a workspace (write snapshot + free sandbox)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspaceStop(cmd.Args().Slice())
+							return handleWorkspaceStop(ctx, cmd.Args().Slice())
 						},
 						Flags: []cli.Flag{
 							&cli.StringFlag{
@@ -133,7 +129,7 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "restore",
 						Usage: "Restore a stopped workspace to active (replay snapshot)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspaceRestore(cmd.Args().Slice())
+							return handleWorkspaceRestore(ctx, cmd.Args().Slice())
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
@@ -146,7 +142,7 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "purge",
 						Usage: "Permanently delete a workspace (requires --confirm)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspacePurge(cmd.Args().Slice())
+							return handleWorkspacePurge(ctx, cmd.Args().Slice())
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
@@ -184,7 +180,7 @@ Commands:
 								fmt.Fprintf(os.Stderr, "Error: usage: norman skills install <path|repo>\n")
 								return fmt.Errorf("usage: norman skills install <path|repo>")
 							}
-							err := installSkill(cmd.Args().First())
+							err := installSkill(ctx, cmd.Args().First())
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: install failed: %v\n", err)
 								return fmt.Errorf("install failed: %v", err)
@@ -201,7 +197,7 @@ Commands:
 								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remote <git-url> [version]\n")
 								return fmt.Errorf("usage: norman skills remote <git-url> [version]")
 							}
-							err := installRemote(cmd.Args().First())
+							err := installRemote(ctx, cmd.Args().First())
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: remote install failed: %v\n", err)
 								return fmt.Errorf("remote install failed: %v", err)
@@ -217,7 +213,7 @@ Commands:
 								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remove <name>\n")
 								return fmt.Errorf("usage: norman skills remove <name>")
 							}
-							err := removeSkill(cmd.Args().First())
+							err := removeSkill(ctx, cmd.Args().First())
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: remove failed: %v\n", err)
 								return fmt.Errorf("remove failed: %v", err)
