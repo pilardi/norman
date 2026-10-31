@@ -120,7 +120,7 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "stop",
 						Usage: "Stop a workspace (write snapshot + free sandbox)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspaceStop(cmd.Args().Slice())
+							return handleWorkspaceStop(ctx, cmd.Args().Slice())
 						},
 						Flags: []cli.Flag{
 							&cli.StringFlag{
@@ -133,7 +133,7 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "restore",
 						Usage: "Restore a stopped workspace to active (replay snapshot)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspaceRestore(cmd.Args().Slice())
+							return handleWorkspaceRestore(ctx, cmd.Args().Slice())
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
@@ -146,7 +146,7 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "purge",
 						Usage: "Permanently delete a workspace (requires --confirm)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspacePurge(cmd.Args().Slice())
+							return handleWorkspacePurge(ctx, cmd.Args().Slice())
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{

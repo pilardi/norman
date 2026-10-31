@@ -100,37 +100,6 @@ func httpPost(path string, body interface{}) error {
 }
 
 // httpPostJSON performs a POST request with JSON body and returns the response body.
-func httpPostJSON(path string, body interface{}) ([]byte, error) {
-	url := serverURL() + path
-	if verbose {
-		logRequest("POST", url)
-	}
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("marshal body: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("POST %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	return io.ReadAll(resp.Body)
-}
-
 // httpDelete performs a DELETE request to the server.
 func httpDelete(path string) error {
 	url := serverURL() + path
