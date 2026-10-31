@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"time"
 
+	"github.com/norman/norman/pkg/protocol"
 	"github.com/urfave/cli/v3"
 )
 
@@ -56,29 +53,41 @@ Usage: norman sessions <subcommand> [args...]
 Subcommands:
   open <workspace_name> [<session_id>]   Open an interactive REPL chat session
   list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript via POST /api/sessions/{id}`
+  archive <session_id>          Archive a session's transcript`
 
-// handleSessionList lists active sessions.
+// handleSessionList lists active sessions using the generated protocol client.
 func handleSessionList(args []string) error {
-	body, err := httpGet("/api/sessions")
+	client, err := newProtocolClient()
 	if err != nil {
-		return fmt.Errorf("error fetching sessions: %v", err)
+		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	var sessions []map[string]interface{}
-	if err := json.Unmarshal(body, &sessions); err != nil {
-		return fmt.Errorf("error parsing sessions response: %v", err)
+	resp, err := client.ListSessions(context.Background())
+	if err != nil {
+		return fmt.Errorf("error fetching sessions: %w", err)
 	}
 
-	if len(sessions) == 0 {
+	parsed, err := protocol.ParseListSessionsResponse(resp)
+	if err != nil {
+		return fmt.Errorf("error parsing sessions response: %w", err)
+	}
+
+	if parsed.JSON200 == nil || len(*parsed.JSON200) == 0 {
 		fmt.Println("No active sessions.")
 		return nil
 	}
 
+	sessions := *parsed.JSON200
 	fmt.Println("Active sessions:")
 	for _, s := range sessions {
-		name, _ := s["name"].(string)
-		status, _ := s["status"].(string)
+		name := "(unknown)"
+		if s.Name != nil {
+			name = *s.Name
+		}
+		status := "unknown"
+		if s.SessionStatus != nil {
+			status = string(*s.SessionStatus)
+		}
 		fmt.Printf("  %-20s status=%s\n", name, status)
 	}
 	return nil
@@ -91,64 +100,62 @@ func handleSessionArchive(sessionID string) error {
 		return fmt.Errorf("session '%s' not found, run 'norman sessions list' to see available sessions", sessionID)
 	}
 
-	url := serverURL() + "/api/sessions/" + actualID
-	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
+	client, err := newProtocolClient()
 	if err != nil {
-		return fmt.Errorf("error creating archive request: %v", err)
+		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := client.ArchiveSession(context.Background(), protocol.ArchiveSessionRequest{TaskId: actualID})
 	if err != nil {
-		return fmt.Errorf("archive failed for session %s: %v", shortID(actualID), err)
+		return fmt.Errorf("archive failed for session %s: %w", shortID(actualID), err)
 	}
-	_ = resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d archiving session %s: %s", resp.StatusCode, shortID(actualID), string(body))
+	_, err = protocol.ParseArchiveSessionResponse(resp)
+	if err != nil {
+		return fmt.Errorf("error parsing archive response: %w", err)
 	}
 
 	fmt.Printf("Session '%s' archived successfully.\n", shortID(actualID))
 	return nil
 }
 
-// archiveSession archives a session's transcript via POST /api/sessions/{id}.
-func archiveSession(sessionID string) {
-	actualID, found := resolveSessionID(sessionID)
-	if !found {
-		fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", sessionID)
+// listSessions lists all active sessions via GET /api/sessions.
+func listSessions() {
+	client, err := newProtocolClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create API client: %v\n", err)
 		return
 	}
 
-	url := serverURL() + "/api/sessions/" + actualID
-	req, err := http.NewRequestWithContext(context.Background(), "POST", url, nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating archive request: %v\n", err)
-		os.Exit(1)
-	}
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Archive failed for session %s: %v\n", shortID(actualID), err)
-		os.Exit(1)
-	}
-	_ = resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "HTTP %d archiving session %s: %s\n", resp.StatusCode, shortID(actualID), string(body))
-		os.Exit(1)
-	}
-	fmt.Printf("Session '%s' archived successfully.\n", shortID(actualID))
-}
-
-// listSessions lists all active sessions via GET /api/sessions.
-func listSessions() {
-	body, err := httpGet("/api/sessions")
+	resp, err := client.ListSessions(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
 		return
 	}
-	fmt.Printf("\n--- Active Sessions ---\n%s\n---\n", string(body))
+
+	parsed, err := protocol.ParseListSessionsResponse(resp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing sessions response: %v\n", err)
+		return
+	}
+
+	if parsed.JSON200 == nil || len(*parsed.JSON200) == 0 {
+		fmt.Println("--- Active Sessions ---\n(No active sessions)\n---")
+		return
+	}
+
+	sessions := *parsed.JSON200
+	fmt.Println("--- Active Sessions ---")
+	for _, s := range sessions {
+		name := "(unknown)"
+		if s.Name != nil {
+			name = *s.Name
+		}
+		status := "unknown"
+		if s.SessionStatus != nil {
+			status = string(*s.SessionStatus)
+		}
+		fmt.Printf("  %-20s status=%s\n", name, status)
+	}
+	fmt.Println("---")
 }

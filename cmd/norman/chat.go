@@ -280,7 +280,9 @@ func handleChat(args []string) {
 					// Auto-archive current session.
 					id = sessionID
 				}
-				archiveSession(id)
+				if err := handleSessionArchive(id); err != nil {
+					fmt.Fprintf(os.Stderr, "Error archiving session: %v\n", err)
+				}
 			default:
 				fmt.Fprintf(os.Stderr, "Unknown slash-command: /%s\n", cmd)
 			}
