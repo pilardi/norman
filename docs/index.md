@@ -36,5 +36,4 @@ Welcome to the Norman documentation. This site is automatically generated from m
 
 ## Project Links
 
-- [GitHub Repository](https://github.com/norman/norman)
-- [API Spec (YAML)](api-spec.yaml)
+- [GitHub Repository](https://github.com/pilardi/norman)
