@@ -324,6 +324,47 @@ func (s *server) ListProviderModels(c echo.Context, name string) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// QueryProviderModels queries available models for a temporary provider configuration (no persistence).
+// Accepts type, endpoint, and optional api_key from the request body.
+func (s *server) QueryProviderModels(c echo.Context) error {
+	var req protocol.QueryProviderModelsRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.Type == "" || req.Endpoint == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "type and endpoint are required",
+		})
+	}
+
+	// Build a temporary ProviderConfig from the request body.
+	apiKeyVal := ""
+	if req.ApiKey != nil {
+		apiKeyVal = *req.ApiKey
+	}
+	tmpProv := &config.ProviderConfig{
+		Name:     "(temporary)",
+		Type:     req.Type,
+		Endpoint: req.Endpoint,
+		ApiKey:   apiKeyVal,
+		Model:    "",
+	}
+
+	models, err := queryProviderModels(tmpProv)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "failed to query provider models: " + err.Error(),
+		})
+	}
+
+	resp := &protocol.AvailableModelsResponse{
+		Models:       &models,
+		ProviderName: strPtr("(temporary)"),
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 // queryProviderModels queries the provider's API endpoint to list available models.
 func queryProviderModels(p *config.ProviderConfig) ([]protocol.AvailableModelEntry, error) {
 	var entries []protocol.AvailableModelEntry
@@ -382,12 +423,11 @@ func fetchOpenAIModels(endpoint, apiKey string) ([]protocol.AvailableModelEntry,
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	_ = resp.Body.Close()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
+	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))

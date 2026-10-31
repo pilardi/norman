@@ -174,10 +174,12 @@ Commands:
 						Usage: "Install a skill from a local path or git repo URL",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman skills install <path|repo>\n")
 								return fmt.Errorf("usage: norman skills install <path|repo>")
 							}
 							err := installSkill(cmd.Args().First())
 							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: install failed: %v\n", err)
 								return fmt.Errorf("install failed: %v", err)
 							}
 							return nil
@@ -189,10 +191,12 @@ Commands:
 						Usage:   "Install a skill from a git repository URL",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remote <git-url> [version]\n")
 								return fmt.Errorf("usage: norman skills remote <git-url> [version]")
 							}
 							err := installRemote(cmd.Args().First())
 							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: remote install failed: %v\n", err)
 								return fmt.Errorf("remote install failed: %v", err)
 							}
 							return nil
@@ -203,10 +207,12 @@ Commands:
 						Usage: "Remove an installed skill by name",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remove <name>\n")
 								return fmt.Errorf("usage: norman skills remove <name>")
 							}
 							err := removeSkill(cmd.Args().First())
 							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: remove failed: %v\n", err)
 								return fmt.Errorf("remove failed: %v", err)
 							}
 							return nil
@@ -239,10 +245,12 @@ Commands:
 						Usage: "Archive a session's transcript via POST /api/sessions/{id}",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman sessions archive <session_id>\n")
 								return fmt.Errorf("usage: norman sessions archive <session_id>")
 							}
 							err := handleSessionArchive(cmd.Args().First())
 							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: archive failed: %v\n", err)
 								return fmt.Errorf("archive failed: %v", err)
 							}
 							return nil
@@ -284,7 +292,7 @@ Examples:
 
 Commands:
   add [name] [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
-      Add a new LLM provider. Required flags: --type, --endpoint.
+      Add a new LLM provider. If no flags are provided, interactive prompts will be used (auto-fetches available models).
       Type must be one of: openai, anthropic, ollama, gemini, llamacpp.
 
   list (ls)
@@ -319,6 +327,10 @@ Examples:
 						Name:  "add",
 						Usage: "Add a new LLM provider",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
+							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman providers add <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]\n")
+								return fmt.Errorf("usage: norman providers add <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]")
+							}
 							err := handleProvidersAdd(ctx, cmd)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -353,9 +365,10 @@ Examples:
 						Usage: "Show full details for a specific provider by name",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman providers get <name>\n")
 								return fmt.Errorf("usage: norman providers get <name>")
 							}
-							err := handleProvidersGet(cmd.Args().First())
+							err := handleProvidersGet(ctx, cmd)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
@@ -369,8 +382,16 @@ Examples:
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if !cmd.IsSet("type") && !cmd.IsSet("endpoint") && !cmd.IsSet("model") &&
 								!cmd.IsSet("temp") && !cmd.IsSet("max-tokens") && !cmd.IsSet("api-key") {
-								handleProvidersUpdateInteractive()
+								name := cmd.Args().First()
+								if err := handleProvidersUpdateInteractive(ctx, name); err != nil {
+									fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+									return err
+								}
 								return nil
+							}
+							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman providers update <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]\n")
+								return fmt.Errorf("usage: norman providers update <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]")
 							}
 							err := handleProvidersUpdate(ctx, cmd)
 							if err != nil {
@@ -394,9 +415,10 @@ Examples:
 						Usage:   "Remove a provider. Fails if it's the last remaining one",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman providers delete <name>\n")
 								return fmt.Errorf("usage: norman providers delete <name>")
 							}
-							err := handleProvidersDelete(cmd.Args().First())
+							err := handleProvidersDelete(ctx, cmd)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
@@ -410,9 +432,10 @@ Examples:
 						Usage:   "Set the default provider for sessions and CLI operations",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman providers set-default <name>\n")
 								return fmt.Errorf("usage: norman providers set-default <name>")
 							}
-							err := handleProvidersSetDefault(cmd.Args().First())
+							err := handleProvidersSetDefault(ctx, cmd)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
@@ -426,9 +449,10 @@ Examples:
 						Usage:   "List available models for a configured provider by querying its API endpoint",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman providers list-models <name>\n")
 								return fmt.Errorf("usage: norman providers list-models <name>")
 							}
-							err := handleProvidersListModels(cmd.Args().First())
+							err := handleProvidersListModels(ctx, cmd)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err

@@ -902,6 +902,29 @@ paths:
         "500":
           description: Failed to query provider's model list endpoint
 
+  /api/providers/models/query:
+    post:
+      tags: [provider]
+      summary: Query available models for a temporary provider configuration (no persistence)
+      operationId: queryProviderModels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryProviderModelsRequest"
+      responses:
+        "200":
+          description: List of available models from the provider's API
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailableModelsResponse"
+        "400":
+          description: Invalid request (e.g., missing type or endpoint)
+        "500":
+          description: Failed to query provider's model list endpoint
+
 components:
   schemas:
     WorkspaceCreateRequest:
@@ -1806,6 +1829,20 @@ components:
           type: string
           nullable: true
           description: Owner/creator of the model (e.g., "openai", "meta")
+
+    QueryProviderModelsRequest:
+      type: object
+      required: [type, endpoint]
+      properties:
+        type:
+          type: string
+          description: Provider type (openai, anthropic, ollama, gemini, llamacpp)
+        endpoint:
+          type: string
+          description: API endpoint URL
+        api_key:
+          type: string
+          description: API key for authentication (optional)
 
     AvailableModelsResponse:
       type: object

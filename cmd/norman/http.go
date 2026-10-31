@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/norman/norman/pkg/config"
@@ -18,21 +19,26 @@ import (
 func serverURL() string {
 	cfg, err := config.LoadDefault()
 	if err != nil || cfg == nil || cfg.System == nil {
-		return "http://127.0.0.1:8090"
+		return fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
 	}
 	if cfg.System.ServerURL != "" {
 		return cfg.System.ServerURL
 	}
-	// Derive from host + port (same logic as the server bootstrap)
+	def := config.EmbeddedDefaults()
 	host := cfg.System.Host
 	port := cfg.System.ServerPort
 	if host == "" {
-		host = "127.0.0.1"
+		host = def.System.Host
 	}
 	if port == 0 {
-		port = 8080
+		port = def.System.ServerPort
 	}
 	return fmt.Sprintf("http://%s:%d", host, port)
+}
+
+// urlPathEscape safely escapes a name for URL path segments.
+func urlPathEscape(s string) string {
+	return strings.ReplaceAll(s, "/", "%2F")
 }
 
 // logRequest logs a debug message when verbose mode is enabled.
