@@ -120,6 +120,10 @@ func TestClientServerCommunication(t *testing.T) {
 
 // TestHealthEndpoint verifies the /health endpoint returns valid JSON.
 func TestHealthEndpoint(t *testing.T) {
+	bin := filepath.Join("..", "..", "dist", "norman-server")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skipf("%s not found; run 'make build' first", bin)
+	}
 	waitForServer(t)
 
 	resp, err := http.Get("http://127.0.0.1:8080/health")
@@ -140,6 +144,10 @@ func TestHealthEndpoint(t *testing.T) {
 
 // TestConfigEndpoint verifies the /api/config endpoint returns a valid config object.
 func TestConfigEndpoint(t *testing.T) {
+	bin := filepath.Join("..", "..", "dist", "norman-server")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skipf("%s not found; run 'make build' first", bin)
+	}
 	waitForServer(t)
 
 	resp, err := http.Get("http://127.0.0.1:8080/api/config")
@@ -174,6 +182,11 @@ func TestConfigEndpoint(t *testing.T) {
 
 // TestCLIConfigJSON verifies the CLI binary's config --json output parses as valid JSON.
 func TestCLIConfigJSON(t *testing.T) {
+	serverBin := filepath.Join("..", "..", "dist", "norman-server")
+	if _, err := os.Stat(serverBin); err != nil {
+		t.Skipf("%s not found; run 'make build' first", serverBin)
+	}
+
 	waitForServer(t)
 
 	bin := filepath.Join("..", "..", "dist", "norman")
@@ -201,6 +214,11 @@ func TestCLIConfigJSON(t *testing.T) {
 
 // TestCLIPlaintextConfig verifies the CLI binary's plain text config output is non-empty.
 func TestCLIPlaintextConfig(t *testing.T) {
+	serverBin := filepath.Join("..", "..", "dist", "norman-server")
+	if _, err := os.Stat(serverBin); err != nil {
+		t.Skipf("%s not found; run 'make build' first", serverBin)
+	}
+
 	waitForServer(t)
 
 	bin := filepath.Join("..", "..", "dist", "norman")
