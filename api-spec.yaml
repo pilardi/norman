@@ -317,25 +317,6 @@ paths:
         "204":
           description: Session deleted
 
-  /api/sessions/{id}/debug:
-    post:
-      tags: [session]
-      summary: Debug route to verify routing and session state
-      operationId: sessionDebug
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Debug information for the session
-          content:
-            text/plain:
-              schema:
-                type: string
-
   /api/sessions/{id}/messages:
     post:
       tags: [session]
