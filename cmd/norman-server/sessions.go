@@ -70,9 +70,9 @@ func (s *server) CreateSession(c echo.Context) error {
 	return c.JSON(http.StatusCreated, session)
 }
 
-// ArchiveSession archives a session by task ID.
-func (s *server) ArchiveSession(c echo.Context) error {
-	var req protocol.ArchiveSessionRequest
+// ArchiveTask archives a task's data for long-term storage.
+func (s *server) ArchiveTask(c echo.Context) error {
+	var req protocol.ArchiveTaskRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
@@ -96,10 +96,8 @@ func (s *server) ArchiveSession(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// ArchiveSessionByID archives a session by path-based ID.
-func (s *server) ArchiveSessionByID(c echo.Context) error {
-	id := c.Param("id")
-
+// ArchiveSessionByID archives a session by its ID.
+func (s *server) ArchiveSessionByID(c echo.Context, id string) error {
 	sessionData, err := s.store.LoadSession(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})

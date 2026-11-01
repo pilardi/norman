@@ -105,12 +105,12 @@ func handleSessionArchive(sessionID string) error {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.ArchiveSession(context.Background(), protocol.ArchiveSessionRequest{TaskId: actualID})
+	resp, err := client.ArchiveSessionByID(context.Background(), actualID)
 	if err != nil {
 		return fmt.Errorf("archive failed for session %s: %w", shortID(actualID), err)
 	}
 
-	_, err = protocol.ParseArchiveSessionResponse(resp)
+	_, err = protocol.ParseArchiveSessionByIDResponse(resp)
 	if err != nil {
 		return fmt.Errorf("error parsing archive response: %w", err)
 	}

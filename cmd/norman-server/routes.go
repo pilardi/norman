@@ -65,30 +65,11 @@ func registerRoutes(e *echo.Echo, srv *server) {
 		return srv.SendMessage(c, c.Param("id"))
 	})
 
-	// Session archive endpoint (Step 7d) — registered AFTER /messages so it takes precedence for bare paths
-	e.POST("/api/sessions/:id", func(c echo.Context) error {
-		id := c.Param("id")
-		log.Printf("[DEBUG] ArchiveSessionByID route matched, id=%s", id)
-
-		sessionData, err := srv.store.LoadSession(id)
-		if err != nil {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})
-		}
-
-		sessions := []interface{}{sessionData}
-		if err := srv.store.ArchiveSession(id, sessions); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		}
-
-		srv.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-			Event:   protocol.SessionCompressed,
-			TaskId:  &id,
-			Message: strPtr("Session archived for task " + id),
-		})
-
-		return c.NoContent(http.StatusNoContent)
+	// Archive session by ID (Step 7d)
+	e.POST("/api/sessions/:id/archive", func(c echo.Context) error {
+		return srv.ArchiveSessionByID(c, c.Param("id"))
 	})
-	e.POST("/api/sessions/archive", srv.ArchiveSession)
+	e.POST("/api/tasks/archive", srv.ArchiveTask)
 
 	// Session history (Phase 3)
 	e.GET("/api/sessions/:id/history", func(c echo.Context) error {

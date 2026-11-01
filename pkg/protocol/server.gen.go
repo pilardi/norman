@@ -512,8 +512,8 @@ type AgentResponse struct {
 	ToolsUsed *[]string `json:"tools_used,omitempty"`
 }
 
-// ArchiveSessionRequest defines model for ArchiveSessionRequest.
-type ArchiveSessionRequest struct {
+// ArchiveTaskRequest defines model for ArchiveTaskRequest.
+type ArchiveTaskRequest struct {
 	// TaskId ID of the task to archive
 	TaskId string `json:"task_id"`
 }
@@ -1250,9 +1250,6 @@ type UpdateProviderJSONRequestBody = ProviderUpdateRequest
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = SessionCreateRequest
 
-// ArchiveSessionJSONRequestBody defines body for ArchiveSession for application/json ContentType.
-type ArchiveSessionJSONRequestBody = ArchiveSessionRequest
-
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
 
@@ -1270,6 +1267,9 @@ type UpdateSkillJSONRequestBody = SkillUpdateRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = TaskCreateRequest
+
+// ArchiveTaskJSONRequestBody defines body for ArchiveTask for application/json ContentType.
+type ArchiveTaskJSONRequestBody = ArchiveTaskRequest
 
 // DeferTaskJSONRequestBody defines body for DeferTask for application/json ContentType.
 type DeferTaskJSONRequestBody = DeferTaskRequest
@@ -1336,21 +1336,21 @@ type ServerInterface interface {
 	// CreateSession Create a new session for a workspace
 	// (POST /api/sessions)
 	CreateSession(ctx echo.Context) error
-	// ArchiveSession Archive a session's task data for long-term storage
-	// (POST /api/sessions/archive)
-	ArchiveSession(ctx echo.Context) error
 	// DeleteSession Delete a session
 	// (DELETE /api/sessions/{id})
 	DeleteSession(ctx echo.Context, id string) error
 	// GetSession Get session status and details
 	// (GET /api/sessions/{id})
 	GetSession(ctx echo.Context, id string) error
-	// SendMessage Send a message to an active session (chat input)
-	// (POST /api/sessions/{id})
-	SendMessage(ctx echo.Context, id string) error
+	// ArchiveSessionByID Archive a session by its ID
+	// (POST /api/sessions/{id}/archive)
+	ArchiveSessionByID(ctx echo.Context, id string) error
 	// SessionHistory Get conversation history turns for a session
 	// (GET /api/sessions/{id}/history)
 	SessionHistory(ctx echo.Context, id string, params SessionHistoryParams) error
+	// SendMessage Send a message to an active session (chat input)
+	// (POST /api/sessions/{id}/messages)
+	SendMessage(ctx echo.Context, id string) error
 	// ListSkills List discovered skills (metadata only)
 	// (GET /api/skills)
 	ListSkills(ctx echo.Context) error
@@ -1378,6 +1378,9 @@ type ServerInterface interface {
 	// CreateTask Create a new task (internal agent use)
 	// (POST /api/tasks)
 	CreateTask(ctx echo.Context) error
+	// ArchiveTask Archive a task's data for long-term storage
+	// (POST /api/tasks/archive)
+	ArchiveTask(ctx echo.Context) error
 	// DeferTask Defer a task to run at an absolute time (one-shot)
 	// (POST /api/tasks/defer)
 	DeferTask(ctx echo.Context) error
@@ -1600,15 +1603,6 @@ func (w *ServerInterfaceWrapper) CreateSession(ctx echo.Context) error {
 	return err
 }
 
-// ArchiveSession converts echo context to params.
-func (w *ServerInterfaceWrapper) ArchiveSession(ctx echo.Context) error {
-	var err error
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ArchiveSession(ctx)
-	return err
-}
-
 // DeleteSession converts echo context to params.
 func (w *ServerInterfaceWrapper) DeleteSession(ctx echo.Context) error {
 	var err error
@@ -1641,8 +1635,8 @@ func (w *ServerInterfaceWrapper) GetSession(ctx echo.Context) error {
 	return err
 }
 
-// SendMessage converts echo context to params.
-func (w *ServerInterfaceWrapper) SendMessage(ctx echo.Context) error {
+// ArchiveSessionByID converts echo context to params.
+func (w *ServerInterfaceWrapper) ArchiveSessionByID(ctx echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id string
@@ -1653,7 +1647,7 @@ func (w *ServerInterfaceWrapper) SendMessage(ctx echo.Context) error {
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.SendMessage(ctx, id)
+	err = w.Handler.ArchiveSessionByID(ctx, id)
 	return err
 }
 
@@ -1679,6 +1673,22 @@ func (w *ServerInterfaceWrapper) SessionHistory(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.SessionHistory(ctx, id, params)
+	return err
+}
+
+// SendMessage converts echo context to params.
+func (w *ServerInterfaceWrapper) SendMessage(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SendMessage(ctx, id)
 	return err
 }
 
@@ -1790,6 +1800,15 @@ func (w *ServerInterfaceWrapper) CreateTask(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.CreateTask(ctx)
+	return err
+}
+
+// ArchiveTask converts echo context to params.
+func (w *ServerInterfaceWrapper) ArchiveTask(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ArchiveTask(ctx)
 	return err
 }
 
@@ -2075,9 +2094,10 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/api/sessions", wrapper.CreateSession, options.OperationMiddlewares["createSession"]...)
 	router.DELETE(options.BaseURL+"/api/sessions/:id", wrapper.DeleteSession, options.OperationMiddlewares["deleteSession"]...)
 	router.GET(options.BaseURL+"/api/sessions/:id", wrapper.GetSession, options.OperationMiddlewares["getSession"]...)
-	router.POST(options.BaseURL+"/api/sessions/:id", wrapper.SendMessage, options.OperationMiddlewares["sendMessage"]...)
+	router.POST(options.BaseURL+"/api/sessions/:id/messages", wrapper.SendMessage, options.OperationMiddlewares["sendMessage"]...)
 	router.GET(options.BaseURL+"/api/sessions/:id/history", wrapper.SessionHistory, options.OperationMiddlewares["sessionHistory"]...)
-	router.POST(options.BaseURL+"/api/sessions/archive", wrapper.ArchiveSession, options.OperationMiddlewares["archiveSession"]...)
+	router.POST(options.BaseURL+"/api/sessions/:id/archive", wrapper.ArchiveSessionByID, options.OperationMiddlewares["archiveSessionByID"]...)
+	router.POST(options.BaseURL+"/api/tasks/archive", wrapper.ArchiveTask, options.OperationMiddlewares["archiveTask"]...)
 	router.GET(options.BaseURL+"/api/notifications", wrapper.ListNotifications, options.OperationMiddlewares["listNotifications"]...)
 	router.POST(options.BaseURL+"/api/notifications", wrapper.CreateNotification, options.OperationMiddlewares["createNotification"]...)
 	router.DELETE(options.BaseURL+"/api/notifications/:id", wrapper.DeleteNotification, options.OperationMiddlewares["deleteNotification"]...)

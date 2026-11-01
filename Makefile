@@ -79,7 +79,7 @@ test-integration: build
 
 clean:
 	rm -rf $(DIST)
-	rm -f pkg/protocol/server.gen.go pkg/protocol/client.gen.go
+	rm -f docs/*.html
 
 generate-docs:
 	@echo "Generating API reference HTML via Scalar..."
