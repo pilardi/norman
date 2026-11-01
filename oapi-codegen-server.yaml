@@ -1,5 +1,5 @@
-# Server-side code generation: types + echo server handlers
 # yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.8.2/configuration-schema.json
+# Server-side code generation: types + echo server handlers
 package: protocol
 generate:
   models: true
