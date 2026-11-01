@@ -1,17 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
 )
 
 // ListNotifications returns a summary of recent notifications.
-func (s *server) ListNotifications(c echo.Context) error {
-	return c.JSON(http.StatusOK, []map[string]interface{}{
+func (s *server) ListNotifications(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode([]map[string]interface{}{
 		{
 			"message": "Notification system initialized",
 			"type":    "info",
@@ -20,10 +21,13 @@ func (s *server) ListNotifications(c echo.Context) error {
 }
 
 // CreateNotification pushes a notification via the notifier (WS + bell + Slack).
-func (s *server) CreateNotification(c echo.Context) error {
+func (s *server) CreateNotification(w http.ResponseWriter, r *http.Request) {
 	var req protocol.NotificationCreateRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
 	}
 
 	n := notify.Notification{
@@ -37,10 +41,15 @@ func (s *server) CreateNotification(c echo.Context) error {
 	}
 
 	if err := s.notifier.Notify(n); err != nil {
-		return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]string{"error": "rate limit exceeded"})
+		return
 	}
 
-	return c.JSON(http.StatusCreated, map[string]interface{}{
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":       time.Now().UnixNano(),
 		"title":    req.Title,
 		"severity": req.Severity,
@@ -48,10 +57,10 @@ func (s *server) CreateNotification(c echo.Context) error {
 }
 
 // DeleteNotification dismisses a notification and broadcasts the event.
-func (s *server) DeleteNotification(c echo.Context, id string) error {
+func (s *server) DeleteNotification(w http.ResponseWriter, r *http.Request, id string) {
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.Notification,
 		Message: strPtr("Notification " + id + " dismissed"),
 	})
-	return c.NoContent(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }

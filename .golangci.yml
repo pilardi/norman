@@ -20,6 +20,7 @@ linters:
         - (*net/http.Response).Body.Close
         - fmt.Fprint
         - fmt.Fprintf
+        - (*encoding/json.Encoder).Encode
         - os.Unsetenv
         - (encoding/json.Decoder).Decode
     staticcheck:

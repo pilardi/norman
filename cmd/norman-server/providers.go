@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/protocol"
 )
@@ -99,41 +98,60 @@ func boolPtr(b bool) *bool {
 }
 
 // ListProviders lists all configured LLM providers.
-func (s *server) ListProviders(c echo.Context) error {
+func (s *server) ListProviders(w http.ResponseWriter, r *http.Request) {
 	responses := make([]*protocol.ProviderResponse, 0, len(s.cfg.System.LlmProviders))
 	for i := range s.cfg.System.LlmProviders {
 		responses = append(responses, toProviderResponse(&s.cfg.System.LlmProviders[i]))
 	}
-	return c.JSON(http.StatusOK, responses)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(responses)
 }
 
 // CreateProvider adds a new LLM provider to the system configuration.
-func (s *server) CreateProvider(c echo.Context) error {
+func (s *server) CreateProvider(w http.ResponseWriter, r *http.Request) {
 	var req protocol.ProviderCreateRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body: " + err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body: " + err.Error()})
+		return
 	}
 
 	// Validate required fields.
 	if req.Name == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "name is required"})
+		return
 	}
 	if req.Type == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "type is required"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "type is required"})
+		return
 	} else if !isValidProviderType(string(req.Type)) {
-		return c.JSON(http.StatusBadRequest, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": fmt.Sprintf("invalid type %q; must be one of: openai, anthropic, ollama, gemini, llamacpp", req.Type),
 		})
+		return
 	}
 	if req.Endpoint == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "endpoint is required"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "endpoint is required"})
+		return
 	}
 
 	// Check for duplicate name (case-insensitive).
 	if findProviderByName(s.cfg.System, req.Name) != nil {
-		return c.JSON(http.StatusConflict, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": fmt.Sprintf("provider with name %q already exists", req.Name),
 		})
+		return
 	}
 
 	// Build the provider config.
@@ -153,15 +171,21 @@ func (s *server) CreateProvider(c echo.Context) error {
 
 	// Validate the provider.
 	if errs := ProviderValidator(&prov); len(errs) > 0 {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": strings.Join(errs, "; "),
 		})
+		return
 	}
 
 	s.cfg.System.LlmProviders = append(s.cfg.System.LlmProviders, prov)
 
 	if err := s.cfg.Validate(); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	// Persist to disk.
@@ -175,23 +199,32 @@ func (s *server) CreateProvider(c echo.Context) error {
 		Message: strPtr("Added new LLM provider '" + prov.Name + "'"),
 	})
 
-	return c.JSON(http.StatusCreated, toProviderResponse(&prov))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(toProviderResponse(&prov))
 }
 
 // GetProvider returns details for a single provider by name.
-func (s *server) GetProvider(c echo.Context, name string) error {
+func (s *server) GetProvider(w http.ResponseWriter, r *http.Request, name string) {
 	prov := findProviderByName(s.cfg.System, name)
 	if prov == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found: " + name})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "provider not found: " + name})
+		return
 	}
-	return c.JSON(http.StatusOK, toProviderResponse(prov))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(toProviderResponse(prov))
 }
 
 // UpdateProvider updates an existing provider's configuration.
-func (s *server) UpdateProvider(c echo.Context, name string) error {
+func (s *server) UpdateProvider(w http.ResponseWriter, r *http.Request, name string) {
 	var req protocol.ProviderUpdateRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body: " + err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body: " + err.Error()})
+		return
 	}
 
 	// Find existing provider.
@@ -203,7 +236,10 @@ func (s *server) UpdateProvider(c echo.Context, name string) error {
 		}
 	}
 	if idx == -1 {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found: " + name})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "provider not found: " + name})
+		return
 	}
 
 	// Apply partial updates.
@@ -211,9 +247,12 @@ func (s *server) UpdateProvider(c echo.Context, name string) error {
 
 	if req.Type != nil {
 		if !isValidProviderType(string(*req.Type)) {
-			return c.JSON(http.StatusBadRequest, map[string]string{
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
 				"error": fmt.Sprintf("invalid type %q; must be one of: openai, anthropic, ollama, gemini, llamacpp", *req.Type),
 			})
+			return
 		}
 		prov.Type = string(*req.Type)
 	}
@@ -238,13 +277,19 @@ func (s *server) UpdateProvider(c echo.Context, name string) error {
 
 	// Validate the updated provider.
 	if errs := ProviderValidator(prov); len(errs) > 0 {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": strings.Join(errs, "; "),
 		})
+		return
 	}
 
 	if err := s.cfg.Validate(); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	// Persist to disk.
@@ -258,11 +303,12 @@ func (s *server) UpdateProvider(c echo.Context, name string) error {
 		Message: strPtr("Updated provider '" + prov.Name + "'"),
 	})
 
-	return c.JSON(http.StatusOK, toProviderResponse(prov))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(toProviderResponse(prov))
 }
 
 // DeleteProvider removes a provider by name. Cannot delete the last remaining one.
-func (s *server) DeleteProvider(c echo.Context, name string) error {
+func (s *server) DeleteProvider(w http.ResponseWriter, r *http.Request, name string) {
 	idx := -1
 	for i := range s.cfg.System.LlmProviders {
 		if strings.EqualFold(s.cfg.System.LlmProviders[i].Name, name) {
@@ -271,21 +317,30 @@ func (s *server) DeleteProvider(c echo.Context, name string) error {
 		}
 	}
 	if idx == -1 {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found: " + name})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "provider not found: " + name})
+		return
 	}
 
 	// Cannot delete the last remaining provider.
 	if len(s.cfg.System.LlmProviders) <= 1 {
-		return c.JSON(http.StatusBadRequest, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": "cannot delete the last remaining provider",
 		})
+		return
 	}
 
 	removed := s.cfg.System.LlmProviders[idx]
 	s.cfg.System.LlmProviders = append(s.cfg.System.LlmProviders[:idx], s.cfg.System.LlmProviders[idx+1:]...)
 
 	if err := s.cfg.Validate(); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	// Persist to disk.
@@ -299,43 +354,56 @@ func (s *server) DeleteProvider(c echo.Context, name string) error {
 		Message: strPtr("Removed provider '" + removed.Name + "'"),
 	})
 
-	return c.NoContent(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ListProviderModels queries the provider's API endpoint and returns available models.
 // Supports OpenAI-compatible APIs (GET /v1/models), Ollama (/api/tags), and generic endpoints.
-func (s *server) ListProviderModels(c echo.Context, name string) error {
+func (s *server) ListProviderModels(w http.ResponseWriter, r *http.Request, name string) {
 	prov := findProviderByName(s.cfg.System, name)
 	if prov == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found: " + name})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "provider not found: " + name})
+		return
 	}
 
 	models, err := queryProviderModels(prov)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": "failed to query provider models: " + err.Error(),
 		})
+		return
 	}
 
 	resp := &protocol.AvailableModelsResponse{
 		Models:       &models,
 		ProviderName: strPtr(prov.Name),
 	}
-	return c.JSON(http.StatusOK, resp)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // QueryProviderModels queries available models for a temporary provider configuration (no persistence).
 // Accepts type, endpoint, and optional api_key from the request body.
-func (s *server) QueryProviderModels(c echo.Context) error {
+func (s *server) QueryProviderModels(w http.ResponseWriter, r *http.Request) {
 	var req protocol.QueryProviderModelsRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
 	}
 
 	if req.Type == "" || req.Endpoint == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": "type and endpoint are required",
 		})
+		return
 	}
 
 	// Build a temporary ProviderConfig from the request body.
@@ -353,16 +421,20 @@ func (s *server) QueryProviderModels(c echo.Context) error {
 
 	models, err := queryProviderModels(tmpProv)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": "failed to query provider models: " + err.Error(),
 		})
+		return
 	}
 
 	resp := &protocol.AvailableModelsResponse{
 		Models:       &models,
 		ProviderName: strPtr("(temporary)"),
 	}
-	return c.JSON(http.StatusOK, resp)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // queryProviderModels queries the provider's API endpoint to list available models.

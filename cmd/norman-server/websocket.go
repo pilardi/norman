@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -164,20 +164,20 @@ func (h *WSHub) writeLoop() {
 }
 
 // ConnectWebSocket handles WebSocket connections for real-time push events.
-func (s *server) ConnectWebSocket(c echo.Context) error {
-	conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
+func (s *server) ConnectWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
 	if err != nil {
-		return err
+		return
 	}
 	// Extract optional session_id from query params for per-session filtering
-	sessionID := c.QueryParam("session_id")
+	sessionID := r.URL.Query().Get("session_id")
 	s.wsHub.Add(conn, sessionID)
 	defer s.wsHub.Remove(conn)
 
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
-			return nil // client disconnected
+			return // client disconnected
 		}
 	}
 }

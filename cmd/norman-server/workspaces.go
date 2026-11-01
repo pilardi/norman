@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,12 +12,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/protocol"
 )
 
 // ListWorkspaces returns all registered workspaces (optionally filtered by status).
-func (s *server) ListWorkspaces(c echo.Context, params protocol.ListWorkspacesParams) error {
+func (s *server) ListWorkspaces(w http.ResponseWriter, r *http.Request, params protocol.ListWorkspacesParams) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -31,23 +31,31 @@ func (s *server) ListWorkspaces(c echo.Context, params protocol.ListWorkspacesPa
 		}
 		result = append(result, ws)
 	}
-	return c.JSON(http.StatusOK, result)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // CreateWorkspace creates a new workspace by provisioning an OpenShell sandbox
 // and persisting the workspace metadata. The sandbox is created with context.json
 // injected so that tools like `roger` can reach the Norman server from inside.
-func (s *server) CreateWorkspace(c echo.Context) error {
+func (s *server) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	var req protocol.WorkspaceCreateRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
 	}
 
 	// Validate workspace name: non-empty, alphanumeric with underscores and hyphens
 	if req.Name == "" || !isValidWorkspaceName(req.Name) {
-		return c.JSON(http.StatusBadRequest, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": "workspace name must be non-empty and contain only alphanumeric characters, underscores, or hyphens",
 		})
+		return
 	}
 
 	storePath := s.store.Base()
@@ -62,11 +70,14 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 
 	// Create the OpenShell sandbox via WorkspaceManager (injects context.json).
 	// Server URL is read from NORMAN_SERVER_URL env var inside the sandbox.
-	sb, err := s.workspaceManager.CreateWorkspace(c.Request().Context(), req.Name, "")
+	sb, err := s.workspaceManager.CreateWorkspace(r.Context(), req.Name, "")
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": fmt.Sprintf("failed to create sandbox for workspace %s: %v", req.Name, err),
 		})
+		return
 	}
 
 	ws := &protocol.Workspace{
@@ -114,14 +125,19 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 		Message: strPtr("Workspace created: " + req.Name + " (sandbox: " + sb.Name + ")"),
 	})
 
-	return c.JSON(http.StatusCreated, ws)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(ws)
 }
 
 // UpdateWorkspace applies a partial update to an existing workspace.
-func (s *server) UpdateWorkspace(c echo.Context, name string) error {
+func (s *server) UpdateWorkspace(w http.ResponseWriter, r *http.Request, name string) {
 	var req protocol.WorkspaceUpdateRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
 	}
 
 	s.mu.Lock()
@@ -129,7 +145,10 @@ func (s *server) UpdateWorkspace(c echo.Context, name string) error {
 
 	ws, ok := s.workspaces[name]
 	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found"})
+		return
 	}
 
 	now := time.Now()
@@ -171,16 +190,21 @@ func (s *server) UpdateWorkspace(c echo.Context, name string) error {
 		Message: strPtr("Workspace updated: " + name),
 	})
 
-	return c.JSON(http.StatusOK, ws)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(ws)
 }
 
 // DeleteWorkspace removes a workspace.
-func (s *server) DeleteWorkspace(c echo.Context, name string) error {
+func (s *server) DeleteWorkspace(w http.ResponseWriter, r *http.Request, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.workspaces[name]; !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found"})
+		return
 	}
 
 	delete(s.workspaces, name)
@@ -194,38 +218,49 @@ func (s *server) DeleteWorkspace(c echo.Context, name string) error {
 		Message: strPtr("Deleting workspace: " + name),
 	})
 
-	return c.NoContent(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
 // GetWorkspace returns a workspace by name.
-func (s *server) GetWorkspace(c echo.Context, name string) error {
+func (s *server) GetWorkspace(w http.ResponseWriter, r *http.Request, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	ws, ok := s.workspaces[name]
 	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, ws)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(ws)
 }
 
 // StopWorkspace stops a workspace (frees the sandbox but keeps data).
-func (s *server) StopWorkspace(c echo.Context, name string) error {
+func (s *server) StopWorkspace(w http.ResponseWriter, r *http.Request, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	ws, ok := s.workspaces[name]
 	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found"})
+		return
 	}
 
 	// Transition: active → stopped (write snapshot + release sandbox).
 	currentStatus := ws.Status
 	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusStopped {
-		return c.JSON(http.StatusConflict, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": "workspace is already stopped",
 		})
+		return
 	}
 
 	// Write a snapshot of wiki entries and sessions for this workspace.
@@ -259,24 +294,32 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 		Message: strPtr("Workspace stopped: " + name),
 	})
 
-	return c.JSON(http.StatusOK, ws)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(ws)
 }
 
 // RestoreWorkspace restores a stopped workspace to active.
-func (s *server) RestoreWorkspace(c echo.Context, name string) error {
+func (s *server) RestoreWorkspace(w http.ResponseWriter, r *http.Request, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	ws, ok := s.workspaces[name]
 	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found"})
+		return
 	}
 
 	currentStatus := ws.Status
 	if currentStatus != nil && *currentStatus == protocol.WorkspaceStatusActive {
-		return c.JSON(http.StatusConflict, map[string]string{
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
 			"error": "workspace is already active",
 		})
+		return
 	}
 
 	active := protocol.WorkspaceStatusActive
@@ -293,7 +336,10 @@ func (s *server) RestoreWorkspace(c echo.Context, name string) error {
 	// Start sandbox (always needed when restoring from stopped).
 	if err := s.workspaceManager.StartSandbox(context.Background(), name); err != nil {
 		log.Printf("[server] Error starting sandbox for restored workspace %s: %v", name, err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to start sandbox"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to start sandbox"})
+		return
 	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -301,16 +347,21 @@ func (s *server) RestoreWorkspace(c echo.Context, name string) error {
 		Message: strPtr("Workspace restored to active: " + name),
 	})
 
-	return c.JSON(http.StatusOK, ws)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(ws)
 }
 
 // PurgeWorkspace permanently deletes a workspace and all its traces.
-func (s *server) PurgeWorkspace(c echo.Context, name string) error {
+func (s *server) PurgeWorkspace(w http.ResponseWriter, r *http.Request, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.workspaces[name]; !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found"})
+		return
 	}
 
 	// Delete snapshot directory if it exists.
@@ -336,7 +387,9 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 		Message: strPtr("Workspace purged: " + name),
 	})
 
-	return c.JSON(http.StatusOK, map[string]string{"status": "purged"})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "purged"})
 }
 
 // isValidWorkspaceName validates that a workspace name contains only allowed characters.

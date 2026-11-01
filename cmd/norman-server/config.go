@@ -1,12 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/protocol"
@@ -14,7 +14,7 @@ import (
 
 // GetConfig returns the system config (with unresolved secret placeholders).
 // If workspace_id query param is provided, returns merged per-workspace config.
-func (s *server) GetConfig(c echo.Context, params protocol.GetConfigParams) error {
+func (s *server) GetConfig(w http.ResponseWriter, r *http.Request, params protocol.GetConfigParams) {
 	var workspaceID string
 	if params.WorkspaceId != nil {
 		workspaceID = *params.WorkspaceId
@@ -22,14 +22,20 @@ func (s *server) GetConfig(c echo.Context, params protocol.GetConfigParams) erro
 
 	if workspaceID != "" {
 		if ws, ok := s.cfg.Workspaces[workspaceID]; ok {
-			return c.JSON(http.StatusOK, map[string]interface{}{
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
 				"system":    s.cfg.System,
 				"workspace": ws,
 				"merged":    s.cfg.MergeWorkspaceConfig(workspaceID, ws),
 				"openshell": resolveGatewayAddress(),
 			})
+			return
 		}
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found"})
+		return
 	}
 
 	result := make(map[string]interface{})
@@ -37,30 +43,46 @@ func (s *server) GetConfig(c echo.Context, params protocol.GetConfigParams) erro
 	cfgCopy.Logging = config.LoggingConfig{Verbose: false}
 	result["system"] = cfgCopy
 	result["openshell"] = resolveGatewayAddress()
-	return c.JSON(http.StatusOK, result)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
 }
 
 // PutConfig accepts a partial system config update and merges it into the server's config.
-func (s *server) PutConfig(c echo.Context) error {
+func (s *server) PutConfig(w http.ResponseWriter, r *http.Request) {
 	var updates map[string]interface{}
-	if err := c.Bind(&updates); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON body"})
+		return
 	}
 
 	if err := mergeUpdatesIntoSystem(s.cfg.System, updates); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	if err := s.cfg.Validate(); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save config"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to save config"})
+		return
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "config updated",
 		"system":  s.cfg.System,
 	})

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,24 +11,29 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/protocol"
 )
 
 // ListSessions returns all sessions.
-func (s *server) ListSessions(c echo.Context) error {
+func (s *server) ListSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := s.store.ListSessions()
 	if len(sessions) == 0 {
-		return c.JSON(http.StatusOK, []map[string]interface{}{})
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]map[string]interface{}{})
+		return
 	}
-	return c.JSON(http.StatusOK, sessions)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
 }
 
 // CreateSession creates a new session bound to a workspace.
-func (s *server) CreateSession(c echo.Context) error {
+func (s *server) CreateSession(w http.ResponseWriter, r *http.Request) {
 	var req protocol.SessionCreateRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
 	}
 
 	clientType := "custom"
@@ -36,7 +42,10 @@ func (s *server) CreateSession(c echo.Context) error {
 	}
 	session, err := s.createSessionInternal(req.WorkspaceId, clientType)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	// Validate the workspace exists before ensuring its sandbox.
@@ -48,12 +57,15 @@ func (s *server) CreateSession(c echo.Context) error {
 		}
 	}
 	if !found {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found: " + req.WorkspaceId})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "workspace not found: " + req.WorkspaceId})
+		return
 	}
 
 	// Ensure the OpenShell sandbox exists for this workspace, carrying the session UUID.
 	sid := session.Id.String()
-	_, err = s.workspaceManager.GetSession(c.Request().Context(), req.WorkspaceId, sid)
+	_, err = s.workspaceManager.GetSession(r.Context(), req.WorkspaceId, sid)
 	if err != nil {
 		log.Printf("[sessions] failed to ensure sandbox for workspace %s: %v", req.WorkspaceId, err)
 	}
@@ -67,24 +79,35 @@ func (s *server) CreateSession(c echo.Context) error {
 		Message: strPtr("Session created for workspace " + req.WorkspaceId),
 	})
 
-	return c.JSON(http.StatusCreated, session)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(session)
 }
 
 // ArchiveSession archives a session by task ID.
-func (s *server) ArchiveSession(c echo.Context) error {
+func (s *server) ArchiveSession(w http.ResponseWriter, r *http.Request) {
 	var req protocol.ArchiveSessionRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
 	}
 
 	taskData, err := s.store.LoadTask(req.TaskId)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found: " + req.TaskId})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task not found: " + req.TaskId})
+		return
 	}
 
 	sessions := []interface{}{taskData}
 	if err := s.store.ArchiveSession(req.TaskId, sessions); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -93,21 +116,25 @@ func (s *server) ArchiveSession(c echo.Context) error {
 		Message: strPtr("Session archived for task " + req.TaskId),
 	})
 
-	return c.NoContent(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ArchiveSessionByID archives a session by path-based ID.
-func (s *server) ArchiveSessionByID(c echo.Context) error {
-	id := c.Param("id")
-
+func (s *server) ArchiveSessionByID(w http.ResponseWriter, r *http.Request, id string) {
 	sessionData, err := s.store.LoadSession(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "session not found: " + id})
+		return
 	}
 
 	sessions := []interface{}{sessionData}
 	if err := s.store.ArchiveSession(id, sessions); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -116,43 +143,58 @@ func (s *server) ArchiveSessionByID(c echo.Context) error {
 		Message: strPtr("Session archived for task " + id),
 	})
 
-	return c.NoContent(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetSession returns session data by ID.
-func (s *server) GetSession(c echo.Context, id string) error {
+func (s *server) GetSession(w http.ResponseWriter, r *http.Request, id string) {
 	data, err := s.store.LoadSession(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
-	return c.JSON(http.StatusOK, data)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
 }
 
 // SendMessage handles POST /api/sessions/{id}/messages — the chat-first interface.
-func (s *server) SendMessage(c echo.Context, id string) error {
+func (s *server) SendMessage(w http.ResponseWriter, r *http.Request, id string) {
 	var req struct {
 		Message     string `json:"message"`
 		AttachTools bool   `json:"attach_tools"`
 		Provider    string `json:"provider"`
 	}
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
 	}
 
 	if req.Message == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message is required"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "message is required"})
+		return
 	}
 
-	ctx := c.Request().Context()
+	ctx := r.Context()
 	resp, err := s.loop.SendMessage(ctx, id, req.Message, req.Provider)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	// Update last activity timestamp for the session's workspace
 	s.updateWorkspaceActivity(id)
 
-	return c.JSON(http.StatusOK, resp)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }
 
 // updateWorkspaceActivity updates the last activity timestamp for a session's workspace.
@@ -181,7 +223,7 @@ func (s *server) updateWorkspaceActivity(sessionID string) {
 }
 
 // HealthCheck returns service health with scheduler status.
-func (s *server) HealthCheck(c echo.Context) error {
+func (s *server) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	count, lastTick := s.scheduler.Status()
 	resp := map[string]interface{}{
 		"status":         "healthy",
@@ -191,16 +233,20 @@ func (s *server) HealthCheck(c echo.Context) error {
 			"last_tick":        lastTick.Format(time.RFC3339),
 		},
 	}
-	return c.JSON(http.StatusOK, resp)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // DeleteSession removes a session file from disk.
-func (s *server) DeleteSession(c echo.Context, id string) error {
+func (s *server) DeleteSession(w http.ResponseWriter, r *http.Request, id string) {
 	var fullPath string
 	dir := filepath.Join(s.store.Base(), "sessions")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	for _, entry := range entries {
@@ -211,11 +257,17 @@ func (s *server) DeleteSession(c echo.Context, id string) error {
 	}
 
 	if fullPath == "" {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "session not found"})
+		return
 	}
 
 	if err := os.Remove(fullPath); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -226,7 +278,7 @@ func (s *server) DeleteSession(c echo.Context, id string) error {
 	// Check if this was the last session for its workspace and mark idle
 	s.checkWorkspaceIdle(id)
 
-	return c.NoContent(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
 // checkWorkspaceIdle determines if a deleted session was the last one for its workspace.
@@ -277,15 +329,18 @@ func (s *server) checkWorkspaceIdle(sessionID string) {
 }
 
 // SessionHistory returns the last N conversation turns for a session.
-func (s *server) SessionHistory(c echo.Context, id string, params protocol.SessionHistoryParams) error {
+func (s *server) SessionHistory(w http.ResponseWriter, r *http.Request, id string, params protocol.SessionHistoryParams) {
 	limit := 10 // default
-	if q := c.QueryParam("limit"); q != "" {
+	if q := r.URL.Query().Get("limit"); q != "" {
 		_, _ = fmt.Sscanf(q, "%d", &limit)
 	}
 
 	sessMap, err := s.store.LoadSession(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	timestamps := sessMap["turns"]
@@ -300,7 +355,8 @@ func (s *server) SessionHistory(c echo.Context, id string, params protocol.Sessi
 	}
 
 	result := turns[start:]
-	return c.JSON(http.StatusOK, result)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // createSessionInternal creates a new session bound to a workspace.

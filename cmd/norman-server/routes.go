@@ -23,8 +23,9 @@ func registerRoutes(r *mux.Router, srv *server) {
 			func(h http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 					if srv.cfg.System.Logging.Verbose {
+						deadline, _ := req.Context().Deadline()
 						log.Printf("[http] %s %s - status=%d latency=%v",
-							req.Method, req.URL.Path, 0, time.Since(req.Context().Deadline()))
+							req.Method, req.URL.Path, 0, time.Since(deadline))
 					}
 					h.ServeHTTP(w, req)
 				})
@@ -40,11 +41,6 @@ func registerRoutes(r *mux.Router, srv *server) {
 	// Health check endpoint — includes scheduler status (Phase 4).
 	r.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
 		taskCount, lastTick := srv.scheduler.Status()
-		resp := map[string]interface{}{
-			"status":          "ok",
-			"scheduler_tasks": taskCount,
-			"last_tick":       lastTick.Format(time.RFC3339),
-		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, `{"status":"ok","scheduler_tasks":%d,"last_tick":"%s"}`, taskCount, lastTick.Format(time.RFC3339))

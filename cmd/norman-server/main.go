@@ -1,5 +1,5 @@
 // Package main implements the Norman Agent Server — a single long-running process
-// exposing HTTP API + WebSocket events via Echo.
+// exposing HTTP API + WebSocket events via gorilla/mux.
 package main
 
 import (
@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/agent"
 	"github.com/norman/norman/pkg/config"
@@ -49,7 +50,7 @@ type server struct {
 func main() {
 	app := &cli.Command{
 		Name: "norman-server",
-		Description: `Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via Echo
+		Description: `Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via gorilla/mux
 
 Configuration loaded from (priority order):
 - environment variables (NORMAN_HOST, NORMAN_PORT, OPENSHELL_GATEWAY_ADDRESS)
@@ -98,19 +99,24 @@ func runServer(verbose bool, selectedProvider string) error {
 	host := srv.cfg.System.Host
 	port := srv.cfg.System.ServerPort
 
-	// Register routes on Echo router.
-	e := echo.New()
-	registerRoutes(e, srv)
+	// Register routes on mux router.
+	r := mux.NewRouter()
+	registerRoutes(r, srv)
 
 	// API reference documentation (Scalar-powered).
-	e.GET("/docs", docs.Handler("api-spec.yaml", "Norman API Reference", false, ":root{--bg-color:#000000;--color-gold:#D4AF37;--color-red:#A52A2A;--color-silver:#E5E5E5;--color-charcoal:#1C1C1C}"))
+	echoDocs := echo.New()
+	echoDocs.GET("/docs", docs.Handler("api-spec.yaml", "Norman API Reference", false, ":root{--bg-color:#000000;--color-gold:#D4AF37;--color-red:#A52A2A;--color-silver:#E5E5E5;--color-charcoal:#1C1C1C}"))
+	r.PathPrefix("/docs").Handler(http.StripPrefix("/docs", echoDocs))
 
 	log.Printf("Norman Agent Server starting on %s:%d", host, port)
 
 	// Start HTTP listener.
+	server := &http.Server{Addr: fmt.Sprintf("%s:%d", host, port), Handler: r}
+	srvErr := make(chan error, 1)
 	go func() {
-		if err := e.Start(fmt.Sprintf("%s:%d", host, port)); err != nil && err != http.ErrServerClosed {
-			log.Printf("http server error: %v", err)
+		log.Printf("Listening on %s", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			srvErr <- err
 		}
 	}()
 
@@ -128,6 +134,11 @@ func runServer(verbose bool, selectedProvider string) error {
 
 	log.Println("shutting down...")
 	schedCancel()
-	_ = e.Close()
+
+	// Shutdown HTTP server gracefully (allow in-flight requests to complete).
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	_ = server.Shutdown(shutdownCtx)
+
 	return nil
 }
