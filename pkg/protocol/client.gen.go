@@ -488,7 +488,7 @@ type ClientInterface interface {
 	// ConnectWebSocket WebSocket endpoint for real-time push events
 	//
 	// Corresponds with GET /ws (the `ConnectWebSocket` operationId).
-	ConnectWebSocket(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ConnectWebSocket(ctx context.Context, params *ConnectWebSocketParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetConfig Get system configuration (with optional workspace merge)
@@ -1519,8 +1519,8 @@ func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn)
 // ConnectWebSocket WebSocket endpoint for real-time push events
 //
 // Corresponds with GET /ws (the `ConnectWebSocket` operationId).
-func (c *Client) ConnectWebSocket(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewConnectWebSocketRequest(c.Server)
+func (c *Client) ConnectWebSocket(ctx context.Context, params *ConnectWebSocketParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConnectWebSocketRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3254,7 +3254,7 @@ func NewHealthCheckRequest(server string) (*http.Request, error) {
 }
 
 // NewConnectWebSocketRequest constructs an http.Request for the ConnectWebSocket method
-func NewConnectWebSocketRequest(server string) (*http.Request, error) {
+func NewConnectWebSocketRequest(server string, params *ConnectWebSocketParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -3270,6 +3270,29 @@ func NewConnectWebSocketRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "session_id", params.SessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3770,7 +3793,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /ws (the `ConnectWebSocket` operationId).
-	ConnectWebSocketWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ConnectWebSocketResponse, error)
+	ConnectWebSocketWithResponse(ctx context.Context, params *ConnectWebSocketParams, reqEditors ...RequestEditorFn) (*ConnectWebSocketResponse, error)
 }
 
 type GetConfigResponse struct {
@@ -6371,8 +6394,8 @@ func (c *ClientWithResponses) HealthCheckWithResponse(ctx context.Context, reqEd
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /ws (the `ConnectWebSocket` operationId).
-func (c *ClientWithResponses) ConnectWebSocketWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ConnectWebSocketResponse, error) {
-	rsp, err := c.ConnectWebSocket(ctx, reqEditors...)
+func (c *ClientWithResponses) ConnectWebSocketWithResponse(ctx context.Context, params *ConnectWebSocketParams, reqEditors ...RequestEditorFn) (*ConnectWebSocketResponse, error) {
+	rsp, err := c.ConnectWebSocket(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
