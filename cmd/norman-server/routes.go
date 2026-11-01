@@ -1,5 +1,5 @@
 // Package main implements the Norman Agent Server — a single long-running process
-// exposing HTTP API + WebSocket events via Echo.
+// exposing HTTP API + WebSocket events via gorilla/mux.
 package main
 
 import (
@@ -8,77 +8,80 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/norman/norman/internal/api"
 	"github.com/norman/norman/pkg/protocol"
 )
 
-// registerRoutes registers all HTTP API routes on the Echo router.
-func registerRoutes(e *echo.Echo, srv *server) {
-	e.Use(middleware.Recover())
-
-	// Conditional logging: only log requests when verbose mode is enabled.
-	if srv.cfg.System.Logging.Verbose {
-		e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-			LogStatus:  true,
-			LogLatency: true,
-			LogMethod:  true,
-			LogURI:     true,
-			LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-				log.Printf("[http] %s %s - status=%d latency=%v",
-					v.Method,
-					v.URI,
-					v.Status,
-					v.Latency,
-				)
-				return nil
+// registerRoutes registers all HTTP API routes on the gorilla/mux router.
+func registerRoutes(r *mux.Router, srv *server) {
+	// Register auto-generated routes from OpenAPI spec
+	api.HandlerWithOptions(srv, api.GorillaServerOptions{
+		BaseURL: "",
+		Middlewares: []api.MiddlewareFunc{
+			func(h http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+					if srv.cfg.System.Logging.Verbose {
+						log.Printf("[http] %s %s - status=%d latency=%v",
+							req.Method, req.URL.Path, 0, time.Since(req.Context().Deadline()))
+					}
+					h.ServeHTTP(w, req)
+				})
 			},
-		}))
-	}
+		},
+		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+		},
+	})
 
 	// Health check endpoint — includes scheduler status (Phase 4).
-	e.GET("/health", func(c echo.Context) error {
+	r.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
 		taskCount, lastTick := srv.scheduler.Status()
 		resp := map[string]interface{}{
 			"status":          "ok",
 			"scheduler_tasks": taskCount,
 			"last_tick":       lastTick.Format(time.RFC3339),
 		}
-		return c.JSON(http.StatusOK, resp)
-	})
-
-	// Config endpoint — returns full system config (with unresolved secret placeholders).
-	// Per-workspace overrides are included if workspace_id query param is provided.
-	e.GET("/api/config", func(c echo.Context) error {
-		return srv.GetConfig(c, protocol.GetConfigParams{})
-	})
-	e.PUT("/api/config", srv.PutConfig)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"ok","scheduler_tasks":%d,"last_tick":"%s"}`, taskCount, lastTick.Format(time.RFC3339))
+	}).Methods(http.MethodGet)
 
 	// Debug route to verify routing
-	e.POST("/api/sessions/:id/debug", func(c echo.Context) error {
-		return c.String(200, "DEBUG route matched, id="+c.Param("id"))
-	})
+	r.HandleFunc("/api/sessions/{id}/debug", func(w http.ResponseWriter, req *http.Request) {
+		id := mux.Vars(req)["id"]
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "DEBUG route matched, id=%s", id)
+	}).Methods(http.MethodPost)
 
 	// Chat-first interface: send a message to an active session (Phase 1)
-	e.POST("/api/sessions/:id/messages", func(c echo.Context) error {
-		return srv.SendMessage(c, c.Param("id"))
-	})
+	r.HandleFunc("/api/sessions/{id}/messages", func(w http.ResponseWriter, req *http.Request) {
+		id := mux.Vars(req)["id"]
+		srv.SendMessage(w, req, id)
+	}).Methods(http.MethodPost)
 
-	// Session archive endpoint (Step 7d) — registered AFTER /messages so it takes precedence for bare paths
-	e.POST("/api/sessions/:id", func(c echo.Context) error {
-		id := c.Param("id")
+	// Session archive endpoint with custom logic (POST /api/sessions/:id)
+	r.HandleFunc("/api/sessions/{id}", func(w http.ResponseWriter, req *http.Request) {
+		id := mux.Vars(req)["id"]
 		log.Printf("[DEBUG] ArchiveSessionByID route matched, id=%s", id)
 
 		sessionData, err := srv.store.LoadSession(id)
 		if err != nil {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"session not found: %s"}`, id)
+			return
 		}
 
 		sessions := []interface{}{sessionData}
 		if err := srv.store.ArchiveSession(id, sessions); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
 		}
 
 		srv.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -87,111 +90,24 @@ func registerRoutes(e *echo.Echo, srv *server) {
 			Message: strPtr("Session archived for task " + id),
 		})
 
-		return c.NoContent(http.StatusNoContent)
-	})
-	e.POST("/api/sessions/archive", srv.ArchiveSession)
-
-	// Session history (Phase 3)
-	e.GET("/api/sessions/:id/history", func(c echo.Context) error {
-		var params protocol.SessionHistoryParams
-		if q := c.QueryParam("limit"); q != "" {
-			_, _ = fmt.Sscanf(q, "%d", &params.Limit)
-		}
-		return srv.SessionHistory(c, c.Param("id"), params)
-	})
-
-	// Notification endpoints (Step 8d)
-	e.GET("/api/notifications", srv.ListNotifications)
-	e.POST("/api/notifications", srv.CreateNotification)
-	e.DELETE("/api/notifications/:id", func(c echo.Context) error {
-		return srv.DeleteNotification(c, c.Param("id"))
-	})
-
-	// Workspace endpoints (Step 9d)
-	e.GET("/api/workspaces", func(c echo.Context) error {
-		var params protocol.ListWorkspacesParams
-		if q := c.QueryParam("status"); q != "" {
-			status := protocol.ListWorkspacesParamsStatus(q)
-			params.Status = &status
-		}
-		return srv.ListWorkspaces(c, params)
-	})
-	e.POST("/api/workspaces", srv.CreateWorkspace)
-	e.GET("/api/workspaces/:name", func(c echo.Context) error {
-		return srv.GetWorkspace(c, c.Param("name"))
-	})
-	e.PATCH("/api/workspaces/:name", func(c echo.Context) error {
-		return srv.UpdateWorkspace(c, c.Param("name"))
-	})
-	e.DELETE("/api/workspaces/:name", func(c echo.Context) error {
-		return srv.DeleteWorkspace(c, c.Param("name"))
-	})
-
-	// Workspace lifecycle transitions (P1)
-	e.POST("/api/workspaces/:name/stop", func(c echo.Context) error {
-		return srv.StopWorkspace(c, c.Param("name"))
-	})
-	e.POST("/api/workspaces/:name/restore", func(c echo.Context) error {
-		return srv.RestoreWorkspace(c, c.Param("name"))
-	})
-	e.POST("/api/workspaces/:name/purge", func(c echo.Context) error {
-		var req protocol.PurgeRequest
-		if err := c.Bind(&req); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		}
-		if !req.Confirm {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "confirm must be true to purge"})
-		}
-		return srv.PurgeWorkspace(c, c.Param("name"))
-	})
-
-	// Skill discovery path management (Step 14i)
-	e.POST("/api/skills/paths", srv.AddDiscoveryPaths)
-
-	// Skill file upload (Step 15a)
-	e.POST("/api/skills/upload", srv.UploadSkill)
-	e.POST("/api/skills/install", srv.InstallSkill)
-
-	// Remove a skill by name (DELETE /api/skills/:name)
-	e.DELETE("/api/skills/:name", func(c echo.Context) error {
-		return srv.RemoveSkill(c, c.Param("name"))
-	})
-
-	// Update a skill from its source repo (PUT /api/skills/:name)
-	e.PUT("/api/skills/:name", func(c echo.Context) error {
-		return srv.UpdateSkill(c, c.Param("name"))
-	})
-
-	// Check if a skill has an update available (GET /api/skills/:name/check-version)
-	e.GET("/api/skills/:name/check-version", func(c echo.Context) error {
-		return srv.CheckSkillVersion(c, c.Param("name"))
-	})
-
-	// Workspace-level skill install (POST /api/workspaces/:ws/skills/install)
-	e.POST("/api/workspaces/:ws/skills/install", srv.InstallSkillToWorkspace)
-
-	// Global skills registry (GET /api/skills/registry)
-	e.GET("/api/skills/registry", srv.GetSkillsRegistry)
+		w.WriteHeader(http.StatusNoContent)
+	}).Methods(http.MethodPost)
 
 	// WebSocket hub for real-time push events
-	e.GET("/ws", func(c echo.Context) error {
-		conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
+	r.HandleFunc("/ws", func(w http.ResponseWriter, req *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, req, nil)
 		if err != nil {
-			return err
+			return
 		}
-		// Extract optional session_id from query params for per-session filtering
-		sessionID := c.QueryParam("session_id")
+		sessionID := req.URL.Query().Get("session_id")
 		srv.wsHub.Add(conn, sessionID)
 		defer srv.wsHub.Remove(conn)
 
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
-				return nil // client disconnected
+				return // client disconnected
 			}
 		}
-	})
-
-	// Register all API handlers (real implementations now)
-	api.RegisterHandlers(e, srv)
+	}).Methods(http.MethodGet)
 }

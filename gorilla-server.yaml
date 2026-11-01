@@ -1,0 +1,6 @@
+package: api
+generate:
+  - gorilla-server
+output-options:
+  strict-server: true
+output: internal/api/handlers.go
