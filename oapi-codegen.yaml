@@ -1,7 +1,0 @@
-package: protocol
-generate:
-  client: true
-  models: true
-output-options:
-  skip-prune: true
-output: pkg/protocol/client.go
