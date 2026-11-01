@@ -234,6 +234,9 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		})
 	}
 
+	// Store resolved provider name for startup diagnostics.
+	srv.providerName = providerName
+
 	// Load persisted workspaces from disk on startup
 	if loaded, err := store.ListWorkspaces(); err != nil {
 		log.Printf("server: failed to load workspaces from disk: %v", err)
