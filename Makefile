@@ -2,7 +2,7 @@
 #
 # Targets:
 #   help      Show this help message
-#   generate  Generate protocol types, client library, and server handlers from api-spec.yaml
+#   generate  Generate protocol types + server handlers and client library from api-spec.yaml
 #   build     Run generate + compile all packages (binaries in dist/)
 #   lint      Run golangci-lint on all packages
 #   test      Run all unit tests with coverage report
@@ -20,7 +20,7 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  help        - Show this help message"
-	@echo "  generate    - Generate protocol types, client library, and server handlers from api-spec.yaml"
+	@echo "  generate    - Generate protocol types + server handlers and client library from api-spec.yaml"
 	@echo "  build       - Run generate + lint + compile all packages (binaries in $(DIST)/)"
 	@echo "  rebuild     - Clean + regenerate + build (safe sequential rebuild)"
 	@echo "  test        - Run all unit tests with coverage report"
@@ -30,13 +30,10 @@ help:
 	@echo "  generate-docs - Generate API reference HTML from api-spec.yaml"
 
 generate:
-	@mkdir -p pkg/protocol internal/api
+	@mkdir -p pkg/protocol
 	@echo "Generating protocol types, client, and server handlers..."
-	$(CODEGEN) -config oapi-codegen.yaml api-spec.yaml
-	$(CODEGEN) -package api -generate server api-spec.yaml > internal/api/handlers.go
-	@echo "Fixing cross-package type references in handlers..."
-	sed -i '/^import (/a\\t"github.com/norman/norman/pkg/protocol"' internal/api/handlers.go
-	sed -i 's/GetConfigParams\b/protocol.GetConfigParams/g; s/ListTasksParams\b/protocol.ListTasksParams/g; s/TailTaskLogParams\b/protocol.TailTaskLogParams/g; s/SessionHistoryParams\b/protocol.SessionHistoryParams/g; s/ListWorkspacesParams\b/protocol.ListWorkspacesParams/g' internal/api/handlers.go
+	$(CODEGEN) -package protocol -generate models,server api-spec.yaml > pkg/protocol/server.gen.go
+	$(CODEGEN) -package protocol -generate client api-spec.yaml > pkg/protocol/client.gen.go
 	@echo "Regenerated code; compiling..."
 
 lint: generate
@@ -81,7 +78,7 @@ test-integration: build
 
 clean:
 	rm -rf $(DIST)
-	rm -f pkg/protocol/types.go pkg/protocol/client.go internal/api/handlers.go
+	rm -f pkg/protocol/server.gen.go pkg/protocol/client.gen.go
 
 generate-docs:
 	@echo "Generating API reference HTML via Scalar..."

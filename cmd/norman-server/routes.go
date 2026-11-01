@@ -11,7 +11,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/norman/norman/internal/api"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -193,5 +192,5 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	})
 
 	// Register all API handlers (real implementations now)
-	api.RegisterHandlers(e, srv)
+	protocol.RegisterHandlers(e, srv)
 }
