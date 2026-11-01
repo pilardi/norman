@@ -147,6 +147,11 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
+// ConfigPath returns the canonical path used for loading the YAML config file.
+func ConfigPath() string {
+	return os.ExpandEnv("$HOME/.norman/config.yaml")
+}
+
 // LoadDefault reads from the standard config path (~/.norman/config.yaml).
 // If the file does not exist, returns DefaultConfig() instead of an error.
 // Also loads .env files and applies NORMAN_* environment variable overrides.

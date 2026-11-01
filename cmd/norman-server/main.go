@@ -44,6 +44,7 @@ type server struct {
 	taskCancellations sync.Map // taskID -> struct{}{} for cancellation signaling
 	workspaces        map[string]*protocol.Workspace
 	startTime         time.Time
+	providerName      string // resolved active provider name
 }
 
 func main() {
@@ -93,7 +94,11 @@ func intPtr(i int) *int { return &i }
 func runServer(verbose bool, selectedProvider string) error {
 	fmt.Fprintf(os.Stderr, "Norman agent server starting...\n")
 
+	startTime := time.Now()
 	srv := bootstrap(verbose, selectedProvider)
+
+	// Print startup diagnostics if verbose mode is enabled.
+	printStartupInfo(srv, startTime)
 
 	host := srv.cfg.System.Host
 	port := srv.cfg.System.ServerPort
@@ -107,10 +112,11 @@ func runServer(verbose bool, selectedProvider string) error {
 
 	log.Printf("Norman Agent Server starting on %s:%d", host, port)
 
-	// Start HTTP listener.
+	// Start HTTP listener in a goroutine so we can react to binding errors immediately.
+	errCh := make(chan error, 1)
 	go func() {
 		if err := e.Start(fmt.Sprintf("%s:%d", host, port)); err != nil && err != http.ErrServerClosed {
-			log.Printf("http server error: %v", err)
+			errCh <- err
 		}
 	}()
 
@@ -124,10 +130,17 @@ func runServer(verbose bool, selectedProvider string) error {
 	// Graceful shutdown.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
 
-	log.Println("shutting down...")
-	schedCancel()
-	_ = e.Close()
-	return nil
+	select {
+	case err := <-errCh:
+		log.Printf("http server error: %v", err)
+		schedCancel()
+		_ = e.Close()
+		return err
+	case <-sigCh:
+		log.Println("shutting down...")
+		schedCancel()
+		_ = e.Close()
+		return nil
+	}
 }
