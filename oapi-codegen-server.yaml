@@ -1,0 +1,8 @@
+# Server-side code generation: types + echo server handlers
+package: protocol
+generate:
+  models: true
+  echo-server: true
+output-options:
+  skip-prune: true
+output: pkg/protocol/server.gen.go

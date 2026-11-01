@@ -31,6 +31,51 @@ func (e HealthStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for NotificationConfigPriority.
+const (
+	NotificationConfigPriorityHigh   NotificationConfigPriority = "high"
+	NotificationConfigPriorityNormal NotificationConfigPriority = "normal"
+)
+
+// Valid indicates whether the value is a known member of the NotificationConfigPriority enum.
+func (e NotificationConfigPriority) Valid() bool {
+	switch e {
+	case NotificationConfigPriorityHigh:
+		return true
+	case NotificationConfigPriorityNormal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProviderConfigType.
+const (
+	ProviderConfigTypeAnthropic ProviderConfigType = "anthropic"
+	ProviderConfigTypeGemini    ProviderConfigType = "gemini"
+	ProviderConfigTypeLlamacpp  ProviderConfigType = "llamacpp"
+	ProviderConfigTypeOllama    ProviderConfigType = "ollama"
+	ProviderConfigTypeOpenai    ProviderConfigType = "openai"
+)
+
+// Valid indicates whether the value is a known member of the ProviderConfigType enum.
+func (e ProviderConfigType) Valid() bool {
+	switch e {
+	case ProviderConfigTypeAnthropic:
+		return true
+	case ProviderConfigTypeGemini:
+		return true
+	case ProviderConfigTypeLlamacpp:
+		return true
+	case ProviderConfigTypeOllama:
+		return true
+	case ProviderConfigTypeOpenai:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProviderCreateRequestType.
 const (
 	ProviderCreateRequestTypeAnthropic ProviderCreateRequestType = "anthropic"
@@ -520,6 +565,16 @@ type HealthStatus struct {
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
 
+// NotificationConfig defines model for NotificationConfig.
+type NotificationConfig struct {
+	// Channel Target channel (e.g., "slack", "#ops")
+	Channel  *string                     `json:"channel,omitempty"`
+	Priority *NotificationConfigPriority `json:"priority,omitempty"`
+}
+
+// NotificationConfigPriority defines model for NotificationConfig.Priority.
+type NotificationConfigPriority string
+
 // NotificationCreateRequest defines model for NotificationCreateRequest.
 type NotificationCreateRequest struct {
 	// Body Notification body text
@@ -563,6 +618,36 @@ type OpenShellConfig struct {
 	// MtlsKey mTLS client key path
 	MtlsKey *string `json:"mtls_key,omitempty"`
 }
+
+// ProviderConfig defines model for ProviderConfig.
+type ProviderConfig struct {
+	// ApiKey API key (masked in GET responses, required for openai/anthropic types)
+	ApiKey *string `json:"api_key,omitempty"`
+
+	// Endpoint Base API URL (e.g., "https://api.openai.com/v1")
+	Endpoint string `json:"endpoint"`
+
+	// Extra Type-specific fields (e.g., cache_size for llamacpp)
+	Extra *map[string]interface{} `json:"extra,omitempty"`
+
+	// MaxTokens Provider default max tokens per call
+	MaxTokens *int `json:"max_tokens,omitempty"`
+
+	// Model Default model name for this provider
+	Model *string `json:"model,omitempty"`
+
+	// Name Unique provider identifier (e.g., "default", "local-llama")
+	Name string `json:"name"`
+
+	// Temperature Provider default temperature (0–2)
+	Temperature *float32 `json:"temperature,omitempty"`
+
+	// Type Provider implementation type
+	Type ProviderConfigType `json:"type"`
+}
+
+// ProviderConfigType Provider implementation type
+type ProviderConfigType string
 
 // ProviderCreateRequest defines model for ProviderCreateRequest.
 type ProviderCreateRequest struct {
@@ -689,6 +774,21 @@ type ScheduledTask struct {
 
 // ScheduledTaskStatus defines model for ScheduledTask.Status.
 type ScheduledTaskStatus string
+
+// ScheduledTaskRequest defines model for ScheduledTaskRequest.
+type ScheduledTaskRequest struct {
+	// ActivationCommand Optional command to run before task execution (e.g., skill activation script)
+	ActivationCommand *string                 `json:"activation_command,omitempty"`
+	Config            *map[string]interface{} `json:"config,omitempty"`
+	Name              string                  `json:"name"`
+	OnFailure         *NotificationConfig     `json:"on_failure,omitempty"`
+	OnSuccess         *NotificationConfig     `json:"on_success,omitempty"`
+
+	// Schedule Cron expression (5-field or 6-field)
+	Schedule    string `json:"schedule"`
+	Skill       string `json:"skill"`
+	WorkspaceId string `json:"workspace_id"`
+}
 
 // SchedulerStatus defines model for SchedulerStatus.
 type SchedulerStatus struct {
@@ -1040,6 +1140,27 @@ type Workspace struct {
 // WorkspaceStatus Lifecycle state of the workspace. "active" = running sandbox; "stopped" = sandbox freed but data preserved (via snapshot).
 type WorkspaceStatus string
 
+// WorkspaceConfig defines model for WorkspaceConfig.
+type WorkspaceConfig struct {
+	// BaseDir Base directory for workspace files
+	BaseDir *string `json:"base_dir,omitempty"`
+
+	// MaxTokens Per-workspace token budget (0 = system default)
+	MaxTokens *int `json:"max_tokens,omitempty"`
+
+	// Model Per-workspace LLM model override (empty = system default)
+	Model *string `json:"model,omitempty"`
+
+	// SkillOverrides Per-workspace skill activation list
+	SkillOverrides *[]string `json:"skill_overrides,omitempty"`
+
+	// SystemPrompt Per-workspace system prompt override
+	SystemPrompt *string `json:"system_prompt,omitempty"`
+
+	// Temperature Per-workspace temperature (0 = system default)
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
 // WorkspaceCreateRequest defines model for WorkspaceCreateRequest.
 type WorkspaceCreateRequest struct {
 	// Name Unique workspace identifier
@@ -1057,6 +1178,9 @@ type WorkspaceCreateRequest struct {
 	// Tags Domain keywords for skill activation matching
 	Tags *[]string `json:"tags,omitempty"`
 }
+
+// WorkspaceMap Map of workspace_id -> WorkspaceConfig
+type WorkspaceMap map[string]WorkspaceConfig
 
 // WorkspaceUpdateRequest defines model for WorkspaceUpdateRequest.
 type WorkspaceUpdateRequest struct {

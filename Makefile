@@ -31,9 +31,9 @@ help:
 
 generate:
 	@mkdir -p pkg/protocol
-	@echo "Generating protocol types, client, and server handlers..."
-	$(CODEGEN) -package protocol -generate models,server api-spec.yaml > pkg/protocol/server.gen.go
-	$(CODEGEN) -package protocol -generate client api-spec.yaml > pkg/protocol/client.gen.go
+	@echo "Generating protocol types + server handlers and client library..."
+	$(CODEGEN) -config oapi-codegen-server.yaml api-spec.yaml
+	$(CODEGEN) -config oapi-codegen-client.yaml api-spec.yaml
 	@echo "Regenerated code; compiling..."
 
 lint:

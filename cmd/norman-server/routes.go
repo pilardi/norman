@@ -191,6 +191,6 @@ func registerRoutes(e *echo.Echo, srv *server) {
 		}
 	})
 
-	// Register all API handlers (real implementations now)
+	// Register all auto-generated API handlers (echo-based).
 	protocol.RegisterHandlers(e, srv)
 }

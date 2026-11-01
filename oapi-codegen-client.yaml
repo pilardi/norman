@@ -1,0 +1,7 @@
+# Client-side code generation: HTTP client methods only (no types)
+package: protocol
+generate:
+  client: true
+output-options:
+  skip-prune: true
+output: pkg/protocol/client.gen.go
