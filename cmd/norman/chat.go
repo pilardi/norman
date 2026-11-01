@@ -34,7 +34,15 @@ func runWebSocketLoop(sessionID string) {
 	defer resp.Body.Close()
 
 	// Upgrade the HTTP response to a WebSocket connection.
-	conn, _, err := websocket.DefaultDialer.Dial(resp.Request.URL.String(), resp.Header)
+	// Convert http:// → ws:// and https:// → wss:// for the dialer.
+	dialURL := resp.Request.URL.String()
+	if strings.HasPrefix(dialURL, "http://") {
+		dialURL = "ws://" + dialURL[len("http://"):]
+	} else if strings.HasPrefix(dialURL, "https://") {
+		dialURL = "wss://" + dialURL[len("https://"):]
+	}
+
+	conn, _, err := websocket.DefaultDialer.Dial(dialURL, resp.Header)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "WebSocket dial failed: %v\n", err)
 		return
