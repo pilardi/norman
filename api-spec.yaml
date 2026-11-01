@@ -785,6 +785,13 @@ paths:
       tags: [websocket]
       summary: WebSocket endpoint for real-time push events
       operationId: connectWebSocket
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          description: Session ID to subscribe to real-time events for
+          schema:
+            type: string
       responses:
         "101":
           description: WebSocket upgrade successful

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/norman/norman/pkg/protocol"
@@ -153,25 +152,6 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	// Global skills registry (GET /api/skills/registry)
 	e.GET("/api/skills/registry", srv.GetSkillsRegistry)
 
-	// WebSocket hub for real-time push events
-	e.GET("/ws", func(c echo.Context) error {
-		conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
-		if err != nil {
-			return err
-		}
-		// Extract optional session_id from query params for per-session filtering
-		sessionID := c.QueryParam("session_id")
-		srv.wsHub.Add(conn, sessionID)
-		defer srv.wsHub.Remove(conn)
-
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				return nil // client disconnected
-			}
-		}
-	})
-
-	// Register all auto-generated API handlers (echo-based).
+	// Register all auto-generated API handlers (echo-based), including /ws.
 	protocol.RegisterHandlers(e, srv)
 }

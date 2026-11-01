@@ -164,14 +164,12 @@ func (h *WSHub) writeLoop() {
 }
 
 // ConnectWebSocket handles WebSocket connections for real-time push events.
-func (s *server) ConnectWebSocket(c echo.Context) error {
+func (s *server) ConnectWebSocket(c echo.Context, params protocol.ConnectWebSocketParams) error {
 	conn, err := (&websocket.Upgrader{}).Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {
 		return err
 	}
-	// Extract optional session_id from query params for per-session filtering
-	sessionID := c.QueryParam("session_id")
-	s.wsHub.Add(conn, sessionID)
+	s.wsHub.Add(conn, params.SessionId)
 	defer s.wsHub.Remove(conn)
 
 	for {

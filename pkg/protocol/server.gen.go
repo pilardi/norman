@@ -1232,6 +1232,12 @@ type ListWorkspacesParams struct {
 // ListWorkspacesParamsStatus defines parameters for ListWorkspaces.
 type ListWorkspacesParamsStatus string
 
+// ConnectWebSocketParams defines parameters for ConnectWebSocket.
+type ConnectWebSocketParams struct {
+	// SessionId Session ID to subscribe to real-time events for
+	SessionId string `form:"session_id" json:"session_id"`
+}
+
 // PutConfigJSONRequestBody defines body for PutConfig for application/json ContentType.
 type PutConfigJSONRequestBody PutConfigJSONBody
 
@@ -1425,7 +1431,7 @@ type ServerInterface interface {
 	HealthCheck(ctx echo.Context) error
 	// ConnectWebSocket WebSocket endpoint for real-time push events
 	// (GET /ws)
-	ConnectWebSocket(ctx echo.Context) error
+	ConnectWebSocket(ctx echo.Context, params ConnectWebSocketParams) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -2030,8 +2036,17 @@ func (w *ServerInterfaceWrapper) HealthCheck(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ConnectWebSocket(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ConnectWebSocketParams
+	// ------------- Required query parameter "session_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "session_id", ctx.QueryParams(), &params.SessionId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter session_id: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ConnectWebSocket(ctx)
+	err = w.Handler.ConnectWebSocket(ctx, params)
 	return err
 }
 

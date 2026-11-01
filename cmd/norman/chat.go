@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -14,35 +13,33 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
-// wsURL converts an HTTP server URL to its WebSocket equivalent (http→ws, https→wss).
-func wsURL() string {
-	base := serverURL()
-	ws := strings.Replace(base, "http://", "ws://", 1)
-	ws = strings.Replace(ws, "https://", "wss://", 1)
-	return ws
-}
-
 // runWebSocketLoop connects to the WebSocket endpoint and displays incoming events.
 // It runs concurrently with the REPL input loop.
 func runWebSocketLoop(sessionID string) {
-	wsURL := wsURL() + "/ws?session_id=" + url.PathEscape(sessionID)
-	fmt.Printf("Connecting to real-time events at %s ...\n", wsURL)
+	client, err := getProtocolClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
+		return
+	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	params := &protocol.ConnectWebSocketParams{
+		SessionId: sessionID,
+	}
+
+	resp, err := client.ConnectWebSocket(context.Background(), params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "WebSocket connection failed: %v\n", err)
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer resp.Body.Close()
 
-	go func() {
-		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
-				fmt.Fprintf(os.Stderr, "WebSocket read error: %v\n", err)
-				return
-			}
-		}
-	}()
+	// Upgrade the HTTP response to a WebSocket connection.
+	conn, _, err := websocket.DefaultDialer.Dial(resp.Request.URL.String(), resp.Header)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WebSocket dial failed: %v\n", err)
+		return
+	}
+	defer func() { _ = conn.Close() }()
 
 	for {
 		_, msg, err := conn.ReadMessage()
