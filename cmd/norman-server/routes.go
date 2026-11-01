@@ -46,19 +46,6 @@ func registerRoutes(r *mux.Router, srv *server) {
 		fmt.Fprintf(w, `{"status":"ok","scheduler_tasks":%d,"last_tick":"%s"}`, taskCount, lastTick.Format(time.RFC3339))
 	}).Methods(http.MethodGet)
 
-	// Debug route to verify routing
-	r.HandleFunc("/api/sessions/{id}/debug", func(w http.ResponseWriter, req *http.Request) {
-		id := mux.Vars(req)["id"]
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "DEBUG route matched, id=%s", id)
-	}).Methods(http.MethodPost)
-
-	// Chat-first interface: send a message to an active session (Phase 1)
-	r.HandleFunc("/api/sessions/{id}/messages", func(w http.ResponseWriter, req *http.Request) {
-		id := mux.Vars(req)["id"]
-		srv.SendMessage(w, req, id)
-	}).Methods(http.MethodPost)
-
 	// Session archive endpoint with custom logic (POST /api/sessions/:id)
 	r.HandleFunc("/api/sessions/{id}", func(w http.ResponseWriter, req *http.Request) {
 		id := mux.Vars(req)["id"]
