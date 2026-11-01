@@ -96,10 +96,8 @@ func (s *server) ArchiveSession(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// ArchiveSessionByID archives a session by path-based ID.
-func (s *server) ArchiveSessionByID(c echo.Context) error {
-	id := c.Param("id")
-
+// ArchiveSessionByID archives a session by its ID.
+func (s *server) ArchiveSessionByID(c echo.Context, id string) error {
 	sessionData, err := s.store.LoadSession(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})

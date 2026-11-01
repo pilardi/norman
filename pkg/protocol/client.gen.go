@@ -238,24 +238,29 @@ type ClientInterface interface {
 	// Corresponds with GET /api/sessions/{id} (the `GetSession` operationId).
 	GetSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ArchiveSessionByID Archive a session by its ID
+	//
+	// Corresponds with POST /api/sessions/{id}/archive (the `ArchiveSessionByID` operationId).
+	ArchiveSessionByID(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SessionHistory Get conversation history turns for a session
+	//
+	// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
+	SessionHistory(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SendMessageWithBody Send a message to an active session (chat input)
 	//
 	// Takes any type of body and a specified content type.
 	//
-	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+	// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
 	SendMessageWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SendMessage Send a message to an active session (chat input)
 	//
 	// Takes a body of the `application/json` content type.
 	//
-	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+	// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
 	SendMessage(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// SessionHistory Get conversation history turns for a session
-	//
-	// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
-	SessionHistory(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSkills List discovered skills (metadata only)
 	//
@@ -874,11 +879,41 @@ func (c *Client) GetSession(ctx context.Context, id string, reqEditors ...Reques
 	return c.Client.Do(req)
 }
 
+// ArchiveSessionByID Archive a session by its ID
+//
+// Corresponds with POST /api/sessions/{id}/archive (the `ArchiveSessionByID` operationId).
+func (c *Client) ArchiveSessionByID(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveSessionByIDRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SessionHistory Get conversation history turns for a session
+//
+// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
+func (c *Client) SessionHistory(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSessionHistoryRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // SendMessageWithBody Send a message to an active session (chat input)
 //
 // Takes any type of body and a specified content type.
 //
-// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
 func (c *Client) SendMessageWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSendMessageRequestWithBody(c.Server, id, contentType, body)
 	if err != nil {
@@ -895,24 +930,9 @@ func (c *Client) SendMessageWithBody(ctx context.Context, id string, contentType
 //
 // Takes a body of the `application/json` content type.
 //
-// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
+// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
 func (c *Client) SendMessage(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSendMessageRequest(c.Server, id, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// SessionHistory Get conversation history turns for a session
-//
-// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
-func (c *Client) SessionHistory(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSessionHistoryRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2137,19 +2157,8 @@ func NewGetSessionRequest(server string, id string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewSendMessageRequest calls the generic SendMessage builder with application/json body
-func NewSendMessageRequest(server string, id string, body SendMessageJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewSendMessageRequestWithBody(server, id, "application/json", bodyReader)
-}
-
-// NewSendMessageRequestWithBody constructs an http.Request for the SendMessage method, with any body, and a specified content type
-func NewSendMessageRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+// NewArchiveSessionByIDRequest constructs an http.Request for the ArchiveSessionByID method
+func NewArchiveSessionByIDRequest(server string, id string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2164,7 +2173,7 @@ func NewSendMessageRequestWithBody(server string, id string, contentType string,
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/sessions/%s", pathParam0)
+	operationPath := fmt.Sprintf("/api/sessions/%s/archive", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -2174,12 +2183,10 @@ func NewSendMessageRequestWithBody(server string, id string, contentType string,
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -2241,6 +2248,53 @@ func NewSessionHistoryRequest(server string, id string, params *SessionHistoryPa
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewSendMessageRequest calls the generic SendMessage builder with application/json body
+func NewSendMessageRequest(server string, id string, body SendMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSendMessageRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewSendMessageRequestWithBody constructs an http.Request for the SendMessage method, with any body, and a specified content type
+func NewSendMessageRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -3438,19 +3492,12 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/sessions/{id} (the `GetSession` operationId).
 	GetSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetSessionResponse, error)
 
-	// SendMessageWithBodyWithResponse Send a message to an active session (chat input)
+	// ArchiveSessionByIDWithResponse Archive a session by its ID
 	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
-	SendMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendMessageResponse, error)
-
-	// SendMessageWithResponse Send a message to an active session (chat input)
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
-	SendMessageWithResponse(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SendMessageResponse, error)
+	// Corresponds with POST /api/sessions/{id}/archive (the `ArchiveSessionByID` operationId).
+	ArchiveSessionByIDWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*ArchiveSessionByIDResponse, error)
 
 	// SessionHistoryWithResponse Get conversation history turns for a session
 	//
@@ -3458,6 +3505,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
 	SessionHistoryWithResponse(ctx context.Context, id string, params *SessionHistoryParams, reqEditors ...RequestEditorFn) (*SessionHistoryResponse, error)
+
+	// SendMessageWithBodyWithResponse Send a message to an active session (chat input)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
+	SendMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendMessageResponse, error)
+
+	// SendMessageWithResponse Send a message to an active session (chat input)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
+	SendMessageWithResponse(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SendMessageResponse, error)
 
 	// ListSkillsWithResponse List discovered skills (metadata only)
 	//
@@ -4382,25 +4443,18 @@ func (r GetSessionResponse) ContentType() string {
 	return ""
 }
 
-type SendMessageResponse struct {
+type ArchiveSessionByIDResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *AgentResponse
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r SendMessageResponse) GetJSON200() *AgentResponse {
-	return r.JSON200
 }
 
 // GetBody returns the raw response body bytes
-func (r SendMessageResponse) GetBody() []byte {
+func (r ArchiveSessionByIDResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r SendMessageResponse) Status() string {
+func (r ArchiveSessionByIDResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -4408,7 +4462,7 @@ func (r SendMessageResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r SendMessageResponse) StatusCode() int {
+func (r ArchiveSessionByIDResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4416,7 +4470,7 @@ func (r SendMessageResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r SendMessageResponse) ContentType() string {
+func (r ArchiveSessionByIDResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4458,6 +4512,47 @@ func (r SessionHistoryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SessionHistoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SendMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SendMessageResponse) GetJSON200() *AgentResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r SendMessageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SendMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SendMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SendMessageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5764,30 +5859,17 @@ func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, id str
 	return ParseGetSessionResponse(rsp)
 }
 
-// SendMessageWithBodyWithResponse Send a message to an active session (chat input)
+// ArchiveSessionByIDWithResponse Archive a session by its ID
 //
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+// Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
-func (c *ClientWithResponses) SendMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendMessageResponse, error) {
-	rsp, err := c.SendMessageWithBody(ctx, id, contentType, body, reqEditors...)
+// Corresponds with POST /api/sessions/{id}/archive (the `ArchiveSessionByID` operationId).
+func (c *ClientWithResponses) ArchiveSessionByIDWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*ArchiveSessionByIDResponse, error) {
+	rsp, err := c.ArchiveSessionByID(ctx, id, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSendMessageResponse(rsp)
-}
-
-// SendMessageWithResponse Send a message to an active session (chat input)
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /api/sessions/{id} (the `SendMessage` operationId).
-func (c *ClientWithResponses) SendMessageWithResponse(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SendMessageResponse, error) {
-	rsp, err := c.SendMessage(ctx, id, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseSendMessageResponse(rsp)
+	return ParseArchiveSessionByIDResponse(rsp)
 }
 
 // SessionHistoryWithResponse Get conversation history turns for a session
@@ -5801,6 +5883,32 @@ func (c *ClientWithResponses) SessionHistoryWithResponse(ctx context.Context, id
 		return nil, err
 	}
 	return ParseSessionHistoryResponse(rsp)
+}
+
+// SendMessageWithBodyWithResponse Send a message to an active session (chat input)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
+func (c *ClientWithResponses) SendMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SendMessageResponse, error) {
+	rsp, err := c.SendMessageWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendMessageResponse(rsp)
+}
+
+// SendMessageWithResponse Send a message to an active session (chat input)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/sessions/{id}/messages (the `SendMessage` operationId).
+func (c *ClientWithResponses) SendMessageWithResponse(ctx context.Context, id string, body SendMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SendMessageResponse, error) {
+	rsp, err := c.SendMessage(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSendMessageResponse(rsp)
 }
 
 // ListSkillsWithResponse List discovered skills (metadata only)
@@ -6697,6 +6805,48 @@ func ParseGetSessionResponse(rsp *http.Response) (*GetSessionResponse, error) {
 	return response, nil
 }
 
+// ParseArchiveSessionByIDResponse parses an HTTP response from a ArchiveSessionByIDWithResponse call
+func ParseArchiveSessionByIDResponse(rsp *http.Response) (*ArchiveSessionByIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveSessionByIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseSessionHistoryResponse parses an HTTP response from a SessionHistoryWithResponse call
+func ParseSessionHistoryResponse(rsp *http.Response) (*SessionHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SessionHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []SessionTurn
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseSendMessageResponse parses an HTTP response from a SendMessageWithResponse call
 func ParseSendMessageResponse(rsp *http.Response) (*SendMessageResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -6723,32 +6873,6 @@ func ParseSendMessageResponse(rsp *http.Response) (*SendMessageResponse, error) 
 
 	case rsp.StatusCode == 404:
 		break // No content-type
-
-	}
-
-	return response, nil
-}
-
-// ParseSessionHistoryResponse parses an HTTP response from a SessionHistoryWithResponse call
-func ParseSessionHistoryResponse(rsp *http.Response) (*SessionHistoryResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &SessionHistoryResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []SessionTurn
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
 
 	}
 

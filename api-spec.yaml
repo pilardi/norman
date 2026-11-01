@@ -275,6 +275,21 @@ paths:
                 $ref: "#/components/schemas/SessionStatus"
         "404":
           description: Session not found
+    delete:
+      tags: [session]
+      summary: Delete a session
+      operationId: deleteSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Session deleted
+
+  /api/sessions/{id}/messages:
     post:
       tags: [session]
       summary: Send a message to an active session (chat input)
@@ -303,20 +318,6 @@ paths:
         "404":
           description: Session not found or inactive
 
-    delete:
-      tags: [session]
-      summary: Delete a session
-      operationId: deleteSession
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Session deleted
-
   /api/sessions/{id}/history:
     get:
       tags: [session]
@@ -343,6 +344,23 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SessionTurn"
+
+  /api/sessions/{id}/archive:
+    post:
+      tags: [session]
+      summary: Archive a session by its ID
+      operationId: archiveSessionByID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Session archived successfully
+        "404":
+          description: Session not found
 
   /api/sessions/archive:
     post:
