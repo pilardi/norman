@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.8.2/configuration-schema.json
+# Client-side code generation: HTTP client methods only (no types)
+package: protocol
+generate:
+  client: true
+output-options:
+  skip-prune: true
+output: pkg/protocol/client.gen.go
