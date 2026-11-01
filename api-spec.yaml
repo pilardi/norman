@@ -317,35 +317,6 @@ paths:
         "204":
           description: Session deleted
 
-  /api/sessions/{id}/messages:
-    post:
-      tags: [session]
-      summary: Send a message to an active session (chat-first interface)
-      operationId: sendSessionMessage
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SendMessageRequest"
-      responses:
-        "200":
-          description: Agent response (structured)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentResponse"
-        "400":
-          description: Invalid request
-        "404":
-          description: Session not found or inactive
-
   /api/sessions/{id}/history:
     get:
       tags: [session]

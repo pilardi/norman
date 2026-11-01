@@ -197,11 +197,6 @@ func (s *server) SendMessage(w http.ResponseWriter, r *http.Request, id string) 
 	json.NewEncoder(w).Encode(resp)
 }
 
-// SendSessionMessage is an alias for SendMessage, satisfying the generated ServerInterface contract.
-func (s *server) SendSessionMessage(w http.ResponseWriter, r *http.Request, id string) {
-	s.SendMessage(w, r, id)
-}
-
 // updateWorkspaceActivity updates the last activity timestamp for a session's workspace.
 func (s *server) updateWorkspaceActivity(sessionID string) {
 	s.mu.Lock()
