@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 	"github.com/norman/norman/internal/api"
 	"github.com/norman/norman/pkg/protocol"
 )
@@ -75,22 +74,4 @@ func registerRoutes(r *mux.Router, srv *server) {
 
 		w.WriteHeader(http.StatusNoContent)
 	}).Methods(http.MethodPost)
-
-	// WebSocket hub for real-time push events
-	r.HandleFunc("/ws", func(w http.ResponseWriter, req *http.Request) {
-		conn, err := (&websocket.Upgrader{}).Upgrade(w, req, nil)
-		if err != nil {
-			return
-		}
-		sessionID := req.URL.Query().Get("session_id")
-		srv.wsHub.Add(conn, sessionID)
-		defer srv.wsHub.Remove(conn)
-
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				return // client disconnected
-			}
-		}
-	}).Methods(http.MethodGet)
 }
