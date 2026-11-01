@@ -3,8 +3,8 @@
 # Targets:
 #   help      Show this help message
 #   generate  Generate protocol types + server handlers and client library from api-spec.yaml
-#   build     Run generate + compile all packages (binaries in dist/)
-#   lint      Run golangci-lint on all packages
+#   build     Compile all packages (binaries in dist/); run `make generate` manually first to update generated code
+#   lint      Run golangci-lint on all packages (includes generated .gen.go)
 #   test      Run all unit tests with coverage report
 #   test-race Run all unit tests with race detector
 #   test-short Run short tests only (skip slow/integration)
@@ -36,7 +36,8 @@ generate:
 	$(CODEGEN) -package protocol -generate client api-spec.yaml > pkg/protocol/client.gen.go
 	@echo "Regenerated code; compiling..."
 
-lint: generate
+lint:
+	@echo "Linting (includes generated .gen.go files)..."
 	golangci-lint run ./...
 
 build: lint
