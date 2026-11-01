@@ -362,20 +362,20 @@ paths:
         "404":
           description: Session not found
 
-  /api/sessions/archive:
+  /api/tasks/archive:
     post:
-      tags: [session]
-      summary: Archive a session's task data for long-term storage
-      operationId: archiveSession
+      tags: [task]
+      summary: Archive a task's data for long-term storage
+      operationId: archiveTask
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ArchiveSessionRequest"
+              $ref: "#/components/schemas/ArchiveTaskRequest"
       responses:
         "204":
-          description: Session archived successfully
+          description: Task archived successfully
         "404":
           description: Task not found
 
@@ -1516,7 +1516,7 @@ components:
           nullable: true
           description: Budget threshold that triggered the event (e.g., "75%")
 
-    ArchiveSessionRequest:
+    ArchiveTaskRequest:
       type: object
       required: [task_id]
       properties:

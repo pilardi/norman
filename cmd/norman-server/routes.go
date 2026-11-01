@@ -69,7 +69,7 @@ func registerRoutes(e *echo.Echo, srv *server) {
 	e.POST("/api/sessions/:id/archive", func(c echo.Context) error {
 		return srv.ArchiveSessionByID(c, c.Param("id"))
 	})
-	e.POST("/api/sessions/archive", srv.ArchiveSession)
+	e.POST("/api/tasks/archive", srv.ArchiveTask)
 
 	// Session history (Phase 3)
 	e.GET("/api/sessions/:id/history", func(c echo.Context) error {

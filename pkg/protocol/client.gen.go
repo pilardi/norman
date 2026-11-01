@@ -214,20 +214,6 @@ type ClientInterface interface {
 	// Corresponds with POST /api/sessions (the `CreateSession` operationId).
 	CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ArchiveSessionWithBody Archive a session's task data for long-term storage
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-	ArchiveSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ArchiveSession Archive a session's task data for long-term storage
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-	ArchiveSession(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// DeleteSession Delete a session
 	//
 	// Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
@@ -351,6 +337,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
 	CreateTask(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveTaskWithBody Archive a task's data for long-term storage
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+	ArchiveTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveTask Archive a task's data for long-term storage
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+	ArchiveTask(ctx context.Context, body ArchiveTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeferTaskWithBody Defer a task to run at an absolute time (one-shot)
 	//
@@ -815,40 +815,6 @@ func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONReques
 	return c.Client.Do(req)
 }
 
-// ArchiveSessionWithBody Archive a session's task data for long-term storage
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-func (c *Client) ArchiveSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewArchiveSessionRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ArchiveSession Archive a session's task data for long-term storage
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-func (c *Client) ArchiveSession(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewArchiveSessionRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // DeleteSession Delete a session
 //
 // Corresponds with DELETE /api/sessions/{id} (the `DeleteSession` operationId).
@@ -1163,6 +1129,40 @@ func (c *Client) CreateTaskWithBody(ctx context.Context, contentType string, bod
 // Corresponds with POST /api/tasks (the `CreateTask` operationId).
 func (c *Client) CreateTask(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateTaskRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ArchiveTaskWithBody Archive a task's data for long-term storage
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+func (c *Client) ArchiveTaskWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveTaskRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ArchiveTask Archive a task's data for long-term storage
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+func (c *Client) ArchiveTask(ctx context.Context, body ArchiveTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveTaskRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2049,46 +2049,6 @@ func NewCreateSessionRequestWithBody(server string, contentType string, body io.
 	return req, nil
 }
 
-// NewArchiveSessionRequest calls the generic ArchiveSession builder with application/json body
-func NewArchiveSessionRequest(server string, body ArchiveSessionJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewArchiveSessionRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewArchiveSessionRequestWithBody constructs an http.Request for the ArchiveSession method, with any body, and a specified content type
-func NewArchiveSessionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/sessions/archive")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewDeleteSessionRequest constructs an http.Request for the DeleteSession method
 func NewDeleteSessionRequest(server string, id string) (*http.Request, error) {
 	var err error
@@ -2636,6 +2596,46 @@ func NewCreateTaskRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	operationPath := fmt.Sprintf("/api/tasks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewArchiveTaskRequest calls the generic ArchiveTask builder with application/json body
+func NewArchiveTaskRequest(server string, body ArchiveTaskJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewArchiveTaskRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewArchiveTaskRequestWithBody constructs an http.Request for the ArchiveTask method, with any body, and a specified content type
+func NewArchiveTaskRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/tasks/archive")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3464,20 +3464,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/sessions (the `CreateSession` operationId).
 	CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
 
-	// ArchiveSessionWithBodyWithResponse Archive a session's task data for long-term storage
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-	ArchiveSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error)
-
-	// ArchiveSessionWithResponse Archive a session's task data for long-term storage
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-	ArchiveSessionWithResponse(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error)
-
 	// DeleteSessionWithResponse Delete a session
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3617,6 +3603,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/tasks (the `CreateTask` operationId).
 	CreateTaskWithResponse(ctx context.Context, body CreateTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTaskResponse, error)
+
+	// ArchiveTaskWithBodyWithResponse Archive a task's data for long-term storage
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+	ArchiveTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ArchiveTaskResponse, error)
+
+	// ArchiveTaskWithResponse Archive a task's data for long-term storage
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+	ArchiveTaskWithResponse(ctx context.Context, body ArchiveTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*ArchiveTaskResponse, error)
 
 	// DeferTaskWithBodyWithResponse Defer a task to run at an absolute time (one-shot)
 	//
@@ -4334,40 +4334,6 @@ func (r CreateSessionResponse) ContentType() string {
 	return ""
 }
 
-type ArchiveSessionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-}
-
-// GetBody returns the raw response body bytes
-func (r ArchiveSessionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ArchiveSessionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ArchiveSessionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ArchiveSessionResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type DeleteSessionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4941,6 +4907,40 @@ func (r CreateTaskResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateTaskResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ArchiveTaskResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r ArchiveTaskResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveTaskResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveTaskResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ArchiveTaskResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5807,32 +5807,6 @@ func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, bod
 	return ParseCreateSessionResponse(rsp)
 }
 
-// ArchiveSessionWithBodyWithResponse Archive a session's task data for long-term storage
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-func (c *ClientWithResponses) ArchiveSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error) {
-	rsp, err := c.ArchiveSessionWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseArchiveSessionResponse(rsp)
-}
-
-// ArchiveSessionWithResponse Archive a session's task data for long-term storage
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /api/sessions/archive (the `ArchiveSession` operationId).
-func (c *ClientWithResponses) ArchiveSessionWithResponse(ctx context.Context, body ArchiveSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*ArchiveSessionResponse, error) {
-	rsp, err := c.ArchiveSession(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseArchiveSessionResponse(rsp)
-}
-
 // DeleteSessionWithResponse Delete a session
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6091,6 +6065,32 @@ func (c *ClientWithResponses) CreateTaskWithResponse(ctx context.Context, body C
 		return nil, err
 	}
 	return ParseCreateTaskResponse(rsp)
+}
+
+// ArchiveTaskWithBodyWithResponse Archive a task's data for long-term storage
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+func (c *ClientWithResponses) ArchiveTaskWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ArchiveTaskResponse, error) {
+	rsp, err := c.ArchiveTaskWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveTaskResponse(rsp)
+}
+
+// ArchiveTaskWithResponse Archive a task's data for long-term storage
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/tasks/archive (the `ArchiveTask` operationId).
+func (c *ClientWithResponses) ArchiveTaskWithResponse(ctx context.Context, body ArchiveTaskJSONRequestBody, reqEditors ...RequestEditorFn) (*ArchiveTaskResponse, error) {
+	rsp, err := c.ArchiveTask(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveTaskResponse(rsp)
 }
 
 // DeferTaskWithBodyWithResponse Defer a task to run at an absolute time (one-shot)
@@ -6744,22 +6744,6 @@ func ParseCreateSessionResponse(rsp *http.Response) (*CreateSessionResponse, err
 	return response, nil
 }
 
-// ParseArchiveSessionResponse parses an HTTP response from a ArchiveSessionWithResponse call
-func ParseArchiveSessionResponse(rsp *http.Response) (*ArchiveSessionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ArchiveSessionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
 // ParseDeleteSessionResponse parses an HTTP response from a DeleteSessionWithResponse call
 func ParseDeleteSessionResponse(rsp *http.Response) (*DeleteSessionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7114,6 +7098,22 @@ func ParseCreateTaskResponse(rsp *http.Response) (*CreateTaskResponse, error) {
 		}
 		response.JSON201 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseArchiveTaskResponse parses an HTTP response from a ArchiveTaskWithResponse call
+func ParseArchiveTaskResponse(rsp *http.Response) (*ArchiveTaskResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveTaskResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil
