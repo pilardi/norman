@@ -96,6 +96,29 @@ func (s *server) ArchiveSession(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// ArchiveSessionByID archives a session by path-based ID.
+func (s *server) ArchiveSessionByID(c echo.Context) error {
+	id := c.Param("id")
+
+	sessionData, err := s.store.LoadSession(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})
+	}
+
+	sessions := []interface{}{sessionData}
+	if err := s.store.ArchiveSession(id, sessions); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.SessionCompressed,
+		TaskId:  &id,
+		Message: strPtr("Session archived for task " + id),
+	})
+
+	return c.NoContent(http.StatusNoContent)
+}
+
 // GetSession returns session data by ID.
 func (s *server) GetSession(c echo.Context, id string) error {
 	data, err := s.store.LoadSession(id)
