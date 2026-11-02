@@ -781,6 +781,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		_ = stream.Close()
 
 		responseText := fullText.String()
+		log.Printf("[llm] accumulated response text: %q", responseText)
 
 		// Track token usage for budget
 		if l.budget != nil {
@@ -860,6 +861,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 
 		// No tool calls — this is the final text response
 		task.Output = []byte(responseText)
+		log.Printf("[llm] setting task.Output to: %q", string(task.Output))
 		task.Status = protocol.TaskStatusCompleted
 
 		// Persist the final assistant turn (item #5)

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -153,6 +154,8 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 	if err != nil {
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("read response body: %w", err))
 	}
+
+	log.Printf("[llm] Complete raw response body: %s", string(bodyBytes))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, mapHTTPError(resp.StatusCode, string(bodyBytes))
@@ -334,12 +337,16 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 
 	data := strings.TrimPrefix(line, "data: ")
 
+	// Debug: expose raw SSE data for troubleshooting.
+	log.Printf("[llm] SSE raw data: %s", data)
+
 	// Native /completion format: {"content":"...","stop_reason":"..."}
 	var nativeResp struct {
 		Content    string `json:"content"`
 		StopReason string `json:"stop_reason,omitempty"`
 	}
 	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
+		log.Printf("[llm] SSE parsed (native): content=%q stop_reason=%q", nativeResp.Content, nativeResp.StopReason)
 		return llm.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
 	}
 
@@ -355,9 +362,11 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 		if fr, ok := delta["finish_reason"].(string); ok {
 			chunk.FinishReason = fr
 		}
+		log.Printf("[llm] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
 		return chunk, nil
 	}
 
+	log.Printf("[llm] SSE unparseable data: %s", data)
 	return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 }
 

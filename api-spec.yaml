@@ -1101,6 +1101,7 @@ components:
 
     TaskCreateRequest:
       type: object
+      required: [session_id, workspace_id]
       properties:
         workspace_id:
           type: string

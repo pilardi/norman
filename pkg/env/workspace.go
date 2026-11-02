@@ -15,6 +15,9 @@ import (
 // SandboxName generates the OpenShell sandbox name from a workspace ID.
 // The convention is "ws-" + the workspace ID with dashes removed, truncated to 15 characters.
 func SandboxName(workspaceID string) string {
+	if workspaceID == "" {
+		return "ws-default"
+	}
 	cleanName := strings.ReplaceAll(workspaceID, "-", "")
 	if len(cleanName) > 15 {
 		cleanName = cleanName[:15]

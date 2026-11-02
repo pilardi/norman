@@ -1073,10 +1073,10 @@ type TaskCreateRequest struct {
 	Prompt *string `json:"prompt,omitempty"`
 
 	// SessionId Target session for this task
-	SessionId *string `json:"session_id,omitempty"`
+	SessionId string `json:"session_id"`
 
 	// WorkspaceId Target workspace for this task
-	WorkspaceId *string `json:"workspace_id,omitempty"`
+	WorkspaceId string `json:"workspace_id"`
 }
 
 // TaskCreateRequestPriority Task execution priority
