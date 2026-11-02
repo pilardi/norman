@@ -55,7 +55,7 @@ func (s *server) CreateSession(c echo.Context) error {
 	sid := session.Id.String()
 	_, err = s.workspaceManager.GetSession(c.Request().Context(), req.WorkspaceId, sid)
 	if err != nil {
-		log.Printf("[sessions] failed to ensure sandbox for workspace %s: %v", req.WorkspaceId, err)
+		log.Printf("[sessions] failed to ensure sandbox for workspace '%s' (session %s): %v", req.WorkspaceId, sid[:8], err)
 	}
 
 	// Update last activity timestamp and signal "in use"
