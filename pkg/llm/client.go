@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -201,20 +202,39 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		}
 
 		data := bytes.TrimPrefix([]byte(line), []byte("data: "))
+
+		// Debug: expose raw SSE data for troubleshooting.
+		log.Printf("[llm] SSE raw data: %s", string(data))
+
 		var delta map[string]interface{}
 		if err := json.Unmarshal(data, &delta); err != nil {
 			return Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 		}
 
+		// Debug: show actual JSON keys to diagnose parser mismatch.
+		keys := make([]string, 0, len(delta))
+		for k := range delta {
+			keys = append(keys, k)
+		}
+		log.Printf("[llm] SSE delta keys: %v", keys)
+
 		chunk := Chunk{}
-		if msg, ok := delta["message"].(map[string]interface{}); ok {
-			if content, ok := msg["content"].(string); ok {
-				chunk.Delta = content
+
+		// OpenAI SSE format: {"choices":[{"delta":{"content":"..."},"finish_reason":null}]}
+		if choices, ok := delta["choices"].([]interface{}); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]interface{}); ok {
+				if deltaMap, ok := choice["delta"].(map[string]interface{}); ok {
+					if content, ok := deltaMap["content"].(string); ok {
+						chunk.Delta = content
+					}
+				}
+				if fr, ok := choice["finish_reason"].(string); ok {
+					chunk.FinishReason = fr
+				}
 			}
 		}
-		if fr, ok := delta["finish_reason"].(string); ok {
-			chunk.FinishReason = fr
-		}
+
+		log.Printf("[llm] SSE parsed: delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
 
 		return chunk, nil
 	}

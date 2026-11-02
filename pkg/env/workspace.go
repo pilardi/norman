@@ -14,12 +14,27 @@ import (
 
 // SandboxName generates the OpenShell sandbox name from a workspace ID.
 // The convention is "ws-" + the workspace ID with dashes removed, truncated to 15 characters.
-func SandboxName(workspaceID string) string {
+// Returns an error if workspaceID is empty — a nil workspace is not valid.
+func SandboxName(workspaceID string) (string, error) {
+	if workspaceID == "" {
+		return "", fmt.Errorf("workspace ID must not be empty")
+	}
 	cleanName := strings.ReplaceAll(workspaceID, "-", "")
 	if len(cleanName) > 15 {
 		cleanName = cleanName[:15]
 	}
-	return "ws-" + cleanName
+	return "ws-" + cleanName, nil
+}
+
+// SandboxName returns the actual SDK-assigned sandbox name for a workspace.
+// It checks the cached definition first (set at creation time), falling back to
+// the computed convention if no definition is available.
+func (m *WorkspaceManager) SandboxName(workspaceID string) (string, error) {
+	def := m.GetDefinition(workspaceID)
+	if def != nil && def.SandboxName != "" {
+		return def.SandboxName, nil
+	}
+	return SandboxName(workspaceID)
 }
 
 // WorkspaceManager manages workspace-to-sandbox mappings with context file injection.
@@ -41,17 +56,19 @@ const (
 // It is injected into the LLM's system prompt so the agent understands
 // what domain it is operating in, rather than just seeing a file tree.
 type WorkspaceDefinition struct {
-	Name    string   `json:"name"`
-	Purpose string   `json:"purpose"`         // High-level description of what this workspace addresses
-	Scope   []string `json:"scope,omitempty"` // Subsystems/repos/services covered
-	Tags    []string `json:"tags,omitempty"`  // Keywords for skill activation matching
+	Name        string   `json:"name"`
+	Purpose     string   `json:"purpose"`         // High-level description of what this workspace addresses
+	Scope       []string `json:"scope,omitempty"` // Subsystems/repos/services covered
+	Tags        []string `json:"tags,omitempty"`  // Keywords for skill activation matching
+	SandboxName string   `json:"sandbox_name"`    // Actual OpenShell-assigned sandbox name
 }
 
 // ToMap converts a WorkspaceDefinition to a map[string]interface{} for JSON persistence.
 func (w *WorkspaceDefinition) ToMap() map[string]interface{} {
 	m := map[string]interface{}{
-		"name":    w.Name,
-		"purpose": w.Purpose,
+		"name":         w.Name,
+		"purpose":      w.Purpose,
+		"sandbox_name": w.SandboxName,
 	}
 	if len(w.Scope) > 0 {
 		scope := make([]interface{}, len(w.Scope))
@@ -93,6 +110,9 @@ func WorkspaceDefinitionFromMap(m map[string]interface{}) *WorkspaceDefinition {
 			}
 		}
 	}
+	if sandboxName, ok := m["sandbox_name"].(string); ok {
+		w.SandboxName = sandboxName
+	}
 	return w
 }
 
@@ -113,7 +133,10 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		WorkspaceID:   workspace,
 		WorkspaceName: workspace,
 	}
-	sandboxName := SandboxName(workspace)
+	sandboxName, err := SandboxName(workspace)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+	}
 	sb, err := m.client.CreateSandbox(ctx, defaultProvider, sandboxName, ctxFile, sessionId)
 	if err != nil {
 		return nil, fmt.Errorf("create workspace %s: %w", workspace, err)
@@ -128,7 +151,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		return nil, fmt.Errorf("wait ready workspace %s: %w", workspace, err)
 	}
 
-	log.Printf("[env] Created workspace '%s' → sandbox '%s'", workspace, sb.Name)
+	log.Printf("[env] Created workspace '%s' → sandbox name='%s' (passed: %q)", workspace, sb.Name, sandboxName)
 
 	return sb, nil
 }
@@ -154,8 +177,11 @@ func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, ses
 func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string, sessionId string) (*Session, error) {
 	var session *Session
 
-	// Build the sandbox name from workspace ID (truncated to 15 chars after removing dashes).
-	sandboxName := SandboxName(workspace)
+	// Use the actual SDK-assigned sandbox name (falls back to computed convention).
+	sandboxName, err := m.SandboxName(workspace)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+	}
 
 	// Try to get existing sandbox by name (may be crashed/stopped).
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, sandboxName)
@@ -219,19 +245,30 @@ func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 
 // CloseSandbox deletes the sandbox associated with a workspace by name.
 func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) error {
-	sandboxName := SandboxName(workspace)
+	sandboxName, err := m.SandboxName(workspace)
+	if err != nil {
+		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+	}
 	return m.client.DeleteSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // StopSandbox stops a running sandbox (preserves it for later start).
 func (m *WorkspaceManager) StopSandbox(ctx context.Context, workspace string) error {
-	sandboxName := SandboxName(workspace)
+	sandboxName, err := m.SandboxName(workspace)
+	if err != nil {
+		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+	}
+	log.Printf("[env] StopSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
 	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // StartSandbox starts a stopped sandbox. Returns error if sandbox doesn't exist.
 func (m *WorkspaceManager) StartSandbox(ctx context.Context, workspace string) error {
-	sandboxName := SandboxName(workspace)
+	sandboxName, err := m.SandboxName(workspace)
+	if err != nil {
+		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+	}
+	log.Printf("[env] StartSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
 	return m.client.StartSandbox(ctx, defaultProvider, sandboxName)
 }
 

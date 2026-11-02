@@ -171,8 +171,9 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		log.Fatalf("failed to init raw sources store: %v", err)
 	}
 
-	// Create agent loop (with concrete client for P3 sandbox dep install)
-	loop := agent.NewWithClient(cfg, store, rawSources, activator, wsHub, loopClient, openShellClient)
+	// Create agent loop (with concrete client for P3 sandbox dep install).
+	loop := agent.NewWithClient(cfg, store, rawSources, activator, wsHub, loopClient, openShellClient).
+		WithWorkspaceManager(wsManager)
 
 	// Wire LLM client into the agent loop.
 	if llmClient != nil {

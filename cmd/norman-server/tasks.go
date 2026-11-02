@@ -41,10 +41,10 @@ func (s *server) CreateTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if req.SessionId == nil || *req.SessionId == "" {
+	if req.SessionId == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "session_id is required"})
 	}
-	sessionID := *req.SessionId
+	sessionID := req.SessionId
 
 	if _, err := s.store.GetSession(sessionID); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": fmt.Sprintf("session %s not found", sessionID)})
@@ -54,10 +54,7 @@ func (s *server) CreateTask(c echo.Context) error {
 	if req.Prompt != nil {
 		prompt = *req.Prompt
 	}
-	workspaceID := ""
-	if req.WorkspaceId != nil {
-		workspaceID = *req.WorkspaceId
-	}
+	workspaceID := req.WorkspaceId
 
 	task, err := s.loop.Submit(context.Background(), prompt, workspaceID, sessionID)
 	if err != nil {

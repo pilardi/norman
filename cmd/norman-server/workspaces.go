@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -88,6 +89,25 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	}
 
 	s.workspaces[req.Name] = ws
+
+	// Cache the workspace definition with the actual sandbox name.
+	def := &env.WorkspaceDefinition{
+		Name:        req.Name,
+		Purpose:     "",
+		Scope:       nil,
+		Tags:        nil,
+		SandboxName: sb.Name,
+	}
+	if req.Purpose != nil {
+		def.Purpose = *req.Purpose
+	}
+	if req.Scope != nil {
+		def.Scope = *req.Scope
+	}
+	if req.Tags != nil {
+		def.Tags = *req.Tags
+	}
+	s.workspaceManager.SetDefinition(req.Name, def)
 
 	wsMap := map[string]interface{}{
 		"id":         id.String(),
@@ -246,7 +266,11 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 	// Close all sessions for this workspace (free agent loop resources).
 	s.closeWorkspaceSessions(name)
 	if err := s.workspaceManager.StopSandbox(context.Background(), name); err != nil {
-		log.Printf("[server] Error stopping sandbox for workspace %s: %v", name, err)
+		msg := fmt.Sprintf("failed to stop sandbox for workspace %s: %v", name, err)
+		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": msg})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": msg})
 	}
 
 	stopped := protocol.WorkspaceStatusStopped
@@ -345,7 +369,7 @@ func isValidWorkspaceName(name string) bool {
 		return false
 	}
 	for _, r := range name {
-		if r < 'a' || r > 'z' || r < 'A' || r > 'Z' || r < '0' || r > '9' || r != '_' && r != '-' {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' {
 			return false
 		}
 	}

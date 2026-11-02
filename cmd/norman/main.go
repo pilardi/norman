@@ -103,7 +103,13 @@ Commands:
 						Usage: "Create a new workspace directory",
 						Description: `Creates a new workspace directory and registers it with the agent server.
 The workspace name must be alphanumeric (underscores and hyphens allowed).`,
-						Action: handleWorkspacesCreate,
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							err := handleWorkspacesCreate(ctx, cmd.Args().Slice())
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							}
+							return err
+						},
 					},
 					{
 						Name:        "list",
@@ -116,7 +122,11 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "stop",
 						Usage: "Stop a workspace (write snapshot + free sandbox)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspaceStop(ctx, cmd.Args().Slice())
+							err := handleWorkspaceStop(ctx, cmd.Args().Slice())
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							}
+							return err
 						},
 						Flags: []cli.Flag{
 							&cli.StringFlag{
@@ -129,7 +139,11 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "restore",
 						Usage: "Restore a stopped workspace to active (replay snapshot)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspaceRestore(ctx, cmd.Args().Slice())
+							err := handleWorkspaceRestore(ctx, cmd.Args().Slice())
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							}
+							return err
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
@@ -142,7 +156,11 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 						Name:  "purge",
 						Usage: "Permanently delete a workspace (requires --confirm)",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleWorkspacePurge(ctx, cmd.Args().Slice())
+							err := handleWorkspacePurge(ctx, cmd.Args().Slice(), cmd.Bool("confirm"))
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							}
+							return err
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
