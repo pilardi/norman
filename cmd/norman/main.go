@@ -209,11 +209,17 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Name:  "update",
 						Usage: "Update a workspace's purpose or tags",
 						Description: `Partially updates a workspace. Only provided fields are changed;
-omitted fields retain their current values.`,
+omitted fields retain their current values.
+Purpose can be provided inline (--purpose "text") or read from a file (-f <path>).`,
 						Flags: []cli.Flag{
 							&cli.StringFlag{
 								Name:  "purpose",
-								Usage: "New purpose description (replaces existing)",
+								Usage: "Inline purpose description (replaces existing)",
+							},
+							&cli.StringFlag{
+								Name:    "file",
+								Aliases: []string{"f"},
+								Usage:   "Read purpose from a local text/markdown file",
 							},
 							&cli.StringSliceFlag{
 								Name:  "tags",
@@ -221,7 +227,19 @@ omitted fields retain their current values.`,
 							},
 						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							purpose := cmd.String("purpose")
+							var purpose string
+
+							// Prefer -f over --purpose; if neither is set, purpose stays empty.
+							if f := cmd.String("file"); f != "" {
+								data, err := os.ReadFile(f)
+								if err != nil {
+									return fmt.Errorf("failed to read purpose file %q: %v", f, err)
+								}
+								purpose = strings.TrimSpace(string(data))
+							} else if p := cmd.String("purpose"); p != "" {
+								purpose = p
+							}
+
 							var tags []string
 							if t := cmd.StringSlice("tags"); len(t) > 0 {
 								tags = t
