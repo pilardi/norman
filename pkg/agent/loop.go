@@ -140,16 +140,17 @@ func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, e
 	// Use the concrete client to create sessions
 	client := l.openShellClient
 
-	// Try to get existing sandbox
-	sb, err := client.GetSandbox(context.Background(), "default", workspaceID)
+	// Build the sandbox name from workspace ID (truncated to 15 chars after removing dashes).
+	sandboxName := "ws-" + strings.ReplaceAll(workspaceID, "-", "")[:15]
+
+	// Try to get existing sandbox by name.
+	sb, err := client.GetSandbox(context.Background(), "default", sandboxName)
 	if err == nil && sb != nil {
 		log.Printf("[loop] using existing sandbox '%s' for workspace '%s'", sb.Name, workspaceID)
 		return env.NewSession(client, "default", sb.Name, sessionId), nil
 	}
 
 	// Create a new sandbox with context file (server URL + mTLS paths).
-	// Truncate workspace ID to fit OpenShell's 19-char max name limit.
-	sandboxName := "ws-" + strings.ReplaceAll(workspaceID, "-", "")[:15]
 	ctxFile := l.buildContextFile(workspaceID)
 	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName, ctxFile, sessionId)
 	if err != nil {
