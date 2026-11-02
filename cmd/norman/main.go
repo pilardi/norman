@@ -4,8 +4,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+
+	"golang.org/x/term"
 
 	"github.com/urfave/cli/v3"
 )
@@ -104,7 +107,7 @@ Commands:
 						Usage: "Create a new workspace directory",
 						Description: `Creates a new workspace directory and registers it with the agent server.
 The workspace name must be alphanumeric (underscores and hyphens allowed).
-Purpose can be provided inline (--purpose "text") or read from a file (-f <path>).
+Purpose can be provided inline (--purpose "text"), from a file (-f <path>), or piped via stdin.
 Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Flags: []cli.Flag{
 							&cli.StringFlag{
@@ -124,15 +127,21 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							purpose := ""
 
-							// Prefer -f over --purpose; if neither is set, purpose stays empty.
-							if f := cmd.String("file"); f != "" {
+							// Priority: --purpose > -f > stdin pipe.
+							if p := cmd.String("purpose"); p != "" {
+								purpose = p
+							} else if f := cmd.String("file"); f != "" {
 								data, err := os.ReadFile(f)
 								if err != nil {
 									return fmt.Errorf("failed to read purpose file %q: %v", f, err)
 								}
 								purpose = strings.TrimSpace(string(data))
-							} else if p := cmd.String("purpose"); p != "" {
-								purpose = p
+							} else if !term.IsTerminal(int(os.Stdin.Fd())) {
+								data, err := io.ReadAll(os.Stdin)
+								if err != nil {
+									return fmt.Errorf("failed to read stdin: %v", err)
+								}
+								purpose = strings.TrimSpace(string(data))
 							}
 
 							var tags []string
@@ -210,7 +219,7 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Usage: "Update a workspace's purpose or tags",
 						Description: `Partially updates a workspace. Only provided fields are changed;
 omitted fields retain their current values.
-Purpose can be provided inline (--purpose "text") or read from a file (-f <path>).`,
+Purpose can be provided inline (--purpose "text"), from a file (-f <path>), or piped via stdin.`,
 						Flags: []cli.Flag{
 							&cli.StringFlag{
 								Name:  "purpose",
@@ -229,15 +238,21 @@ Purpose can be provided inline (--purpose "text") or read from a file (-f <path>
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							var purpose string
 
-							// Prefer -f over --purpose; if neither is set, purpose stays empty.
-							if f := cmd.String("file"); f != "" {
+							// Priority: --purpose > -f > stdin pipe.
+							if p := cmd.String("purpose"); p != "" {
+								purpose = p
+							} else if f := cmd.String("file"); f != "" {
 								data, err := os.ReadFile(f)
 								if err != nil {
 									return fmt.Errorf("failed to read purpose file %q: %v", f, err)
 								}
 								purpose = strings.TrimSpace(string(data))
-							} else if p := cmd.String("purpose"); p != "" {
-								purpose = p
+							} else if !term.IsTerminal(int(os.Stdin.Fd())) {
+								data, err := io.ReadAll(os.Stdin)
+								if err != nil {
+									return fmt.Errorf("failed to read stdin: %v", err)
+								}
+								purpose = strings.TrimSpace(string(data))
 							}
 
 							var tags []string
