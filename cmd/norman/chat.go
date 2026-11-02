@@ -42,6 +42,13 @@ func runWebSocketLoop(sessionID string) {
 		dialURL = "wss://" + dialURL[len("https://"):]
 	}
 
+	// Strip WebSocket upgrade headers from the response before passing to Dialer.
+	// The dialer adds its own Sec-Websocket-Version etc., so we must remove any
+	// existing ones to avoid "duplicate header not allowed" errors.
+	for _, key := range []string{"Sec-Websocket-Version", "Sec-Websocket-Accept", "Sec-Websocket-Extensions", "Sec-Websocket-Protocol"} {
+		resp.Header.Del(key)
+	}
+
 	conn, _, err := websocket.DefaultDialer.Dial(dialURL, resp.Header)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "WebSocket dial failed: %v\n", err)
