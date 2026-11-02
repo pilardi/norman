@@ -246,7 +246,7 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 	// Close all sessions for this workspace (free agent loop resources).
 	s.closeWorkspaceSessions(name)
 	if err := s.workspaceManager.StopSandbox(context.Background(), name); err != nil {
-		log.Printf("[server] Error stopping sandbox for workspace %s: %v", name, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to stop sandbox for workspace %s: %v", name, err)})
 	}
 
 	stopped := protocol.WorkspaceStatusStopped

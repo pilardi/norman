@@ -131,7 +131,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		return nil, fmt.Errorf("wait ready workspace %s: %w", workspace, err)
 	}
 
-	log.Printf("[env] Created workspace '%s' → sandbox '%s'", workspace, sb.Name)
+	log.Printf("[env] Created workspace '%s' → sandbox name='%s' (passed: %q)", workspace, sb.Name, sandboxName)
 
 	return sb, nil
 }
@@ -229,6 +229,7 @@ func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) e
 // StopSandbox stops a running sandbox (preserves it for later start).
 func (m *WorkspaceManager) StopSandbox(ctx context.Context, workspace string) error {
 	sandboxName := SandboxName(workspace)
+	log.Printf("[env] StopSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
 	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
 }
 
