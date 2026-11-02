@@ -179,6 +179,11 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		loop = loop.WithLLMClient(llmClient)
 	}
 
+	// Enable debug message logging if verbose mode is set.
+	if cfg.System.Logging.Verbose {
+		loop = loop.WithDebug(true)
+	}
+
 	// Initialize notification notifier from config
 	notifier := notify.New(wsHub, cfg.System.Notify.BellEnabled, cfg.System.Notify.SlackWebhook, cfg.System.Notify.RateLimitPerMin)
 

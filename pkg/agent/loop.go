@@ -56,6 +56,7 @@ type Loop struct {
 	workspaceDef    *env.WorkspaceDefinition // workspace identity for system prompt injection
 	openShellClient *env.Client              // concrete client for session creation (P3 sandbox dep install)
 	mcpClient       *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
+	debug           bool                     // if true, log detailed message contents before sending to LLM
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -248,6 +249,12 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 // WithLLMClient injects an LLM API client into the loop for multi-turn conversation processing.
 func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 	l.llmClient = client
+	return l
+}
+
+// WithDebug enables verbose debug logging of messages sent to the LLM.
+func (l *Loop) WithDebug(on bool) *Loop {
+	l.debug = on
 	return l
 }
 
@@ -702,6 +709,18 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			}
 		}
 
+		// Debug: log what's being sent to the LLM.
+		if l.debug {
+			log.Printf("agent: DEBUG - sending %d messages to model (model=%s)", len(messages), model)
+			for i, m := range messages {
+				preview := m.Content
+				if len(preview) > 200 {
+					preview = preview[:200] + "..."
+				}
+				log.Printf("agent: DEBUG - msg[%d] role=%q content=%q", i, m.Role, preview)
+			}
+		}
+
 		// Use streaming: yield chunks in real-time via WebSocket, accumulate full text.
 		stream, err := l.llmClient.Stream(ctx, llm.CompletionRequest{
 			Messages:    messages,
@@ -744,14 +763,18 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				usage.TotalTokens += chunk.Usage.TotalTokens
 			}
 
-			// Broadcast chunk to client in real-time (lower perceived latency)
-			chunkMsg := chunk.Delta
-			l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-				Event:   protocol.TaskProgress,
-				TaskId:  &task.ID,
-				Message: &chunkMsg,
-				Step:    intPtr(6 + turn),
-			})
+			// Broadcast chunk to client in real-time (lower perceived latency).
+			// Only non-empty deltas are sent; empty-string chunks come from
+			// tool-call / role-assignment events that carry no content.
+			if chunk.Delta != "" {
+				chunkMsg := chunk.Delta
+				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					TaskId:  &task.ID,
+					Message: &chunkMsg,
+					Step:    intPtr(6 + turn),
+				})
+			}
 		}
 
 		_ = stream.Close()
