@@ -40,23 +40,24 @@ type Task struct {
 
 // Loop is the main agent loop managing session messages and emergent/manual task execution.
 type Loop struct {
-	mu              sync.Mutex
-	tasks           map[string]*Task   // taskID -> Task state
-	store           *memory.Store      // persistent state
-	rawSources      *memory.RawSources // raw environment snapshots for context injection
-	activator       *skills.Activator
-	config          *config.Config
-	openShell       OpenShellClient
-	llmClient       llm.LLM // LLM API client (optional, nil = shell-only mode)
-	wsHub           WSHubPublisher
-	notifier        *notify.Notifier
-	resultsCh       chan scheduler.TaskResult // results from scheduler (nil if not wired)
-	maxRetries      int
-	budget          *budget.SessionState     // token budget tracker (nil if disabled)
-	workspaceDef    *env.WorkspaceDefinition // workspace identity for system prompt injection
-	openShellClient *env.Client              // concrete client for session creation (P3 sandbox dep install)
-	mcpClient       *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
-	debug           bool                     // if true, log detailed message contents before sending to LLM
+	mu               sync.Mutex
+	tasks            map[string]*Task   // taskID -> Task state
+	store            *memory.Store      // persistent state
+	rawSources       *memory.RawSources // raw environment snapshots for context injection
+	activator        *skills.Activator
+	config           *config.Config
+	openShell        OpenShellClient
+	llmClient        llm.LLM // LLM API client (optional, nil = shell-only mode)
+	wsHub            WSHubPublisher
+	notifier         *notify.Notifier
+	resultsCh        chan scheduler.TaskResult // results from scheduler (nil if not wired)
+	maxRetries       int
+	budget           *budget.SessionState     // token budget tracker (nil if disabled)
+	workspaceDef     *env.WorkspaceDefinition // workspace identity for system prompt injection
+	openShellClient  *env.Client              // concrete client for session creation (P3 sandbox dep install)
+	mcpClient        *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
+	debug            bool                     // if true, log detailed message contents before sending to LLM
+	workspaceManager *env.WorkspaceManager    // workspace-to-sandbox mapping manager
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -140,8 +141,11 @@ func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, e
 	// Use the concrete client to create sessions
 	client := l.openShellClient
 
-	// Build the sandbox name from workspace ID (truncated to 15 chars after removing dashes).
-	sandboxName := env.SandboxName(workspaceID)
+	// Resolve sandbox name via workspace manager (checks actual SDK-assigned name).
+	sandboxName, err := l.workspaceManager.SandboxName(workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sandbox name for workspace %s: %w", workspaceID, err)
+	}
 
 	// Try to get existing sandbox by name.
 	sb, err := client.GetSandbox(context.Background(), "default", sandboxName)
@@ -256,6 +260,12 @@ func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 // WithDebug enables verbose debug logging of messages sent to the LLM.
 func (l *Loop) WithDebug(on bool) *Loop {
 	l.debug = on
+	return l
+}
+
+// WithWorkspaceManager sets the workspace manager for sandbox name resolution.
+func (l *Loop) WithWorkspaceManager(m *env.WorkspaceManager) *Loop {
+	l.workspaceManager = m
 	return l
 }
 
