@@ -9,9 +9,9 @@ import (
 )
 
 // handleWorkspacesCreate delegates workspace creation to the agent server.
-func handleWorkspacesCreate(ctx context.Context, args []string, purpose string) error {
+func handleWorkspacesCreate(ctx context.Context, args []string, purpose string, tags []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: norman workspaces create <name> [--purpose \"text\" | -f <file>]")
+		return fmt.Errorf("usage: norman workspaces create <name> [--purpose \"text\" | -f <file>] [--tags tag1,tag2]")
 	}
 
 	name := args[0]
@@ -29,6 +29,7 @@ func handleWorkspacesCreate(ctx context.Context, args []string, purpose string) 
 	body := protocol.WorkspaceCreateRequest{
 		Name:    name,
 		Purpose: purposePtr,
+		Tags:    &tags,
 	}
 
 	rsp, err := client.CreateWorkspace(ctx, body)

@@ -104,7 +104,8 @@ Commands:
 						Usage: "Create a new workspace directory",
 						Description: `Creates a new workspace directory and registers it with the agent server.
 The workspace name must be alphanumeric (underscores and hyphens allowed).
-Purpose can be provided inline (--purpose "text") or read from a file (-f <path>).`,
+Purpose can be provided inline (--purpose "text") or read from a file (-f <path>).
+Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Flags: []cli.Flag{
 							&cli.StringFlag{
 								Name:  "purpose",
@@ -114,6 +115,10 @@ Purpose can be provided inline (--purpose "text") or read from a file (-f <path>
 								Name:    "file",
 								Aliases: []string{"f"},
 								Usage:   "Read purpose from a local text/markdown file",
+							},
+							&cli.StringSliceFlag{
+								Name:  "tags",
+								Usage: "Domain tags for skill activation matching (e.g., grpc,migration)",
 							},
 						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -130,7 +135,12 @@ Purpose can be provided inline (--purpose "text") or read from a file (-f <path>
 								purpose = p
 							}
 
-							err := handleWorkspacesCreate(ctx, cmd.Args().Slice(), purpose)
+							var tags []string
+							if t := cmd.StringSlice("tags"); len(t) > 0 {
+								tags = t
+							}
+
+							err := handleWorkspacesCreate(ctx, cmd.Args().Slice(), purpose, tags)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 							}
