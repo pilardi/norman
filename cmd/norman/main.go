@@ -93,14 +93,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 				Usage: "Manage workspaces",
 				Description: `workspaces — Manage workspaces
 
-Usage: norman workspaces <subcommand> [args...]
-
-Commands:
-  create <name>       Create a new workspace directory
-  list                List available workspaces and their sessions
-  stop <name>         Stop a workspace (write snapshot + free sandbox)
-  restore <name>      Restore a stopped workspace to active (replay snapshot)
-  purge <name>        Permanently delete a workspace (requires --confirm)`,
+Usage: norman workspaces <subcommand> [args...]`,
 				Commands: []*cli.Command{
 					{
 						Name:  "create",
