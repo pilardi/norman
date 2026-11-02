@@ -110,12 +110,11 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	s.workspaceManager.SetDefinition(req.Name, def)
 
 	wsMap := map[string]interface{}{
-		"id":           id.String(),
-		"name":         req.Name,
-		"path":         wsPath,
-		"status":       string(status),
-		"created_at":   now.Format(time.RFC3339),
-		"sandbox_name": sb.Name,
+		"id":         id.String(),
+		"name":       req.Name,
+		"path":       wsPath,
+		"status":     string(status),
+		"created_at": now.Format(time.RFC3339),
 	}
 	if req.Purpose != nil {
 		wsMap["purpose"] = *req.Purpose

@@ -25,6 +25,17 @@ func SandboxName(workspaceID string) string {
 	return "ws-" + cleanName
 }
 
+// SandboxName returns the actual SDK-assigned sandbox name for a workspace.
+// It checks the cached definition first (set at creation time), falling back to
+// the computed convention if no definition is available.
+func (m *WorkspaceManager) SandboxName(workspaceID string) string {
+	def := m.GetDefinition(workspaceID)
+	if def != nil && def.SandboxName != "" {
+		return def.SandboxName
+	}
+	return SandboxName(workspaceID)
+}
+
 // WorkspaceManager manages workspace-to-sandbox mappings with context file injection.
 type WorkspaceManager struct {
 	mu          sync.Mutex
@@ -54,8 +65,8 @@ type WorkspaceDefinition struct {
 // ToMap converts a WorkspaceDefinition to a map[string]interface{} for JSON persistence.
 func (w *WorkspaceDefinition) ToMap() map[string]interface{} {
 	m := map[string]interface{}{
-		"name":        w.Name,
-		"purpose":     w.Purpose,
+		"name":         w.Name,
+		"purpose":      w.Purpose,
 		"sandbox_name": w.SandboxName,
 	}
 	if len(w.Scope) > 0 {
@@ -162,8 +173,8 @@ func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, ses
 func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string, sessionId string) (*Session, error) {
 	var session *Session
 
-	// Build the sandbox name from workspace ID (truncated to 15 chars after removing dashes).
-	sandboxName := SandboxName(workspace)
+	// Use the actual SDK-assigned sandbox name (falls back to computed convention).
+	sandboxName := m.SandboxName(workspace)
 
 	// Try to get existing sandbox by name (may be crashed/stopped).
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, sandboxName)
@@ -227,37 +238,21 @@ func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 
 // CloseSandbox deletes the sandbox associated with a workspace by name.
 func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) error {
-	sandboxName := SandboxName(workspace)
+	sandboxName := m.SandboxName(workspace)
 	return m.client.DeleteSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // StopSandbox stops a running sandbox (preserves it for later start).
 func (m *WorkspaceManager) StopSandbox(ctx context.Context, workspace string) error {
-	def := m.GetDefinition(workspace)
-	sandboxName := SandboxName(workspace) // fallback if not set
-	if def != nil && def.SandboxName != "" {
-		sandboxName = def.SandboxName
-	}
-	stored := ""
-	if def != nil {
-		stored = def.SandboxName
-	}
-	log.Printf("[env] StopSandbox: workspace=%s sandboxName=%s (stored=%q)", workspace, sandboxName, stored)
+	sandboxName := m.SandboxName(workspace)
+	log.Printf("[env] StopSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
 	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // StartSandbox starts a stopped sandbox. Returns error if sandbox doesn't exist.
 func (m *WorkspaceManager) StartSandbox(ctx context.Context, workspace string) error {
-	def := m.GetDefinition(workspace)
-	sandboxName := SandboxName(workspace) // fallback if not set
-	if def != nil && def.SandboxName != "" {
-		sandboxName = def.SandboxName
-	}
-	stored := ""
-	if def != nil {
-		stored = def.SandboxName
-	}
-	log.Printf("[env] StartSandbox: workspace=%s sandboxName=%s (stored=%q)", workspace, sandboxName, stored)
+	sandboxName := m.SandboxName(workspace)
+	log.Printf("[env] StartSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
 	return m.client.StartSandbox(ctx, defaultProvider, sandboxName)
 }
 
