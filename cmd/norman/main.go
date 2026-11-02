@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 )
@@ -102,9 +103,34 @@ Commands:
 						Name:  "create",
 						Usage: "Create a new workspace directory",
 						Description: `Creates a new workspace directory and registers it with the agent server.
-The workspace name must be alphanumeric (underscores and hyphens allowed).`,
+The workspace name must be alphanumeric (underscores and hyphens allowed).
+Purpose can be provided inline (--purpose "text") or read from a file (-f <path>).`,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "purpose",
+								Usage: "Inline purpose description (short text)",
+							},
+							&cli.StringFlag{
+								Name:    "file",
+								Aliases: []string{"f"},
+								Usage:   "Read purpose from a local text/markdown file",
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							err := handleWorkspacesCreate(ctx, cmd.Args().Slice())
+							purpose := ""
+
+							// Prefer -f over --purpose; if neither is set, purpose stays empty.
+							if f := cmd.String("file"); f != "" {
+								data, err := os.ReadFile(f)
+								if err != nil {
+									return fmt.Errorf("failed to read purpose file %q: %v", f, err)
+								}
+								purpose = strings.TrimSpace(string(data))
+							} else if p := cmd.String("purpose"); p != "" {
+								purpose = p
+							}
+
+							err := handleWorkspacesCreate(ctx, cmd.Args().Slice(), purpose)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 							}

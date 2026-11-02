@@ -1166,10 +1166,7 @@ type WorkspaceCreateRequest struct {
 	// Name Unique workspace identifier
 	Name string `json:"name"`
 
-	// Path Absolute path to the workspace directory
-	Path string `json:"path"`
-
-	// Purpose The problem or domain this workspace addresses
+	// Purpose The problem or domain this workspace addresses. Can be a short sentence or a longer description (e.g., from a markdown file).
 	Purpose *string `json:"purpose,omitempty"`
 
 	// Scope Subsystems, repos, or services under this workspace
