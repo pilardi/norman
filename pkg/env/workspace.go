@@ -44,17 +44,19 @@ const (
 // It is injected into the LLM's system prompt so the agent understands
 // what domain it is operating in, rather than just seeing a file tree.
 type WorkspaceDefinition struct {
-	Name    string   `json:"name"`
-	Purpose string   `json:"purpose"`         // High-level description of what this workspace addresses
-	Scope   []string `json:"scope,omitempty"` // Subsystems/repos/services covered
-	Tags    []string `json:"tags,omitempty"`  // Keywords for skill activation matching
+	Name        string   `json:"name"`
+	Purpose     string   `json:"purpose"`         // High-level description of what this workspace addresses
+	Scope       []string `json:"scope,omitempty"` // Subsystems/repos/services covered
+	Tags        []string `json:"tags,omitempty"`  // Keywords for skill activation matching
+	SandboxName string   `json:"sandbox_name"`    // Actual OpenShell-assigned sandbox name
 }
 
 // ToMap converts a WorkspaceDefinition to a map[string]interface{} for JSON persistence.
 func (w *WorkspaceDefinition) ToMap() map[string]interface{} {
 	m := map[string]interface{}{
-		"name":    w.Name,
-		"purpose": w.Purpose,
+		"name":        w.Name,
+		"purpose":     w.Purpose,
+		"sandbox_name": w.SandboxName,
 	}
 	if len(w.Scope) > 0 {
 		scope := make([]interface{}, len(w.Scope))
@@ -95,6 +97,9 @@ func WorkspaceDefinitionFromMap(m map[string]interface{}) *WorkspaceDefinition {
 				w.Tags = append(w.Tags, t)
 			}
 		}
+	}
+	if sandboxName, ok := m["sandbox_name"].(string); ok {
+		w.SandboxName = sandboxName
 	}
 	return w
 }
@@ -228,14 +233,31 @@ func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) e
 
 // StopSandbox stops a running sandbox (preserves it for later start).
 func (m *WorkspaceManager) StopSandbox(ctx context.Context, workspace string) error {
-	sandboxName := SandboxName(workspace)
-	log.Printf("[env] StopSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
+	def := m.GetDefinition(workspace)
+	sandboxName := SandboxName(workspace) // fallback if not set
+	if def != nil && def.SandboxName != "" {
+		sandboxName = def.SandboxName
+	}
+	stored := ""
+	if def != nil {
+		stored = def.SandboxName
+	}
+	log.Printf("[env] StopSandbox: workspace=%s sandboxName=%s (stored=%q)", workspace, sandboxName, stored)
 	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // StartSandbox starts a stopped sandbox. Returns error if sandbox doesn't exist.
 func (m *WorkspaceManager) StartSandbox(ctx context.Context, workspace string) error {
-	sandboxName := SandboxName(workspace)
+	def := m.GetDefinition(workspace)
+	sandboxName := SandboxName(workspace) // fallback if not set
+	if def != nil && def.SandboxName != "" {
+		sandboxName = def.SandboxName
+	}
+	stored := ""
+	if def != nil {
+		stored = def.SandboxName
+	}
+	log.Printf("[env] StartSandbox: workspace=%s sandboxName=%s (stored=%q)", workspace, sandboxName, stored)
 	return m.client.StartSandbox(ctx, defaultProvider, sandboxName)
 }
 

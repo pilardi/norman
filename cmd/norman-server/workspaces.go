@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -89,12 +90,32 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 
 	s.workspaces[req.Name] = ws
 
+	// Cache the workspace definition with the actual sandbox name.
+	def := &env.WorkspaceDefinition{
+		Name:        req.Name,
+		Purpose:     "",
+		Scope:       nil,
+		Tags:        nil,
+		SandboxName: sb.Name,
+	}
+	if req.Purpose != nil {
+		def.Purpose = *req.Purpose
+	}
+	if req.Scope != nil {
+		def.Scope = *req.Scope
+	}
+	if req.Tags != nil {
+		def.Tags = *req.Tags
+	}
+	s.workspaceManager.SetDefinition(req.Name, def)
+
 	wsMap := map[string]interface{}{
-		"id":         id.String(),
-		"name":       req.Name,
-		"path":       wsPath,
-		"status":     string(status),
-		"created_at": now.Format(time.RFC3339),
+		"id":           id.String(),
+		"name":         req.Name,
+		"path":         wsPath,
+		"status":       string(status),
+		"created_at":   now.Format(time.RFC3339),
+		"sandbox_name": sb.Name,
 	}
 	if req.Purpose != nil {
 		wsMap["purpose"] = *req.Purpose
