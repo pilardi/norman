@@ -9,11 +9,12 @@ import (
 )
 
 // handleWorkspacesCreate delegates workspace creation to the agent server.
-func handleWorkspacesCreate(ctx context.Context, cmd *cli.Command) error {
-	name := cmd.Args().First()
-	if name == "" {
+func handleWorkspacesCreate(ctx context.Context, args []string) error {
+	if len(args) == 0 {
 		return fmt.Errorf("usage: norman workspaces create <name>")
 	}
+
+	name := args[0]
 
 	client, err := getProtocolClient()
 	if err != nil {
@@ -34,6 +35,10 @@ func handleWorkspacesCreate(ctx context.Context, cmd *cli.Command) error {
 	parsed, err := protocol.ParseCreateWorkspaceResponse(rsp)
 	if err != nil {
 		return fmt.Errorf("error parsing response: %v", err)
+	}
+
+	if parsed.StatusCode() != 201 {
+		return fmt.Errorf("server error (%d): %s", parsed.StatusCode(), string(parsed.GetBody()))
 	}
 
 	ws := parsed.GetJSON201()
@@ -117,6 +122,10 @@ func handleWorkspaceStop(ctx context.Context, args []string) error {
 		return fmt.Errorf("error parsing response: %v", err)
 	}
 
+	if parsed.StatusCode() != 200 {
+		return fmt.Errorf("server error (%d): %s", parsed.StatusCode(), string(parsed.GetBody()))
+	}
+
 	ws := parsed.GetJSON200()
 	status := ""
 	if ws != nil && ws.Status != nil {
@@ -160,6 +169,10 @@ func handleWorkspaceRestore(ctx context.Context, args []string) error {
 		return fmt.Errorf("error parsing response: %v", err)
 	}
 
+	if parsed.StatusCode() != 200 {
+		return fmt.Errorf("server error (%d): %s", parsed.StatusCode(), string(parsed.GetBody()))
+	}
+
 	ws := parsed.GetJSON200()
 	status := ""
 	if ws != nil && ws.Status != nil {
@@ -170,19 +183,12 @@ func handleWorkspaceRestore(ctx context.Context, args []string) error {
 }
 
 // handleWorkspacePurge permanently deletes a workspace.
-func handleWorkspacePurge(ctx context.Context, args []string) error {
+func handleWorkspacePurge(ctx context.Context, args []string, confirm bool) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: norman workspaces purge <name> [--confirm]")
+		return fmt.Errorf("usage: norman workspaces purge <name> --confirm")
 	}
 
 	name := args[0]
-	confirm := false
-
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--confirm" {
-			confirm = true
-		}
-	}
 
 	if !confirm {
 		return fmt.Errorf("'purge' requires --confirm flag to proceed (destructive operation)")
@@ -202,9 +208,13 @@ func handleWorkspacePurge(ctx context.Context, args []string) error {
 		return fmt.Errorf("error purging workspace '%s': %v", name, err)
 	}
 
-	_, err = protocol.ParsePurgeWorkspaceResponse(rsp)
+	parsed, err := protocol.ParsePurgeWorkspaceResponse(rsp)
 	if err != nil {
 		return fmt.Errorf("error parsing response: %v", err)
+	}
+
+	if parsed.StatusCode() != 200 {
+		return fmt.Errorf("server error (%d): %s", parsed.StatusCode(), string(parsed.GetBody()))
 	}
 
 	fmt.Printf("Workspace '%s' purged successfully\n", name)

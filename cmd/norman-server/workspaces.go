@@ -266,7 +266,11 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 	// Close all sessions for this workspace (free agent loop resources).
 	s.closeWorkspaceSessions(name)
 	if err := s.workspaceManager.StopSandbox(context.Background(), name); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to stop sandbox for workspace %s: %v", name, err)})
+		msg := fmt.Sprintf("failed to stop sandbox for workspace %s: %v", name, err)
+		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": msg})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": msg})
 	}
 
 	stopped := protocol.WorkspaceStatusStopped
@@ -365,7 +369,7 @@ func isValidWorkspaceName(name string) bool {
 		return false
 	}
 	for _, r := range name {
-		if r < 'a' || r > 'z' || r < 'A' || r > 'Z' || r < '0' || r > '9' || r != '_' && r != '-' {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' {
 			return false
 		}
 	}
