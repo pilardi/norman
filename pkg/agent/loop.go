@@ -744,14 +744,18 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				usage.TotalTokens += chunk.Usage.TotalTokens
 			}
 
-			// Broadcast chunk to client in real-time (lower perceived latency)
-			chunkMsg := chunk.Delta
-			l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-				Event:   protocol.TaskProgress,
-				TaskId:  &task.ID,
-				Message: &chunkMsg,
-				Step:    intPtr(6 + turn),
-			})
+			// Broadcast chunk to client in real-time (lower perceived latency).
+			// Only non-empty deltas are sent; empty-string chunks come from
+			// tool-call / role-assignment events that carry no content.
+			if chunk.Delta != "" {
+				chunkMsg := chunk.Delta
+				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					TaskId:  &task.ID,
+					Message: &chunkMsg,
+					Step:    intPtr(6 + turn),
+				})
+			}
 		}
 
 		_ = stream.Close()
