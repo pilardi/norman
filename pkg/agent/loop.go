@@ -141,7 +141,7 @@ func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, e
 	client := l.openShellClient
 
 	// Build the sandbox name from workspace ID (truncated to 15 chars after removing dashes).
-	sandboxName := "ws-" + strings.ReplaceAll(workspaceID, "-", "")[:15]
+	sandboxName := env.SandboxName(workspaceID)
 
 	// Try to get existing sandbox by name.
 	sb, err := client.GetSandbox(context.Background(), "default", sandboxName)
