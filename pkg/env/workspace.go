@@ -12,6 +12,16 @@ import (
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
+// SandboxName generates the OpenShell sandbox name from a workspace ID.
+// The convention is "ws-" + the workspace ID with dashes removed, truncated to 15 characters.
+func SandboxName(workspaceID string) string {
+	cleanName := strings.ReplaceAll(workspaceID, "-", "")
+	if len(cleanName) > 15 {
+		cleanName = cleanName[:15]
+	}
+	return "ws-" + cleanName
+}
+
 // WorkspaceManager manages workspace-to-sandbox mappings with context file injection.
 type WorkspaceManager struct {
 	mu          sync.Mutex
@@ -103,12 +113,7 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 		WorkspaceID:   workspace,
 		WorkspaceName: workspace,
 	}
-	// Truncate to fit OpenShell's 19-char max name limit (same as Loop.GetSession).
-	cleanName := strings.ReplaceAll(workspace, "-", "")
-	if len(cleanName) > 15 {
-		cleanName = cleanName[:15]
-	}
-	sandboxName := "ws-" + cleanName
+	sandboxName := SandboxName(workspace)
 	sb, err := m.client.CreateSandbox(ctx, defaultProvider, sandboxName, ctxFile, sessionId)
 	if err != nil {
 		return nil, fmt.Errorf("create workspace %s: %w", workspace, err)
@@ -150,11 +155,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 	var session *Session
 
 	// Build the sandbox name from workspace ID (truncated to 15 chars after removing dashes).
-	cleanName := strings.ReplaceAll(workspace, "-", "")
-	if len(cleanName) > 15 {
-		cleanName = cleanName[:15]
-	}
-	sandboxName := "ws-" + cleanName
+	sandboxName := SandboxName(workspace)
 
 	// Try to get existing sandbox by name (may be crashed/stopped).
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, sandboxName)
@@ -218,31 +219,19 @@ func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 
 // CloseSandbox deletes the sandbox associated with a workspace by name.
 func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) error {
-	cleanName := strings.ReplaceAll(workspace, "-", "")
-	if len(cleanName) > 15 {
-		cleanName = cleanName[:15]
-	}
-	sandboxName := "ws-" + cleanName
+	sandboxName := SandboxName(workspace)
 	return m.client.DeleteSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // StopSandbox stops a running sandbox (preserves it for later start).
 func (m *WorkspaceManager) StopSandbox(ctx context.Context, workspace string) error {
-	cleanName := strings.ReplaceAll(workspace, "-", "")
-	if len(cleanName) > 15 {
-		cleanName = cleanName[:15]
-	}
-	sandboxName := "ws-" + cleanName
+	sandboxName := SandboxName(workspace)
 	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // StartSandbox starts a stopped sandbox. Returns error if sandbox doesn't exist.
 func (m *WorkspaceManager) StartSandbox(ctx context.Context, workspace string) error {
-	cleanName := strings.ReplaceAll(workspace, "-", "")
-	if len(cleanName) > 15 {
-		cleanName = cleanName[:15]
-	}
-	sandboxName := "ws-" + cleanName
+	sandboxName := SandboxName(workspace)
 	return m.client.StartSandbox(ctx, defaultProvider, sandboxName)
 }
 
