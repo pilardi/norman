@@ -56,6 +56,7 @@ type Loop struct {
 	workspaceDef    *env.WorkspaceDefinition // workspace identity for system prompt injection
 	openShellClient *env.Client              // concrete client for session creation (P3 sandbox dep install)
 	mcpClient       *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
+	debug           bool                     // if true, log detailed message contents before sending to LLM
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -248,6 +249,12 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 // WithLLMClient injects an LLM API client into the loop for multi-turn conversation processing.
 func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 	l.llmClient = client
+	return l
+}
+
+// WithDebug enables verbose debug logging of messages sent to the LLM.
+func (l *Loop) WithDebug(on bool) *Loop {
+	l.debug = on
 	return l
 }
 
@@ -699,6 +706,18 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				model = pc.Model
 				temp = pc.Temperature
 				maxTokens = pc.MaxTokens
+			}
+		}
+
+		// Debug: log what's being sent to the LLM.
+		if l.debug {
+			log.Printf("agent: DEBUG - sending %d messages to model (model=%s)", len(messages), model)
+			for i, m := range messages {
+				preview := m.Content
+				if len(preview) > 200 {
+					preview = preview[:200] + "..."
+				}
+				log.Printf("agent: DEBUG - msg[%d] role=%q content=%q", i, m.Role, preview)
 			}
 		}
 
