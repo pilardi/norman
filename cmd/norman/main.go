@@ -205,6 +205,34 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 							},
 						},
 					},
+					{
+						Name:  "update",
+						Usage: "Update a workspace's purpose or tags",
+						Description: `Partially updates a workspace. Only provided fields are changed;
+omitted fields retain their current values.`,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "purpose",
+								Usage: "New purpose description (replaces existing)",
+							},
+							&cli.StringSliceFlag{
+								Name:  "tags",
+								Usage: "Domain tags for skill activation matching (replaces existing)",
+							},
+						},
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							purpose := cmd.String("purpose")
+							var tags []string
+							if t := cmd.StringSlice("tags"); len(t) > 0 {
+								tags = t
+							}
+							err := handleWorkspaceUpdate(ctx, cmd.Args().Slice(), purpose, tags)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							}
+							return err
+						},
+					},
 				},
 			},
 			// --- skills subcommand ---
