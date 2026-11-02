@@ -123,7 +123,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 	body := ChatRequest{
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
-		Model:       req.Model,
+		Model:       normalizeQuant(req.Model),
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		CachePrompt: p.CacheEnabled,
@@ -192,7 +192,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 	body := ChatRequest{
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
-		Model:       req.Model,
+		Model:       normalizeQuant(req.Model),
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		Stream:      true,
@@ -238,7 +238,7 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 
 	body := EmbedRequest{
 		Input:    text,
-		Model:    p.Model,
+		Model:    normalizeQuant(p.Model),
 		Truncate: true,
 	}
 
@@ -429,4 +429,17 @@ func WithNativeEmbeddings() Option {
 // WithOpenAICompatibleEmbeddings explicitly uses the /api/v1/embeddings endpoint.
 func WithOpenAICompatibleEmbeddings() Option {
 	return func(p *Provider) { p.EmbeddingEndpoint = "/api/v1/embeddings" }
+}
+
+// normalizeQuant ensures the quant suffix in a model identifier has the UD- prefix
+// expected by llama.cpp's native API. For example, "foo:IQ3_S" becomes "foo:UD-IQ3_S".
+func normalizeQuant(model string) string {
+	if idx := strings.LastIndex(model, ":"); idx >= 0 {
+		name := model[:idx]
+		quant := model[idx+1:]
+		if !strings.HasPrefix(quant, "UD-") {
+			return name + ":UD-" + quant
+		}
+	}
+	return model
 }
