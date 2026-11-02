@@ -64,6 +64,11 @@ func handleWorkspaceUpdate(ctx context.Context, args []string, purpose string, t
 
 	name := args[0]
 
+	// Validate at least one update parameter is provided.
+	if purpose == "" && len(tags) == 0 {
+		return fmt.Errorf("at least one of --purpose or --tags must be provided")
+	}
+
 	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
