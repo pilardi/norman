@@ -320,7 +320,7 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, se
 		Step:    intPtr(0),
 	})
 
-	go l.execute(ctx, task, "")
+	go l.execute(ctx, task)
 	return task, nil
 }
 
@@ -352,7 +352,41 @@ type AgentResponse struct {
 
 // SendMessage processes a chat message synchronously and returns a structured response.
 // This is the primary interface for the chat-first agent model.
-func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
+func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string) (*AgentResponse, error) {
+	taskID := uuid.New().String()
+
+	task := &Task{
+		ID:        taskID,
+		Prompt:    message,
+		Status:    protocol.TaskStatusPending,
+		SessionId: sessionID,
+		CreatedAt: time.Now(),
+	}
+
+	l.mu.Lock()
+	l.tasks[taskID] = task
+	l.mu.Unlock()
+
+	// Process the message synchronously via execute (blocks until completion).
+	l.execute(ctx, task)
+
+	// Build response.
+	resp := &AgentResponse{
+		SessionID: sessionID,
+		Response:  string(task.Output),
+	}
+
+	if task.Error != "" {
+		resp.Response = fmt.Sprintf("Error: %s", task.Error)
+	}
+
+	return resp, nil
+}
+
+// SendMessageWithProvider is like SendMessage but accepts a provider name that gets
+// attached to the task for LLM configuration resolution. This is the API-compatible
+// entry point used by the HTTP server's /sessions/:id/messages endpoint.
+func (l *Loop) SendMessageWithProvider(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
 	taskID := uuid.New().String()
 
 	task := &Task{
@@ -369,7 +403,7 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 	l.mu.Unlock()
 
 	// Process the message synchronously via execute (blocks until completion).
-	l.execute(ctx, task, providerName)
+	l.execute(ctx, task)
 
 	// Build response.
 	resp := &AgentResponse{
@@ -390,7 +424,7 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 // and task_id when applicable.
 func (l *Loop) SendMessageWithTask(ctx context.Context, sessionID string, message string, createTask bool) (*AgentResponse, error) {
 	// First, process the message normally (no provider override).
-	resp, err := l.SendMessage(ctx, sessionID, message, "")
+	resp, err := l.SendMessage(ctx, sessionID, message)
 	if err != nil {
 		return nil, err
 	}
@@ -498,13 +532,13 @@ func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]
 	})
 
 	// Execute synchronously (blocks until completion).
-	l.execute(ctx, task, "")
+	l.execute(ctx, task)
 
 	return task, nil
 }
 
 // execute runs the agent loop for a single task.
-func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
+func (l *Loop) execute(ctx context.Context, task *Task) {
 	defer func() {
 		l.mu.Lock()
 		if task.Status == protocol.TaskStatusRunning || task.Status == protocol.TaskStatusPending {
@@ -640,7 +674,7 @@ func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 
 	// Try LLM-based multi-turn loop first; fall back to shell-only if no client.
 	if l.llmClient != nil {
-		output, err := l.executeWithLLM(ctx, task, sandboxName, providerName)
+		output, err := l.executeWithLLM(ctx, task, sandboxName)
 		if err != nil {
 			task.Status = protocol.TaskStatusFailed
 			task.Error = err.Error()
@@ -716,7 +750,7 @@ func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 // executeWithLLM runs a multi-turn agent loop using the LLM client.
 // It builds context from session history + raw sources + skills, calls the LLM,
 // parses tool calls if present, executes them in the sandbox, and loops back.
-func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string, providerName string) ([]byte, error) {
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string) ([]byte, error) {
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
 
@@ -726,10 +760,10 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 	maxTokens := l.MaxTokens(task.Workspace)
 
 	// Validate provider early — if explicitly requested but doesn't exist, fail hard.
-	if providerName != "" {
-		pc, err := l.config.System.ResolveProvider(providerName)
+	if task.ProviderName != "" {
+		pc, err := l.config.System.ResolveProvider(task.ProviderName)
 		if err != nil {
-			return nil, fmt.Errorf("provider %q not found: %w", providerName, err)
+			return nil, fmt.Errorf("provider %q not found: %w", task.ProviderName, err)
 		}
 		// Provider exists — apply its settings.
 		model = pc.Model
