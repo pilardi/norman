@@ -11,6 +11,8 @@ import (
 	"golang.org/x/term"
 
 	"github.com/urfave/cli/v3"
+
+	"github.com/norman/norman/pkg/version"
 )
 
 var (
@@ -393,6 +395,17 @@ Examples:
 							return nil
 						},
 					},
+				},
+			},
+			// --- version subcommand ---
+			{
+				Name:        "version",
+				Aliases:     []string{"ver"},
+				Usage:       "Show version and build date",
+				Description: `Prints the build version (from git describe) and build timestamp.`,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					fmt.Fprintf(os.Stdout, "%s\n", version.String("norman"))
+					return nil
 				},
 			},
 			// --- providers subcommand ---

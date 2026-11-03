@@ -747,6 +747,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /version:
+    get:
+      tags: [system]
+      summary: Get server version and build info
+      operationId: getVersion
+      responses:
+        "200":
+          description: Server version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerVersion"
+
   /api/config:
     get:
       tags: [system]
@@ -1576,6 +1589,23 @@ components:
         uptime_seconds:
           type: integer
           description: Service uptime in seconds
+        version:
+          type: string
+          description: Server build version (git describe output)
+        build_date:
+          type: string
+          description: ISO 8601 build timestamp
+
+    ServerVersion:
+      type: object
+      required: [version, build_date]
+      properties:
+        version:
+          type: string
+          description: Server build version (git describe output)
+        build_date:
+          type: string
+          description: ISO 8601 build timestamp
 
     SchedulerStatus:
       type: object

@@ -24,6 +24,8 @@ import (
 	"github.com/norman/norman/pkg/scheduler"
 	"github.com/norman/norman/pkg/skills"
 	"github.com/urfave/cli/v3"
+
+	"github.com/norman/norman/pkg/version"
 )
 
 // server holds all dependencies injected at startup.
@@ -72,6 +74,18 @@ OpenShell gateway auto-discovered from ~/.config/openshell/gateways/opensshell/m
 				Usage:   "Select which configured provider to use (overrides default_provider)",
 			},
 		},
+		Commands: []*cli.Command{
+			{
+				Name:        "version",
+				Aliases:     []string{"ver"},
+				Usage:       "Show version and build date",
+				Description: `Prints the build version (from git describe) and build timestamp.`,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					fmt.Fprintf(os.Stdout, "%s\n", version.String("norman-server"))
+					return nil
+				},
+			},
+		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if err := runServer(cmd.Bool("verbose"), cmd.String("provider")); err != nil {
 				return err
@@ -92,7 +106,7 @@ func strPtr(s string) *string { return &s }
 func intPtr(i int) *int { return &i }
 
 func runServer(verbose bool, selectedProvider string) error {
-	fmt.Fprintf(os.Stderr, "Norman agent server starting...\n")
+	fmt.Fprintf(os.Stderr, "%s - server starting...\n", version.String("norman-server"))
 
 	startTime := time.Now()
 	srv := bootstrap(verbose, selectedProvider)
@@ -143,4 +157,12 @@ func runServer(verbose bool, selectedProvider string) error {
 		_ = e.Close()
 		return nil
 	}
+}
+
+// GetVersion returns the server build version and timestamp.
+func (s *server) GetVersion(c echo.Context) error {
+	return c.JSON(http.StatusOK, protocol.ServerVersion{
+		Version:   version.Version,
+		BuildDate: version.Date,
+	})
 }

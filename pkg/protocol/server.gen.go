@@ -555,11 +555,16 @@ type DeferTaskRequest struct {
 
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
+	// BuildDate ISO 8601 build timestamp
+	BuildDate *string            `json:"build_date,omitempty"`
 	Scheduler *SchedulerStatus   `json:"scheduler,omitempty"`
 	Status    HealthStatusStatus `json:"status"`
 
 	// UptimeSeconds Service uptime in seconds
 	UptimeSeconds *int `json:"uptime_seconds,omitempty"`
+
+	// Version Server build version (git describe output)
+	Version *string `json:"version,omitempty"`
 }
 
 // HealthStatusStatus defines model for HealthStatus.Status.
@@ -809,6 +814,15 @@ type SendMessageRequest struct {
 
 	// Provider Optional provider name to override the workspace default
 	Provider *string `json:"provider,omitempty"`
+}
+
+// ServerVersion defines model for ServerVersion.
+type ServerVersion struct {
+	// BuildDate ISO 8601 build timestamp
+	BuildDate string `json:"build_date"`
+
+	// Version Server build version (git describe output)
+	Version string `json:"version"`
 }
 
 // Session defines model for Session.
@@ -1426,6 +1440,9 @@ type ServerInterface interface {
 	// HealthCheck Health check with scheduler status
 	// (GET /health)
 	HealthCheck(ctx echo.Context) error
+	// GetVersion Get server version and build info
+	// (GET /version)
+	GetVersion(ctx echo.Context) error
 	// ConnectWebSocket WebSocket endpoint for real-time push events
 	// (GET /ws)
 	ConnectWebSocket(ctx echo.Context, params ConnectWebSocketParams) error
@@ -2029,6 +2046,15 @@ func (w *ServerInterfaceWrapper) HealthCheck(ctx echo.Context) error {
 	return err
 }
 
+// GetVersion converts echo context to params.
+func (w *ServerInterfaceWrapper) GetVersion(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetVersion(ctx)
+	return err
+}
+
 // ConnectWebSocket converts echo context to params.
 func (w *ServerInterfaceWrapper) ConnectWebSocket(ctx echo.Context) error {
 	var err error
@@ -2128,6 +2154,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/api/tasks/defer", wrapper.DeferTask, options.OperationMiddlewares["deferTask"]...)
 	router.POST(options.BaseURL+"/api/tasks/:id/complete", wrapper.ReportTaskComplete, options.OperationMiddlewares["reportTaskComplete"]...)
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck, options.OperationMiddlewares["healthCheck"]...)
+	router.GET(options.BaseURL+"/version", wrapper.GetVersion, options.OperationMiddlewares["getVersion"]...)
 	router.GET(options.BaseURL+"/api/config", wrapper.GetConfig, options.OperationMiddlewares["getConfig"]...)
 	router.PUT(options.BaseURL+"/api/config", wrapper.PutConfig, options.OperationMiddlewares["putConfig"]...)
 	router.GET(options.BaseURL+"/ws", wrapper.ConnectWebSocket, options.OperationMiddlewares["connectWebSocket"]...)
