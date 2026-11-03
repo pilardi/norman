@@ -18,13 +18,14 @@ import (
 
 // Client implements the LLM interface for OpenAI-compatible endpoints.
 type Client struct {
-	BaseURL     string
-	APIKey      string
-	Model       string
-	Temperature float64
-	MaxTokens   int
-	HTTPClient  *http.Client
-	Timeout     time.Duration
+	BaseURL      string
+	APIKey       string
+	Model        string
+	Temperature  float64
+	MaxTokens    int
+	ProviderName string // configured provider name (e.g. "local-llamacpp", "unsloth")
+	HTTPClient   *http.Client
+	Timeout      time.Duration
 }
 
 // NewClient creates a client configured from the system config.
@@ -45,11 +46,12 @@ func NewClient(cfg *config.SystemConfig) *Client {
 // NewClientWithProvider creates a client configured from a specific provider config.
 func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
 	return &Client{
-		BaseURL:     provCfg.Endpoint,
-		Model:       provCfg.Model,
-		Temperature: provCfg.Temperature,
-		MaxTokens:   provCfg.MaxTokens,
-		APIKey:      provCfg.ApiKey,
+		BaseURL:      provCfg.Endpoint,
+		Model:        provCfg.Model,
+		Temperature:  provCfg.Temperature,
+		MaxTokens:    provCfg.MaxTokens,
+		APIKey:       provCfg.ApiKey,
+		ProviderName: provCfg.Name,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -167,8 +169,12 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 
 // ProviderInfo returns metadata about the underlying provider.
 func (c *Client) ProviderInfo() ProviderMetadata {
+	name := c.ProviderName
+	if name == "" {
+		name = ProviderOpenAI // fallback to type constant "openai"
+	}
 	return ProviderMetadata{
-		Name:             ProviderOpenAI,
+		Name:             name,
 		SupportsTools:    true,
 		SupportsStream:   true,
 		MaxTokensPerCall: c.MaxTokens,

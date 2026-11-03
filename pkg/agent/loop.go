@@ -60,7 +60,6 @@ type Loop struct {
 	systemPrompt     string                   // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
 	debug            bool                     // if true, log detailed message contents before sending to LLM
 	workspaceManager *env.WorkspaceManager    // workspace-to-sandbox mapping manager
-	defaultProvider  string                   // resolved default provider name for logging/debugging (empty = not set)
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -251,13 +250,6 @@ func (l *Loop) WithResultsChannel(ch chan scheduler.TaskResult) *Loop {
 // WithBudget configures the loop with a budget tracker. Returns the modified Loop.
 func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 	l.budget = budget.NewSessionState(cfg)
-	return l
-}
-
-// WithDefaultProvider sets the resolved default provider name for logging/debugging.
-// This is used by the server bootstrap to record which provider was selected at startup.
-func (l *Loop) WithDefaultProvider(name string) *Loop {
-	l.defaultProvider = name
 	return l
 }
 
@@ -747,9 +739,9 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 
 		// Debug: log what's being sent to the LLM.
 		if l.debug {
-			logProvider := providerName
-			if logProvider == "" {
-				logProvider = l.defaultProvider
+			var logProvider string
+			if l.llmClient != nil {
+				logProvider = l.llmClient.ProviderInfo().Name
 			}
 			log.Printf("agent: DEBUG - sending %d messages to model (provider=%s, model=%s)", len(messages), logProvider, model)
 			for i, m := range messages {

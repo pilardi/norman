@@ -89,7 +89,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 				opts = append(opts, llamacpp.WithOpenAICompatibleEmbeddings())
 			}
 
-			llmClient = llamacpp.NewProvider(wsCfg, llmCfg, opts...)
+			llmClient = llamacpp.NewProvider(wsCfg, llmCfg, append(opts, llamacpp.WithProviderName(providerName))...)
 		default:
 			log.Fatalf("unsupported provider type %q", provCfg.Type)
 		}
@@ -98,7 +98,8 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
 	}
 
-	// providerName is now stored in the Loop via WithDefaultProvider() for DEBUG log output.
+	// providerName flows into LLM clients (Client or Provider) via NewClientWithProvider / WithProviderName,
+	// and is surfaced in DEBUG logs via llmClient.ProviderInfo().Name.
 
 	// Initialize memory store — path derived from environment, not hardcoded.
 	// The server communicates with the environment via OpenShell; the store
@@ -173,8 +174,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 
 	// Create agent loop (with concrete client for P3 sandbox dep install).
 	loop := agent.NewWithClient(cfg, store, rawSources, activator, wsHub, loopClient, openShellClient).
-		WithWorkspaceManager(wsManager).
-		WithDefaultProvider(providerName)
+		WithWorkspaceManager(wsManager)
 
 	// Wire LLM client into the agent loop.
 	if llmClient != nil {

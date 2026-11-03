@@ -91,6 +91,7 @@ type Provider struct {
 	CacheSize         int    // max KV cache tokens (n_ctx)
 	CacheType         string // "fq" or quantized type
 	EmbeddingEndpoint string // embedding endpoint path; "" = auto-detect, "/api/v1/embeddings", "/embeddings"
+	providerName      string // configured provider name (e.g. "local-llamacpp")
 }
 
 // NewProvider creates a provider configured from workspace config and
@@ -304,8 +305,12 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 
 // ProviderInfo returns metadata about the underlying llama.cpp provider.
 func (p *Provider) ProviderInfo() llm.ProviderMetadata {
+	name := p.providerName
+	if name == "" {
+		name = ProviderName // fallback to type constant "llamacpp"
+	}
 	return llm.ProviderMetadata{
-		Name:             ProviderName,
+		Name:             name,
 		SupportsTools:    true,
 		SupportsStream:   true,
 		MaxTokensPerCall: p.MaxTokens,
@@ -438,6 +443,11 @@ func WithNativeEmbeddings() Option {
 // WithOpenAICompatibleEmbeddings explicitly uses the /api/v1/embeddings endpoint.
 func WithOpenAICompatibleEmbeddings() Option {
 	return func(p *Provider) { p.EmbeddingEndpoint = "/api/v1/embeddings" }
+}
+
+// WithProviderName sets the configured provider name for logging/debugging.
+func WithProviderName(name string) Option {
+	return func(p *Provider) { p.providerName = name }
 }
 
 // normalizeQuant ensures the quant suffix in a model identifier has the UD- prefix
