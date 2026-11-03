@@ -16,7 +16,6 @@ import (
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
-	"github.com/norman/norman/pkg/llm/llamacpp"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/protocol"
@@ -54,44 +53,9 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 			log.Fatalf("failed to resolve provider %q: %v", providerName, err)
 		}
 
-		switch provCfg.Type {
-		case "openai":
-			llmClient = llm.NewClientAdapter(llm.NewClientWithProvider(provCfg))
-		case "llamacpp":
-			// Build type-specific config from Extra map.
-			llmCfg := llamacpp.DefaultConfig()
-			if v, ok := provCfg.Extra["cache_size"].(float64); ok {
-				llmCfg.CacheSize = int(v)
-			}
-			if v, ok := provCfg.Extra["cache_type"].(string); ok {
-				llmCfg.CacheType = v
-			}
-			if v, ok := provCfg.Extra["cache_enabled"].(bool); ok {
-				llmCfg.CacheEnabled = v
-			}
-
-			// Use provider-level defaults for model/temp/tokens.
-			wsCfg := config.DefaultWorkspaceConfig()
-			wsCfg.Model = provCfg.Model
-			if provCfg.Temperature > 0 {
-				wsCfg.Temperature = provCfg.Temperature
-			}
-			if provCfg.MaxTokens > 0 {
-				wsCfg.MaxTokens = provCfg.MaxTokens
-			}
-
-			// Apply embedding endpoint configuration.
-			var opts []llamacpp.Option
-			switch provCfg.EmbeddingEndpoint {
-			case "/embeddings":
-				opts = append(opts, llamacpp.WithNativeEmbeddings())
-			case "/api/v1/embeddings":
-				opts = append(opts, llamacpp.WithOpenAICompatibleEmbeddings())
-			}
-
-			llmClient = llamacpp.NewProvider(providerName, wsCfg, llmCfg, opts...)
-		default:
-			log.Fatalf("unsupported provider type %q", provCfg.Type)
+		llmClient, err = llm.NewProvider(providerName, provCfg, config.DefaultWorkspaceConfig())
+		if err != nil {
+			log.Fatalf("failed to create provider %q: %v", providerName, err)
 		}
 	} else {
 		// Fallback: no providers configured, use OpenAI-compatible client with defaults.

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/norman/norman/pkg/config"
-	"github.com/norman/norman/pkg/llm"
+	"github.com/norman/norman/pkg/llm/api"
 )
 
 // --- Request / Response Types ---
@@ -76,7 +76,7 @@ type Usage struct {
 
 // --- Provider Implementation ---
 
-// Provider implements llm.LLM + llm.Embedder for llama.cpp's HTTP server.
+// Provider implements api.LLM + api.Embedder for llama.cpp's HTTP server.
 type Provider struct {
 	BaseURL           string
 	Model             string
@@ -116,7 +116,7 @@ func NewProvider(name string, cfg *config.WorkspaceConfig, llmCfg *Config, opts 
 }
 
 // Complete sends a chat completion request and returns the full response.
-func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*llm.CompletionResponse, error) {
+func (p *Provider) Complete(ctx context.Context, req api.CompletionRequest) (*api.CompletionResponse, error) {
 	if p.HTTPClient == nil {
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
@@ -139,20 +139,20 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 
 	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("create request: %w", err))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("create request: %w", err))
 	}
 
 	reqHTTP.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.HTTPClient.Do(reqHTTP)
 	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
 	_ = resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("read response body: %w", err))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("read response body: %w", err))
 	}
 
 	p.Logf("Complete raw response body: %s", string(bodyBytes))
@@ -163,13 +163,13 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 
 	var chatResp ChatResponse
 	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("parse response: %w", err))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("parse response: %w", err))
 	}
 
-	completion := &llm.CompletionResponse{
+	completion := &api.CompletionResponse{
 		ID:           "", // native API doesn't return an ID
 		Model:        req.Model,
-		Message:      llm.Message{Role: "assistant", Content: chatResp.Content},
+		Message:      api.Message{Role: "assistant", Content: chatResp.Content},
 		FinishReason: chatResp.StopReason,
 		RawJSON:      bodyBytes,
 	}
@@ -178,7 +178,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 }
 
 // buildPrompt concatenates messages into a single prompt string for the native API.
-func buildPrompt(messages []llm.Message) string {
+func buildPrompt(messages []api.Message) string {
 	var parts []string
 	for _, m := range messages {
 		parts = append(parts, fmt.Sprintf("%s: %s", strings.ToLower(m.Role), m.Content))
@@ -187,7 +187,7 @@ func buildPrompt(messages []llm.Message) string {
 }
 
 // Stream sends a chat completion request and yields incremental chunks via SSE.
-func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.StreamReader, error) {
+func (p *Provider) Stream(ctx context.Context, req api.CompletionRequest) (api.StreamReader, error) {
 	if p.HTTPClient == nil {
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
@@ -211,7 +211,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 
 	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("create request: %w", err))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("create request: %w", err))
 	}
 
 	reqHTTP.Header.Set("Content-Type", "application/json")
@@ -219,13 +219,13 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 
 	resp, err := p.HTTPClient.Do(reqHTTP)
 	if err != nil {
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 
 	return &sseStreamReader{resp: resp, providerName: p.providerName}, nil
@@ -296,15 +296,15 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 		}
 
 		// Neither format matched — return raw error
-		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("unexpected response shape from %s: %s", ep, string(bodyBytes)))
+		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("unexpected response shape from %s: %s", ep, string(bodyBytes)))
 	}
 
 	return nil, fmt.Errorf("no embedding endpoint available (tried /api/v1/embeddings and /embeddings)")
 }
 
 // ProviderInfo returns metadata about the underlying llama.cpp provider.
-func (p *Provider) ProviderInfo() llm.ProviderMetadata {
-	return llm.ProviderMetadata{
+func (p *Provider) ProviderInfo() api.ProviderMetadata {
+	return api.ProviderMetadata{
 		Name:             p.providerName,
 		SupportsTools:    true,
 		SupportsStream:   true,
@@ -325,16 +325,16 @@ type sseStreamReader struct {
 	providerName string
 }
 
-func (s *sseStreamReader) Next() (llm.Chunk, error) {
+func (s *sseStreamReader) Next() (api.Chunk, error) {
 	buf := make([]byte, 4096)
 	n, err := s.resp.Body.Read(buf)
 	if err != nil {
-		return llm.Chunk{}, fmt.Errorf("read SSE: %w", err)
+		return api.Chunk{}, fmt.Errorf("read SSE: %w", err)
 	}
 
 	line := strings.TrimSpace(string(buf[:n]))
 	if line == "" || line == "data: [DONE]" {
-		return llm.Chunk{FinishReason: "[done]"}, nil
+		return api.Chunk{FinishReason: "[done]"}, nil
 	}
 
 	if !strings.HasPrefix(line, "data: ") {
@@ -353,13 +353,13 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 	}
 	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
 		log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
-		return llm.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
+		return api.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
 	}
 
 	// Fallback to OpenAI-compatible format for backward compat
 	var delta map[string]interface{}
 	if err := json.Unmarshal([]byte(data), &delta); err == nil {
-		chunk := llm.Chunk{}
+		chunk := api.Chunk{}
 		if msg, ok := delta["message"].(map[string]interface{}); ok {
 			if content, ok := msg["content"].(string); ok {
 				chunk.Delta = content
@@ -373,7 +373,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 	}
 
 	log.Printf("[llm][%s] SSE unparseable data: %s", s.providerName, data)
-	return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
+	return api.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 }
 
 func (s *sseStreamReader) Close() error {
@@ -386,28 +386,28 @@ func (s *sseStreamReader) Close() error {
 func mapHTTPError(statusCode int, body string) error {
 	switch statusCode {
 	case http.StatusTooManyRequests:
-		return llm.ErrRateLimit
+		return api.ErrRateLimit
 	case http.StatusUnprocessableEntity:
 		if strings.Contains(strings.ToLower(body), "context window") ||
 			strings.Contains(strings.ToLower(body), "max_tokens") {
-			return llm.ErrContextWindow
+			return api.ErrContextWindow
 		}
-		return wrapError(llm.ErrProviderDown, fmt.Errorf("HTTP %d: %s", statusCode, body))
+		return wrapError(api.ErrProviderDown, fmt.Errorf("HTTP %d: %s", statusCode, body))
 
 	case http.StatusInternalServerError:
 		fallthrough
 	case http.StatusBadGateway:
 		fallthrough
 	case http.StatusServiceUnavailable:
-		return llm.ErrProviderDown
+		return api.ErrProviderDown
 
 	default:
 		return fmt.Errorf("HTTP %d: %s", statusCode, body)
 	}
 }
 
-func wrapError(typedErr *llm.LLMError, original error) *llm.LLMError {
-	return &llm.LLMError{
+func wrapError(typedErr *api.LLMError, original error) *api.LLMError {
+	return &api.LLMError{
 		Code:     typedErr.Code,
 		Message:  typedErr.Message,
 		Original: original,
