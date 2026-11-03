@@ -24,6 +24,8 @@ import (
 	"github.com/norman/norman/pkg/scheduler"
 	"github.com/norman/norman/pkg/skills"
 	"github.com/urfave/cli/v3"
+
+	"github.com/norman/norman/pkg/version"
 )
 
 // server holds all dependencies injected at startup.
@@ -70,6 +72,18 @@ OpenShell gateway auto-discovered from ~/.config/openshell/gateways/opensshell/m
 				Name:    "provider",
 				Aliases: []string{"p"},
 				Usage:   "Select which configured provider to use (overrides default_provider)",
+			},
+		},
+		Commands: []*cli.Command{
+			{
+				Name:        "version",
+				Aliases:     []string{"ver"},
+				Usage:       "Show version and build date",
+				Description: `Prints the build version (from git describe) and build timestamp.`,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					fmt.Fprintf(os.Stdout, "%s\n", version.String("norman-server"))
+					return nil
+				},
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {

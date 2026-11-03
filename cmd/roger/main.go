@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/urfave/cli/v3"
+
+	"github.com/norman/norman/pkg/version"
 )
 
 // ContextFile is the workspace context file injected at sandbox creation.
@@ -53,6 +55,7 @@ Configuration loaded from environment variables:
 			pingCommand(),
 			statusCommand(),
 			logCommand(),
+			versionCommand(),
 		},
 	}
 
@@ -308,6 +311,20 @@ func outputJSON(v interface{}) {
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
 		fmt.Fprintf(os.Stderr, "roger: failed to encode JSON: %v\n", err)
+	}
+}
+
+// versionCommand returns the "version" subcommand.
+func versionCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "version",
+		Aliases:     []string{"v"},
+		Usage:       "Show version and build date",
+		Description: `Prints the build version (from git describe) and build timestamp.`,
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			fmt.Fprintf(os.Stdout, "%s\n", version.String("roger"))
+			return nil
+		},
 	}
 }
 

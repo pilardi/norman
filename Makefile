@@ -15,6 +15,11 @@
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
 
+# Build-time version injection via ldflags.
+GIT_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+BUILD_DATE  := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+VERSION_FLAGS := -ldflags "-X github.com/norman/norman/pkg/version.Version=$(GIT_VERSION) -X github.com/norman/norman/pkg/version.Date=$(BUILD_DATE)"
+
 help:
 	@echo "Norman Build System"
 	@echo ""
@@ -43,9 +48,9 @@ lint:
 build: lint
 	go mod tidy
 	mkdir -p $(DIST)
-	go build -o $(DIST)/norman ./cmd/norman
-	go build -o $(DIST)/norman-server ./cmd/norman-server
-	go build -o $(DIST)/roger ./cmd/roger
+	go build $(VERSION_FLAGS) -o $(DIST)/norman ./cmd/norman
+	go build $(VERSION_FLAGS) -o $(DIST)/norman-server ./cmd/norman-server
+	go build $(VERSION_FLAGS) -o $(DIST)/roger ./cmd/roger
 
 rebuild:
 	@$(MAKE) clean
@@ -93,9 +98,9 @@ generate-docs-html: generate-docs
 # Usage: make completion bash|zsh|fish > /etc/bash_completion.d/norman
 completion:
 	@echo "Generating shell completion scripts..."
-	@go build -o $(DIST)/norman ./cmd/norman
-	@go build -o $(DIST)/roger ./cmd/roger
-	@go build -o $(DIST)/norman-server ./cmd/norman-server
+	@go build $(VERSION_FLAGS) -o $(DIST)/norman ./cmd/norman
+	@go build $(VERSION_FLAGS) -o $(DIST)/roger ./cmd/roger
+	@go build $(VERSION_FLAGS) -o $(DIST)/norman-server ./cmd/norman-server
 	@echo "  Bash completions:"
 	@$(DIST)/norman completion bash > $(DIST)/_norman.bash
 	@$(DIST)/roger completion bash > $(DIST)/_roger.bash
