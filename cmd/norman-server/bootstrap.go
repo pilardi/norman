@@ -98,7 +98,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
 	}
 
-	_ = providerName // used for logging/debugging; actual client is in llmClient
+	// providerName is now stored in the Loop via WithDefaultProvider() for DEBUG log output.
 
 	// Initialize memory store — path derived from environment, not hardcoded.
 	// The server communicates with the environment via OpenShell; the store
@@ -173,7 +173,8 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 
 	// Create agent loop (with concrete client for P3 sandbox dep install).
 	loop := agent.NewWithClient(cfg, store, rawSources, activator, wsHub, loopClient, openShellClient).
-		WithWorkspaceManager(wsManager)
+		WithWorkspaceManager(wsManager).
+		WithDefaultProvider(providerName)
 
 	// Wire LLM client into the agent loop.
 	if llmClient != nil {
