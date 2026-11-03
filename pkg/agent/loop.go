@@ -56,6 +56,7 @@ type Loop struct {
 	workspaceDef     *env.WorkspaceDefinition // workspace identity for system prompt injection
 	openShellClient  *env.Client              // concrete client for session creation (P3 sandbox dep install)
 	mcpClient        *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
+	systemPrompt     string                   // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
 	debug            bool                     // if true, log detailed message contents before sending to LLM
 	workspaceManager *env.WorkspaceManager    // workspace-to-sandbox mapping manager
 }
@@ -260,6 +261,12 @@ func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 // WithDebug enables verbose debug logging of messages sent to the LLM.
 func (l *Loop) WithDebug(on bool) *Loop {
 	l.debug = on
+	return l
+}
+
+// WithSystemPrompt sets the immutable system prompt injected as the first "system" role message.
+func (l *Loop) WithSystemPrompt(s string) *Loop {
+	l.systemPrompt = s
 	return l
 }
 
@@ -1141,6 +1148,14 @@ func (l *Loop) buildTools() []llm.Tool {
 // buildMessages assembles conversation messages from session history, raw sources, and skills.
 func (l *Loop) buildMessages(task *Task) ([]llm.Message, int, int) {
 	var messages []llm.Message
+
+	// 0. System prompt (agent identity/facts — immutable at runtime)
+	if l.systemPrompt != "" {
+		messages = append(messages, llm.Message{
+			Role:    "system",
+			Content: l.systemPrompt,
+		})
+	}
 
 	// 1. Raw environment context (injected once)
 	if l.rawSources != nil {
