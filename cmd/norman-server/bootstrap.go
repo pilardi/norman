@@ -180,6 +180,9 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		loop = loop.WithLLMClient(llmClient)
 	}
 
+	// Inject immutable facts (identity, origin, capabilities) as system prompt.
+	loop = loop.WithSystemPrompt(agent.ParseFacts().AsSystemPrompt())
+
 	// Enable debug message logging if verbose mode is set.
 	if cfg.System.Logging.Verbose {
 		loop = loop.WithDebug(true)
