@@ -350,9 +350,9 @@ type AgentResponse struct {
 	TaskID      string   `json:"task_id,omitempty"`
 }
 
-// SendMessageWithProvider processes a chat message and returns a structured response.
+// SendMessage processes a chat message and returns a structured response.
 // This is the only public entry point for processing messages in the agent loop.
-func (l *Loop) SendMessageWithProvider(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
+func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
 	taskID := uuid.New().String()
 
 	task := &Task{

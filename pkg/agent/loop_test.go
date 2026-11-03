@@ -652,9 +652,9 @@ func TestSendMessageMultiTurnWithToolCall(t *testing.T) {
 
 	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
 
-	resp, err := loop.SendMessageWithProvider(context.Background(), "session-1", "List files in /tmp", "")
+	resp, err := loop.SendMessage(context.Background(), "session-1", "List files in /tmp", "")
 	if err != nil {
-		t.Fatalf("SendMessageWithProvider failed: %v", err)
+		t.Fatalf("SendMessage failed: %v", err)
 	}
 
 	if resp.Response == "" {
@@ -695,9 +695,9 @@ func TestSendMessageMultiTurnMaxTurnsReached(t *testing.T) {
 
 	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
 
-	resp, err := loop.SendMessageWithProvider(context.Background(), "session-1", "Keep calling tools", "")
+	resp, err := loop.SendMessage(context.Background(), "session-1", "Keep calling tools", "")
 	if err != nil {
-		t.Fatalf("SendMessageWithProvider failed: %v", err)
+		t.Fatalf("SendMessage failed: %v", err)
 	}
 
 	// Should fail with max turns message after 8 iterations
@@ -719,9 +719,9 @@ func TestSendMessageShellOnlyFallback(t *testing.T) {
 	// No LLM client wired — should fall back to shell-only path
 	loop := New(nil, store, nil, act, fakeWSHub, fakeClient) // no WithLLMClient call
 
-	resp, err := loop.SendMessageWithProvider(context.Background(), "session-1", "echo hello world", "")
+	resp, err := loop.SendMessage(context.Background(), "session-1", "echo hello world", "")
 	if err != nil {
-		t.Fatalf("SendMessageWithProvider failed: %v", err)
+		t.Fatalf("SendMessage failed: %v", err)
 	}
 
 	if !strings.Contains(resp.Response, "hello world") {
