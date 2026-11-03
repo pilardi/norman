@@ -18,9 +18,6 @@ import (
 	"github.com/norman/norman/pkg/llm"
 )
 
-// ProviderName identifies this provider.
-const ProviderName = "llamacpp"
-
 // --- Request / Response Types ---
 
 // ChatRequest mirrors the llama.cpp native /completion endpoint body.
@@ -95,8 +92,9 @@ type Provider struct {
 }
 
 // NewProvider creates a provider configured from workspace config and
-// optional llama.cpp-specific settings.
-func NewProvider(cfg *config.WorkspaceConfig, llmCfg *Config, opts ...Option) *Provider {
+// optional llama.cpp-specific settings. The name is required — a provider
+// cannot exist without one.
+func NewProvider(name string, cfg *config.WorkspaceConfig, llmCfg *Config, opts ...Option) *Provider {
 	p := &Provider{
 		BaseURL:      llmCfg.BaseURL,
 		Model:        cfg.Model,
@@ -107,6 +105,7 @@ func NewProvider(cfg *config.WorkspaceConfig, llmCfg *Config, opts ...Option) *P
 		CacheEnabled: llmCfg.CacheEnabled,
 		CacheSize:    llmCfg.CacheSize,
 		CacheType:    llmCfg.CacheType,
+		providerName: name,
 	}
 
 	for _, opt := range opts {
@@ -305,12 +304,8 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 
 // ProviderInfo returns metadata about the underlying llama.cpp provider.
 func (p *Provider) ProviderInfo() llm.ProviderMetadata {
-	name := p.providerName
-	if name == "" {
-		name = ProviderName // fallback to type constant "llamacpp"
-	}
 	return llm.ProviderMetadata{
-		Name:             name,
+		Name:             p.providerName,
 		SupportsTools:    true,
 		SupportsStream:   true,
 		MaxTokensPerCall: p.MaxTokens,
@@ -320,11 +315,7 @@ func (p *Provider) ProviderInfo() llm.ProviderMetadata {
 
 // Logf logs with a [llm][{provider}] prefix.
 func (p *Provider) Logf(format string, args ...any) {
-	name := p.providerName
-	if name == "" {
-		name = ProviderName
-	}
-	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
+	log.Printf("[llm][%s] "+format, append([]any{p.providerName}, args...)...)
 }
 
 // --- SSE Streaming Reader ---
@@ -453,11 +444,6 @@ func WithNativeEmbeddings() Option {
 // WithOpenAICompatibleEmbeddings explicitly uses the /api/v1/embeddings endpoint.
 func WithOpenAICompatibleEmbeddings() Option {
 	return func(p *Provider) { p.EmbeddingEndpoint = "/api/v1/embeddings" }
-}
-
-// WithProviderName sets the configured provider name for logging/debugging.
-func WithProviderName(name string) Option {
-	return func(p *Provider) { p.providerName = name }
 }
 
 // normalizeQuant ensures the quant suffix in a model identifier has the UD- prefix

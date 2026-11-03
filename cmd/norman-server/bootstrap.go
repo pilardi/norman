@@ -89,7 +89,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 				opts = append(opts, llamacpp.WithOpenAICompatibleEmbeddings())
 			}
 
-			llmClient = llamacpp.NewProvider(wsCfg, llmCfg, append(opts, llamacpp.WithProviderName(providerName))...)
+			llmClient = llamacpp.NewProvider(providerName, wsCfg, llmCfg, opts...)
 		default:
 			log.Fatalf("unsupported provider type %q", provCfg.Type)
 		}
@@ -98,7 +98,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
 	}
 
-	// providerName flows into LLM clients (Client or Provider) via NewClientWithProvider / WithProviderName,
+	// providerName flows into LLM clients (Client or Provider) via NewClientWithProvider or direct field set,
 	// and is surfaced in DEBUG logs via llmClient.ProviderInfo().Name.
 
 	// Initialize memory store — path derived from environment, not hardcoded.
