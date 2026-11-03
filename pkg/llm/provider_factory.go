@@ -34,14 +34,14 @@ func NewProviderFromConfig(sysCfg *config.SystemConfig, selectedProvider string)
 		return nil, "", fmt.Errorf("failed to resolve provider %q: %w", providerName, err)
 	}
 
-	client, err := NewProvider(providerName, provCfg, config.DefaultWorkspaceConfig())
+	client, err := newProvider(providerName, provCfg, config.DefaultWorkspaceConfig())
 	return client, providerName, err
 }
 
-// NewProvider creates an LLM client adapter from a resolved provider config
+// newProvider creates an LLM client adapter from a resolved provider config
 // and workspace configuration. It selects the appropriate backend
 // implementation based on provCfg.Type.
-func NewProvider(name string, provCfg *config.ProviderConfig, wsCfg *config.WorkspaceConfig) (*ClientAdapter, error) {
+func newProvider(name string, provCfg *config.ProviderConfig, wsCfg *config.WorkspaceConfig) (*ClientAdapter, error) {
 	switch provCfg.Type {
 	case "openai":
 		return NewClientAdapter(NewClientWithProvider(provCfg)), nil
