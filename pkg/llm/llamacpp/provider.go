@@ -229,7 +229,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return &sseStreamReader{resp: resp}, nil
+	return &sseStreamReader{resp: resp, providerName: p.providerName}, nil
 }
 
 // EmbedText returns a float32 vector for the given text.
@@ -330,7 +330,8 @@ func (p *Provider) Logf(format string, args ...any) {
 // --- SSE Streaming Reader ---
 
 type sseStreamReader struct {
-	resp *http.Response
+	resp         *http.Response
+	providerName string
 }
 
 func (s *sseStreamReader) Next() (llm.Chunk, error) {
@@ -352,7 +353,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 	data := strings.TrimPrefix(line, "data: ")
 
 	// Debug: expose raw SSE data for troubleshooting.
-	log.Printf("[llm][llamacpp] SSE raw data: %s", data)
+	log.Printf("[llm][%s] SSE raw data: %s", s.providerName, data)
 
 	// Native /completion format: {"content":"...","stop_reason":"..."}
 	var nativeResp struct {
@@ -360,7 +361,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 		StopReason string `json:"stop_reason,omitempty"`
 	}
 	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
-		log.Printf("[llm][llamacpp] SSE parsed (native): content=%q stop_reason=%q", nativeResp.Content, nativeResp.StopReason)
+		log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
 		return llm.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
 	}
 
@@ -376,11 +377,11 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 		if fr, ok := delta["finish_reason"].(string); ok {
 			chunk.FinishReason = fr
 		}
-		log.Printf("[llm][llamacpp] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", s.providerName, chunk.Delta, chunk.FinishReason)
 		return chunk, nil
 	}
 
-	log.Printf("[llm][llamacpp] SSE unparseable data: %s", data)
+	log.Printf("[llm][%s] SSE unparseable data: %s", s.providerName, data)
 	return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 }
 

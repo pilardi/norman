@@ -162,8 +162,9 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 	}
 
 	return &sseStreamReader{
-		resp: resp,
-		done: make(chan struct{}),
+		resp:         resp,
+		done:         make(chan struct{}),
+		providerName: c.ProviderName,
 	}, nil
 }
 
@@ -194,8 +195,9 @@ func (c *Client) Logf(format string, args ...any) {
 // --- SSE Streaming Reader ---
 
 type sseStreamReader struct {
-	resp *http.Response
-	done chan struct{}
+	resp         *http.Response
+	done         chan struct{}
+	providerName string
 }
 
 func (s *sseStreamReader) Next() (Chunk, error) {
@@ -219,7 +221,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		data := bytes.TrimPrefix([]byte(line), []byte("data: "))
 
 		// Debug: expose raw SSE data for troubleshooting.
-		log.Printf("[llm][openai] SSE raw data: %s", string(data))
+		log.Printf("[llm][%s] SSE raw data: %s", s.providerName, string(data))
 
 		var delta map[string]interface{}
 		if err := json.Unmarshal(data, &delta); err != nil {
@@ -231,7 +233,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		for k := range delta {
 			keys = append(keys, k)
 		}
-		log.Printf("[llm][openai] SSE delta keys: %v", keys)
+		log.Printf("[llm][%s] SSE delta keys: %v", s.providerName, keys)
 
 		chunk := Chunk{}
 
@@ -249,7 +251,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 			}
 		}
 
-		log.Printf("[llm][openai] SSE parsed: delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q", s.providerName, chunk.Delta, chunk.FinishReason)
 
 		return chunk, nil
 	}
