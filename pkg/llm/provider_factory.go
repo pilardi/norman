@@ -10,6 +10,34 @@ import (
 	"github.com/norman/norman/pkg/llm/internal/llamacpp"
 )
 
+// NewProviderFromConfig creates an LLM client adapter from system configuration.
+// It resolves the provider name using this priority: CLI-selected > default_provider > first configured provider.
+// Returns nil if no providers are configured (no-op client).
+// The resolved provider name is returned for diagnostics; empty string means no provider.
+func NewProviderFromConfig(sysCfg *config.SystemConfig, selectedProvider string) (*ClientAdapter, string, error) {
+	// Resolve selected provider: CLI flag > configured default_provider > first in list.
+	var providerName string
+	if selectedProvider != "" {
+		providerName = selectedProvider
+	} else if sysCfg.DefaultProvider != "" {
+		providerName = sysCfg.DefaultProvider
+	} else if len(sysCfg.LlmProviders) > 0 {
+		providerName = sysCfg.LlmProviders[0].Name
+	}
+
+	if providerName == "" {
+		return nil, "", nil // no providers configured
+	}
+
+	provCfg, err := sysCfg.ResolveProvider(providerName)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to resolve provider %q: %w", providerName, err)
+	}
+
+	client, err := NewProvider(providerName, provCfg, config.DefaultWorkspaceConfig())
+	return client, providerName, err
+}
+
 // NewProvider creates an LLM client adapter from a resolved provider config
 // and workspace configuration. It selects the appropriate backend
 // implementation based on provCfg.Type.

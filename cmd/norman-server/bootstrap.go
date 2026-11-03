@@ -36,34 +36,15 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		cfg.System.Logging.Verbose = true
 	}
 
-	// Resolve selected provider: CLI flag > configured default_provider > first in list.
-	var providerName string
-	if selectedProvider != "" {
-		providerName = selectedProvider
-	} else if cfg.System.DefaultProvider != "" {
-		providerName = cfg.System.DefaultProvider
-	} else if len(cfg.System.LlmProviders) > 0 {
-		providerName = cfg.System.LlmProviders[0].Name
+	// Create LLM client — provider resolution is handled internally by the factory.
+	llmClient, providerName, err := llm.NewProviderFromConfig(cfg.System, selectedProvider)
+	if err != nil {
+		log.Fatalf("failed to create LLM client: %v", err)
 	}
-
-	var llmClient llm.LLM
-	if providerName != "" {
-		provCfg, err := cfg.System.ResolveProvider(providerName)
-		if err != nil {
-			log.Fatalf("failed to resolve provider %q: %v", providerName, err)
-		}
-
-		llmClient, err = llm.NewProvider(providerName, provCfg, config.DefaultWorkspaceConfig())
-		if err != nil {
-			log.Fatalf("failed to create provider %q: %v", providerName, err)
-		}
-	} else {
-		// Fallback: no providers configured, use OpenAI-compatible client with defaults.
+	if llmClient == nil {
+		// No providers configured; fall back to a default OpenAI-compatible client.
 		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
 	}
-
-	// providerName flows into LLM clients (Client or Provider) via NewClientWithProvider or direct field set,
-	// and is surfaced in DEBUG logs via llmClient.ProviderInfo().Name.
 
 	// Initialize memory store — path derived from environment, not hardcoded.
 	// The server communicates with the environment via OpenShell; the store
