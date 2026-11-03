@@ -9,9 +9,9 @@ import (
 )
 
 // handleWorkspacesCreate delegates workspace creation to the agent server.
-func handleWorkspacesCreate(ctx context.Context, args []string) error {
+func handleWorkspacesCreate(ctx context.Context, args []string, purpose string, tags []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: norman workspaces create <name>")
+		return fmt.Errorf("usage: norman workspaces create <name> [--purpose \"text\" | -f <file>] [--tags tag1,tag2]")
 	}
 
 	name := args[0]
@@ -21,10 +21,15 @@ func handleWorkspacesCreate(ctx context.Context, args []string) error {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
 
-	path := "/home/user/workspaces/" + name
+	var purposePtr *string
+	if purpose != "" {
+		purposePtr = &purpose
+	}
+
 	body := protocol.WorkspaceCreateRequest{
-		Name: name,
-		Path: path,
+		Name:    name,
+		Purpose: purposePtr,
+		Tags:    &tags,
 	}
 
 	rsp, err := client.CreateWorkspace(ctx, body)
@@ -47,6 +52,56 @@ func handleWorkspacesCreate(ctx context.Context, args []string) error {
 
 	if ws != nil && ws.Status != nil {
 		fmt.Printf("  Status: %s\n", string(*ws.Status))
+	}
+	return nil
+}
+
+// handleWorkspaceUpdate updates a workspace's purpose, scope, or tags.
+func handleWorkspaceUpdate(ctx context.Context, args []string, purpose string, tags []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: norman workspaces update <name> [--purpose \"text\"] [--tags tag1,tag2]")
+	}
+
+	name := args[0]
+
+	// Validate at least one update parameter is provided.
+	if purpose == "" && len(tags) == 0 {
+		return fmt.Errorf("at least one of --purpose or --tags must be provided")
+	}
+
+	client, err := getProtocolClient()
+	if err != nil {
+		return fmt.Errorf("failed to create client: %v", err)
+	}
+
+	var purposePtr *string
+	if purpose != "" {
+		purposePtr = &purpose
+	}
+
+	body := protocol.UpdateWorkspaceJSONRequestBody{
+		Purpose: purposePtr,
+		Tags:    &tags,
+	}
+
+	rsp, err := client.UpdateWorkspace(ctx, name, body)
+	if err != nil {
+		return fmt.Errorf("error updating workspace '%s': %v", name, err)
+	}
+
+	parsed, err := protocol.ParseUpdateWorkspaceResponse(rsp)
+	if err != nil {
+		return fmt.Errorf("error parsing response: %v", err)
+	}
+
+	if parsed.StatusCode() != 200 {
+		return fmt.Errorf("server error (%d): %s", parsed.StatusCode(), string(parsed.GetBody()))
+	}
+
+	ws := parsed.GetJSON200()
+	fmt.Printf("Workspace '%s' updated successfully\n", name)
+	if ws != nil && ws.Purpose != nil {
+		fmt.Printf("  Purpose: %s\n", *ws.Purpose)
 	}
 	return nil
 }

@@ -4,7 +4,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
+
+	"golang.org/x/term"
 
 	"github.com/urfave/cli/v3"
 )
@@ -89,22 +93,56 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 				Usage: "Manage workspaces",
 				Description: `workspaces — Manage workspaces
 
-Usage: norman workspaces <subcommand> [args...]
-
-Commands:
-  create <name>       Create a new workspace directory
-  list                List available workspaces and their sessions
-  stop <name>         Stop a workspace (write snapshot + free sandbox)
-  restore <name>      Restore a stopped workspace to active (replay snapshot)
-  purge <name>        Permanently delete a workspace (requires --confirm)`,
+Usage: norman workspaces <subcommand> [args...]`,
 				Commands: []*cli.Command{
 					{
 						Name:  "create",
 						Usage: "Create a new workspace directory",
 						Description: `Creates a new workspace directory and registers it with the agent server.
-The workspace name must be alphanumeric (underscores and hyphens allowed).`,
+The workspace name must be alphanumeric (underscores and hyphens allowed).
+Purpose can be provided inline (--purpose "text"), from a file (-f <path>), or piped via stdin.
+Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "purpose",
+								Usage: "Inline purpose description (short text)",
+							},
+							&cli.StringFlag{
+								Name:    "file",
+								Aliases: []string{"f"},
+								Usage:   "Read purpose from a local text/markdown file",
+							},
+							&cli.StringSliceFlag{
+								Name:  "tags",
+								Usage: "Domain tags for skill activation matching (e.g., grpc,migration)",
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							err := handleWorkspacesCreate(ctx, cmd.Args().Slice())
+							purpose := ""
+
+							// Priority: --purpose > -f > stdin pipe.
+							if p := cmd.String("purpose"); p != "" {
+								purpose = p
+							} else if f := cmd.String("file"); f != "" {
+								data, err := os.ReadFile(f)
+								if err != nil {
+									return fmt.Errorf("failed to read purpose file %q: %v", f, err)
+								}
+								purpose = strings.TrimSpace(string(data))
+							} else if !term.IsTerminal(int(os.Stdin.Fd())) {
+								data, err := io.ReadAll(os.Stdin)
+								if err != nil {
+									return fmt.Errorf("failed to read stdin: %v", err)
+								}
+								purpose = strings.TrimSpace(string(data))
+							}
+
+							var tags []string
+							if t := cmd.StringSlice("tags"); len(t) > 0 {
+								tags = t
+							}
+
+							err := handleWorkspacesCreate(ctx, cmd.Args().Slice(), purpose, tags)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 							}
@@ -167,6 +205,58 @@ The workspace name must be alphanumeric (underscores and hyphens allowed).`,
 								Name:  "confirm",
 								Usage: "Confirm the destructive operation",
 							},
+						},
+					},
+					{
+						Name:  "update",
+						Usage: "Update a workspace's purpose or tags",
+						Description: `Partially updates a workspace. Only provided fields are changed;
+omitted fields retain their current values.
+Purpose can be provided inline (--purpose "text"), from a file (-f <path>), or piped via stdin.`,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "purpose",
+								Usage: "Inline purpose description (replaces existing)",
+							},
+							&cli.StringFlag{
+								Name:    "file",
+								Aliases: []string{"f"},
+								Usage:   "Read purpose from a local text/markdown file",
+							},
+							&cli.StringSliceFlag{
+								Name:  "tags",
+								Usage: "Domain tags for skill activation matching (replaces existing)",
+							},
+						},
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							var purpose string
+
+							// Priority: --purpose > -f > stdin pipe.
+							if p := cmd.String("purpose"); p != "" {
+								purpose = p
+							} else if f := cmd.String("file"); f != "" {
+								data, err := os.ReadFile(f)
+								if err != nil {
+									return fmt.Errorf("failed to read purpose file %q: %v", f, err)
+								}
+								purpose = strings.TrimSpace(string(data))
+							} else if !term.IsTerminal(int(os.Stdin.Fd())) {
+								data, err := io.ReadAll(os.Stdin)
+								if err != nil {
+									return fmt.Errorf("failed to read stdin: %v", err)
+								}
+								purpose = strings.TrimSpace(string(data))
+							}
+
+							var tags []string
+							if t := cmd.StringSlice("tags"); len(t) > 0 {
+								tags = t
+							}
+							err := handleWorkspaceUpdate(ctx, cmd.Args().Slice(), purpose, tags)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							}
+							return err
 						},
 					},
 				},

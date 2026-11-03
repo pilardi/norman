@@ -57,6 +57,13 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Check if workspace already exists (409 Conflict).
+	if _, ok := s.workspaces[req.Name]; ok {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"error": fmt.Sprintf("workspace '%s' already exists", req.Name),
+		})
+	}
+
 	now := time.Now()
 	id := uuid.New()
 	status := protocol.WorkspaceStatusActive

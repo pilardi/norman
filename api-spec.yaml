@@ -954,19 +954,15 @@ components:
   schemas:
     WorkspaceCreateRequest:
       type: object
-      required: [name, path]
+      required: [name]
       properties:
         name:
           type: string
           description: Unique workspace identifier
           example: "my-project"
-        path:
-          type: string
-          description: Absolute path to the workspace directory
-          example: "/home/user/projects/my-project"
         purpose:
           type: string
-          description: The problem or domain this workspace addresses
+          description: The problem or domain this workspace addresses. Can be a short sentence or a longer description (e.g., from a markdown file).
           example: "API migration for X service"
         scope:
           type: array
