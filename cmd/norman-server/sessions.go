@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/norman/norman/pkg/version"
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/protocol"
+	"github.com/norman/norman/pkg/version"
 )
 
 // ListSessions returns all sessions.
