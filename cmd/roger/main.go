@@ -70,6 +70,7 @@ func notifyCommand() *cli.Command {
 
 	return &cli.Command{
 		Name:        "notify",
+		Aliases:     []string{"n"},
 		Description: "Push a notification to the connected user",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -137,6 +138,7 @@ func notifyCommand() *cli.Command {
 func pingCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "ping",
+		Aliases:     []string{"pg"},
 		Description: "Send a health-check event to the current session",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			envCtx, err := ensureEnv()
@@ -182,6 +184,7 @@ func pingCommand() *cli.Command {
 func statusCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "status",
+		Aliases:     []string{"st"},
 		Description: "Query workspace state (JSON on stdout)",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			envCtx, err := ensureEnv()
@@ -217,6 +220,7 @@ func logCommand() *cli.Command {
 
 	return &cli.Command{
 		Name:        "log",
+		Aliases:     []string{"lg"},
 		Description: "Tail recent events for the current session",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
