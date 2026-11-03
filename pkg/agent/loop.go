@@ -350,42 +350,8 @@ type AgentResponse struct {
 	TaskID      string   `json:"task_id,omitempty"`
 }
 
-// SendMessage processes a chat message synchronously and returns a structured response.
-// This is the primary interface for the chat-first agent model.
-func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string) (*AgentResponse, error) {
-	taskID := uuid.New().String()
-
-	task := &Task{
-		ID:        taskID,
-		Prompt:    message,
-		Status:    protocol.TaskStatusPending,
-		SessionId: sessionID,
-		CreatedAt: time.Now(),
-	}
-
-	l.mu.Lock()
-	l.tasks[taskID] = task
-	l.mu.Unlock()
-
-	// Process the message synchronously via execute (blocks until completion).
-	l.execute(ctx, task)
-
-	// Build response.
-	resp := &AgentResponse{
-		SessionID: sessionID,
-		Response:  string(task.Output),
-	}
-
-	if task.Error != "" {
-		resp.Response = fmt.Sprintf("Error: %s", task.Error)
-	}
-
-	return resp, nil
-}
-
-// SendMessageWithProvider is like SendMessage but accepts a provider name that gets
-// attached to the task for LLM configuration resolution. This is the API-compatible
-// entry point used by the HTTP server's /sessions/:id/messages endpoint.
+// SendMessageWithProvider processes a chat message and returns a structured response.
+// This is the only public entry point for processing messages in the agent loop.
 func (l *Loop) SendMessageWithProvider(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
 	taskID := uuid.New().String()
 
@@ -413,34 +379,6 @@ func (l *Loop) SendMessageWithProvider(ctx context.Context, sessionID string, me
 
 	if task.Error != "" {
 		resp.Response = fmt.Sprintf("Error: %s", task.Error)
-	}
-
-	return resp, nil
-}
-
-// SendMessageWithTask processes a chat message and optionally creates an emergent task.
-// If createTask is true, the agent will also invoke CreateTask internally to spawn
-// a background task after processing the message. The response includes task_created
-// and task_id when applicable.
-func (l *Loop) SendMessageWithTask(ctx context.Context, sessionID string, message string, createTask bool) (*AgentResponse, error) {
-	// First, process the message normally (no provider override).
-	resp, err := l.SendMessage(ctx, sessionID, message)
-	if err != nil {
-		return nil, err
-	}
-
-	// If task creation is requested, create an emergent task.
-	if createTask && resp.Response != "" {
-		task, err := l.CreateTask(ctx, message, map[string]string{
-			"priority": "normal",
-		})
-		if err != nil {
-			log.Printf("agent: failed to create emergent task: %v", err)
-			return resp, nil // non-fatal; return response without task info
-		}
-
-		resp.TaskCreated = true
-		resp.TaskID = task.ID
 	}
 
 	return resp, nil
