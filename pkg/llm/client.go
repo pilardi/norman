@@ -182,6 +182,15 @@ func (c *Client) ProviderInfo() ProviderMetadata {
 	}
 }
 
+// Logf logs with a [llm][{provider}] prefix.
+func (c *Client) Logf(format string, args ...any) {
+	name := c.ProviderName
+	if name == "" {
+		name = ProviderOpenAI
+	}
+	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
+}
+
 // --- SSE Streaming Reader ---
 
 type sseStreamReader struct {
@@ -210,7 +219,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		data := bytes.TrimPrefix([]byte(line), []byte("data: "))
 
 		// Debug: expose raw SSE data for troubleshooting.
-		log.Printf("[llm] SSE raw data: %s", string(data))
+		log.Printf("[llm][openai] SSE raw data: %s", string(data))
 
 		var delta map[string]interface{}
 		if err := json.Unmarshal(data, &delta); err != nil {
@@ -222,7 +231,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		for k := range delta {
 			keys = append(keys, k)
 		}
-		log.Printf("[llm] SSE delta keys: %v", keys)
+		log.Printf("[llm][openai] SSE delta keys: %v", keys)
 
 		chunk := Chunk{}
 
@@ -240,7 +249,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 			}
 		}
 
-		log.Printf("[llm] SSE parsed: delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][openai] SSE parsed: delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
 
 		return chunk, nil
 	}

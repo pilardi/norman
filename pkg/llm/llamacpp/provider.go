@@ -156,7 +156,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("read response body: %w", err))
 	}
 
-	log.Printf("[llm] Complete raw response body: %s", string(bodyBytes))
+	p.Logf("Complete raw response body: %s", string(bodyBytes))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, mapHTTPError(resp.StatusCode, string(bodyBytes))
@@ -318,6 +318,15 @@ func (p *Provider) ProviderInfo() llm.ProviderMetadata {
 	}
 }
 
+// Logf logs with a [llm][{provider}] prefix.
+func (p *Provider) Logf(format string, args ...any) {
+	name := p.providerName
+	if name == "" {
+		name = ProviderName
+	}
+	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
+}
+
 // --- SSE Streaming Reader ---
 
 type sseStreamReader struct {
@@ -343,7 +352,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 	data := strings.TrimPrefix(line, "data: ")
 
 	// Debug: expose raw SSE data for troubleshooting.
-	log.Printf("[llm] SSE raw data: %s", data)
+	log.Printf("[llm][llamacpp] SSE raw data: %s", data)
 
 	// Native /completion format: {"content":"...","stop_reason":"..."}
 	var nativeResp struct {
@@ -351,7 +360,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 		StopReason string `json:"stop_reason,omitempty"`
 	}
 	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
-		log.Printf("[llm] SSE parsed (native): content=%q stop_reason=%q", nativeResp.Content, nativeResp.StopReason)
+		log.Printf("[llm][llamacpp] SSE parsed (native): content=%q stop_reason=%q", nativeResp.Content, nativeResp.StopReason)
 		return llm.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
 	}
 
@@ -367,11 +376,11 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 		if fr, ok := delta["finish_reason"].(string); ok {
 			chunk.FinishReason = fr
 		}
-		log.Printf("[llm] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][llamacpp] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
 		return chunk, nil
 	}
 
-	log.Printf("[llm] SSE unparseable data: %s", data)
+	log.Printf("[llm][llamacpp] SSE unparseable data: %s", data)
 	return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 }
 

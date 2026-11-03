@@ -259,6 +259,19 @@ func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 	return l
 }
 
+// logf logs with a [llm][{provider}] prefix using the current LLM client's provider name.
+func (l *Loop) logf(format string, args ...any) {
+	if l.llmClient == nil {
+		log.Printf("[llm] "+format, args...)
+		return
+	}
+	name := l.llmClient.ProviderInfo().Name
+	if name == "" {
+		name = "unknown"
+	}
+	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
+}
+
 // WithDebug enables verbose debug logging of messages sent to the LLM.
 func (l *Loop) WithDebug(on bool) *Loop {
 	l.debug = on
@@ -812,7 +825,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		_ = stream.Close()
 
 		responseText := fullText.String()
-		log.Printf("[llm] accumulated response text: %q", responseText)
+		l.logf("accumulated response text: %q", responseText)
 
 		// Track token usage for budget
 		if l.budget != nil {
@@ -892,7 +905,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 
 		// No tool calls — this is the final text response
 		task.Output = []byte(responseText)
-		log.Printf("[llm] setting task.Output to: %q", string(task.Output))
+		l.logf("setting task.Output to: %q", string(task.Output))
 		task.Status = protocol.TaskStatusCompleted
 
 		// Persist the final assistant turn (item #5)
