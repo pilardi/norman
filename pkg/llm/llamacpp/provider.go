@@ -91,6 +91,7 @@ type Provider struct {
 	CacheSize         int    // max KV cache tokens (n_ctx)
 	CacheType         string // "fq" or quantized type
 	EmbeddingEndpoint string // embedding endpoint path; "" = auto-detect, "/api/v1/embeddings", "/embeddings"
+	providerName      string // configured provider name (e.g. "local-llamacpp")
 }
 
 // NewProvider creates a provider configured from workspace config and
@@ -155,7 +156,7 @@ func (p *Provider) Complete(ctx context.Context, req llm.CompletionRequest) (*ll
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("read response body: %w", err))
 	}
 
-	log.Printf("[llm] Complete raw response body: %s", string(bodyBytes))
+	p.Logf("Complete raw response body: %s", string(bodyBytes))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, mapHTTPError(resp.StatusCode, string(bodyBytes))
@@ -228,7 +229,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.CompletionRequest) (llm.S
 		return nil, wrapError(llm.ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return &sseStreamReader{resp: resp}, nil
+	return &sseStreamReader{resp: resp, providerName: p.providerName}, nil
 }
 
 // EmbedText returns a float32 vector for the given text.
@@ -304,8 +305,12 @@ func (p *Provider) EmbedText(ctx context.Context, text string) ([]float32, error
 
 // ProviderInfo returns metadata about the underlying llama.cpp provider.
 func (p *Provider) ProviderInfo() llm.ProviderMetadata {
+	name := p.providerName
+	if name == "" {
+		name = ProviderName // fallback to type constant "llamacpp"
+	}
 	return llm.ProviderMetadata{
-		Name:             ProviderName,
+		Name:             name,
 		SupportsTools:    true,
 		SupportsStream:   true,
 		MaxTokensPerCall: p.MaxTokens,
@@ -313,10 +318,20 @@ func (p *Provider) ProviderInfo() llm.ProviderMetadata {
 	}
 }
 
+// Logf logs with a [llm][{provider}] prefix.
+func (p *Provider) Logf(format string, args ...any) {
+	name := p.providerName
+	if name == "" {
+		name = ProviderName
+	}
+	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
+}
+
 // --- SSE Streaming Reader ---
 
 type sseStreamReader struct {
-	resp *http.Response
+	resp         *http.Response
+	providerName string
 }
 
 func (s *sseStreamReader) Next() (llm.Chunk, error) {
@@ -338,7 +353,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 	data := strings.TrimPrefix(line, "data: ")
 
 	// Debug: expose raw SSE data for troubleshooting.
-	log.Printf("[llm] SSE raw data: %s", data)
+	log.Printf("[llm][%s] SSE raw data: %s", s.providerName, data)
 
 	// Native /completion format: {"content":"...","stop_reason":"..."}
 	var nativeResp struct {
@@ -346,7 +361,7 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 		StopReason string `json:"stop_reason,omitempty"`
 	}
 	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
-		log.Printf("[llm] SSE parsed (native): content=%q stop_reason=%q", nativeResp.Content, nativeResp.StopReason)
+		log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
 		return llm.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
 	}
 
@@ -362,11 +377,11 @@ func (s *sseStreamReader) Next() (llm.Chunk, error) {
 		if fr, ok := delta["finish_reason"].(string); ok {
 			chunk.FinishReason = fr
 		}
-		log.Printf("[llm] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", s.providerName, chunk.Delta, chunk.FinishReason)
 		return chunk, nil
 	}
 
-	log.Printf("[llm] SSE unparseable data: %s", data)
+	log.Printf("[llm][%s] SSE unparseable data: %s", s.providerName, data)
 	return llm.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
 }
 
@@ -438,6 +453,11 @@ func WithNativeEmbeddings() Option {
 // WithOpenAICompatibleEmbeddings explicitly uses the /api/v1/embeddings endpoint.
 func WithOpenAICompatibleEmbeddings() Option {
 	return func(p *Provider) { p.EmbeddingEndpoint = "/api/v1/embeddings" }
+}
+
+// WithProviderName sets the configured provider name for logging/debugging.
+func WithProviderName(name string) Option {
+	return func(p *Provider) { p.providerName = name }
 }
 
 // normalizeQuant ensures the quant suffix in a model identifier has the UD- prefix

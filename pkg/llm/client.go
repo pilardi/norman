@@ -18,13 +18,14 @@ import (
 
 // Client implements the LLM interface for OpenAI-compatible endpoints.
 type Client struct {
-	BaseURL     string
-	APIKey      string
-	Model       string
-	Temperature float64
-	MaxTokens   int
-	HTTPClient  *http.Client
-	Timeout     time.Duration
+	BaseURL      string
+	APIKey       string
+	Model        string
+	Temperature  float64
+	MaxTokens    int
+	ProviderName string // configured provider name (e.g. "local-llamacpp", "unsloth")
+	HTTPClient   *http.Client
+	Timeout      time.Duration
 }
 
 // NewClient creates a client configured from the system config.
@@ -45,11 +46,12 @@ func NewClient(cfg *config.SystemConfig) *Client {
 // NewClientWithProvider creates a client configured from a specific provider config.
 func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
 	return &Client{
-		BaseURL:     provCfg.Endpoint,
-		Model:       provCfg.Model,
-		Temperature: provCfg.Temperature,
-		MaxTokens:   provCfg.MaxTokens,
-		APIKey:      provCfg.ApiKey,
+		BaseURL:      provCfg.Endpoint,
+		Model:        provCfg.Model,
+		Temperature:  provCfg.Temperature,
+		MaxTokens:    provCfg.MaxTokens,
+		APIKey:       provCfg.ApiKey,
+		ProviderName: provCfg.Name,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -160,15 +162,20 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 	}
 
 	return &sseStreamReader{
-		resp: resp,
-		done: make(chan struct{}),
+		resp:         resp,
+		done:         make(chan struct{}),
+		providerName: c.ProviderName,
 	}, nil
 }
 
 // ProviderInfo returns metadata about the underlying provider.
 func (c *Client) ProviderInfo() ProviderMetadata {
+	name := c.ProviderName
+	if name == "" {
+		name = ProviderOpenAI // fallback to type constant "openai"
+	}
 	return ProviderMetadata{
-		Name:             ProviderOpenAI,
+		Name:             name,
 		SupportsTools:    true,
 		SupportsStream:   true,
 		MaxTokensPerCall: c.MaxTokens,
@@ -176,11 +183,21 @@ func (c *Client) ProviderInfo() ProviderMetadata {
 	}
 }
 
+// Logf logs with a [llm][{provider}] prefix.
+func (c *Client) Logf(format string, args ...any) {
+	name := c.ProviderName
+	if name == "" {
+		name = ProviderOpenAI
+	}
+	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
+}
+
 // --- SSE Streaming Reader ---
 
 type sseStreamReader struct {
-	resp *http.Response
-	done chan struct{}
+	resp         *http.Response
+	done         chan struct{}
+	providerName string
 }
 
 func (s *sseStreamReader) Next() (Chunk, error) {
@@ -204,7 +221,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		data := bytes.TrimPrefix([]byte(line), []byte("data: "))
 
 		// Debug: expose raw SSE data for troubleshooting.
-		log.Printf("[llm] SSE raw data: %s", string(data))
+		log.Printf("[llm][%s] SSE raw data: %s", s.providerName, string(data))
 
 		var delta map[string]interface{}
 		if err := json.Unmarshal(data, &delta); err != nil {
@@ -216,7 +233,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		for k := range delta {
 			keys = append(keys, k)
 		}
-		log.Printf("[llm] SSE delta keys: %v", keys)
+		log.Printf("[llm][%s] SSE delta keys: %v", s.providerName, keys)
 
 		chunk := Chunk{}
 
@@ -234,7 +251,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 			}
 		}
 
-		log.Printf("[llm] SSE parsed: delta=%q finish_reason=%q", chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q", s.providerName, chunk.Delta, chunk.FinishReason)
 
 		return chunk, nil
 	}
