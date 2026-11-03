@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/norman/norman/pkg/version"
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/protocol"
 )
@@ -178,7 +179,7 @@ func (s *server) updateWorkspaceActivity(sessionID string) {
 	}
 }
 
-// HealthCheck returns service health with scheduler status.
+// HealthCheck returns service health with scheduler status and server version.
 func (s *server) HealthCheck(c echo.Context) error {
 	count, lastTick := s.scheduler.Status()
 	resp := map[string]interface{}{
@@ -188,6 +189,8 @@ func (s *server) HealthCheck(c echo.Context) error {
 			"registered_tasks": count,
 			"last_tick":        lastTick.Format(time.RFC3339),
 		},
+		"version":    version.Version,
+		"build_date": version.Date,
 	}
 	return c.JSON(http.StatusOK, resp)
 }

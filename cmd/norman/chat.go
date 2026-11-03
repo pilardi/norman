@@ -160,6 +160,18 @@ func handleChat(args []string) {
 
 	// If only workspace provided (no session ID), resolve/create one.
 	if workspaceName != "" && sessionID == "" {
+		// Fetch server version info for diagnostic output.
+		client, err := getProtocolClient()
+		if err == nil {
+			rsp, err := client.GetVersion(context.Background())
+			if err == nil {
+				parsed, _ := protocol.ParseGetVersionResponse(rsp)
+				v := parsed.GetJSON200()
+				u := serverURL()
+				fmt.Printf("Connected to %s (%s %s)\n", u, v.Version, v.BuildDate)
+			}
+		}
+
 		fmt.Printf("Resolving workspace '%s'...\n", workspaceName)
 
 		// Resolve workspace name to ID using typed client methods.

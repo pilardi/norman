@@ -158,3 +158,11 @@ func runServer(verbose bool, selectedProvider string) error {
 		return nil
 	}
 }
+
+// GetVersion returns the server build version and timestamp.
+func (s *server) GetVersion(c echo.Context) error {
+	return c.JSON(http.StatusOK, protocol.ServerVersion{
+		Version:   version.Version,
+		BuildDate: version.Date,
+	})
+}

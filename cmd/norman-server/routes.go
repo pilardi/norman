@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/norman/norman/pkg/protocol"
+	"github.com/norman/norman/pkg/version"
 )
 
 // registerRoutes registers all HTTP API routes on the Echo router.
@@ -39,15 +40,25 @@ func registerRoutes(e *echo.Echo, srv *server) {
 		}))
 	}
 
-	// Health check endpoint — includes scheduler status (Phase 4).
+	// Health check endpoint — includes scheduler status and server version (Phase 4).
 	e.GET("/health", func(c echo.Context) error {
 		taskCount, lastTick := srv.scheduler.Status()
 		resp := map[string]interface{}{
 			"status":          "ok",
 			"scheduler_tasks": taskCount,
 			"last_tick":       lastTick.Format(time.RFC3339),
+			"version":         version.Version,
+			"build_date":      version.Date,
 		}
 		return c.JSON(http.StatusOK, resp)
+	})
+
+	// Version endpoint — returns server build version and timestamp.
+	e.GET("/version", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{
+			"version":    version.Version,
+			"build_date": version.Date,
+		})
 	})
 
 	// Config endpoint — returns full system config (with unresolved secret placeholders).
