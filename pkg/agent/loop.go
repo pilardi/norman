@@ -27,15 +27,16 @@ import (
 
 // Task represents an in-flight task (emergent or manual) with its execution state.
 type Task struct {
-	ID         string
-	Prompt     string
-	Status     protocol.TaskStatus
-	Workspace  string
-	SessionId  string
-	Output     []byte
-	Error      string
-	RetryCount int
-	CreatedAt  time.Time
+	ID           string
+	Prompt       string
+	Status       protocol.TaskStatus
+	Workspace    string
+	SessionId    string
+	Output       []byte
+	Error        string
+	ProviderName string // LLM provider name used for this task (empty = workspace default)
+	RetryCount   int
+	CreatedAt    time.Time
 }
 
 // Loop is the main agent loop managing session messages and emergent/manual task execution.
@@ -342,11 +343,12 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 	taskID := uuid.New().String()
 
 	task := &Task{
-		ID:        taskID,
-		Prompt:    message,
-		Status:    protocol.TaskStatusPending,
-		SessionId: sessionID,
-		CreatedAt: time.Now(),
+		ID:           taskID,
+		Prompt:       message,
+		Status:       protocol.TaskStatusPending,
+		SessionId:    sessionID,
+		ProviderName: providerName,
+		CreatedAt:    time.Now(),
 	}
 
 	l.mu.Lock()
@@ -625,7 +627,13 @@ func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 
 	// Try LLM-based multi-turn loop first; fall back to shell-only if no client.
 	if l.llmClient != nil {
-		task.Output = l.executeWithLLM(ctx, task, sandboxName, providerName)
+		output, err := l.executeWithLLM(ctx, task, sandboxName, providerName)
+		if err != nil {
+			task.Status = protocol.TaskStatusFailed
+			task.Error = err.Error()
+			return
+		}
+		task.Output = output
 	} else {
 		// Legacy shell-only path: inject raw sources into prompt and run as a single command.
 		prompt := task.Prompt
@@ -695,9 +703,26 @@ func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 // executeWithLLM runs a multi-turn agent loop using the LLM client.
 // It builds context from session history + raw sources + skills, calls the LLM,
 // parses tool calls if present, executes them in the sandbox, and loops back.
-func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string, providerName string) []byte {
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string, providerName string) ([]byte, error) {
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
+
+	// Resolve model/temperature/max_tokens — use workspace defaults.
+	model := l.Model(task.Workspace)
+	temp := l.Temperature(task.Workspace)
+	maxTokens := l.MaxTokens(task.Workspace)
+
+	// Validate provider early — if explicitly requested but doesn't exist, fail hard.
+	if providerName != "" {
+		pc, err := l.config.System.ResolveProvider(providerName)
+		if err != nil {
+			return nil, fmt.Errorf("provider %q not found: %w", providerName, err)
+		}
+		// Provider exists — apply its settings.
+		model = pc.Model
+		temp = pc.Temperature
+		maxTokens = pc.MaxTokens
+	}
 
 	// Multi-turn loop: max 8 iterations to prevent infinite loops
 	maxTurns := 8
@@ -709,27 +734,12 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			Step:    intPtr(6 + turn),
 		})
 
-		// Build tools from active skills and pass to LLM
+		// Build tools from active skills and pass to LLM.
 		tools := l.buildTools()
-
-		// Resolve model/temperature/max_tokens — use provider override if specified.
-		model := l.Model(task.Workspace)
-		temp := l.Temperature(task.Workspace)
-		maxTokens := l.MaxTokens(task.Workspace)
-		if providerName != "" {
-			pc, err := l.config.System.ResolveProvider(providerName)
-			if err != nil {
-				log.Printf("agent: failed to resolve provider %q: %v; falling back to workspace defaults", providerName, err)
-			} else {
-				model = pc.Model
-				temp = pc.Temperature
-				maxTokens = pc.MaxTokens
-			}
-		}
 
 		// Debug: log what's being sent to the LLM.
 		if l.debug {
-			log.Printf("agent: DEBUG - sending %d messages to model (model=%s)", len(messages), model)
+			log.Printf("agent: DEBUG - sending %d messages to model (provider=%s, model=%s)", len(messages), providerName, model)
 			for i, m := range messages {
 				preview := m.Content
 				if len(preview) > 200 {
@@ -751,7 +761,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			log.Printf("agent: LLM stream failed at turn %d: %v", turn, err)
 			task.Status = protocol.TaskStatusFailed
 			task.Error = fmt.Sprintf("LLM API error: %v", err)
-			return []byte(task.Error)
+			return nil, fmt.Errorf("LLM API error at turn %d: %v", turn, err)
 		}
 
 		var fullText strings.Builder
@@ -765,7 +775,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				task.Status = protocol.TaskStatusFailed
 				task.Error = fmt.Sprintf("streaming failed at turn %d: %v", turn, err)
 				_ = stream.Close()
-				return []byte(task.Error)
+				return nil, fmt.Errorf("streaming failed at turn %d: %v", turn, err)
 			}
 			if chunk.FinishReason == "[done]" {
 				done = true
@@ -890,7 +900,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			log.Printf("agent: failed to persist final turn for task %s: %v", task.ID, err)
 		}
 
-		return task.Output
+		return task.Output, nil
 	}
 
 	// Max turns reached without a clean completion
@@ -898,7 +908,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("reached max turns (%d) without completing", maxTurns)
 	}
-	return task.Output
+	return task.Output, nil
 }
 
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
