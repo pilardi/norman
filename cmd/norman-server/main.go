@@ -106,7 +106,7 @@ func strPtr(s string) *string { return &s }
 func intPtr(i int) *int { return &i }
 
 func runServer(verbose bool, selectedProvider string) error {
-	fmt.Fprintf(os.Stderr, "Norman agent server starting...\n")
+	fmt.Fprintf(os.Stderr, "%s - server starting...\n", version.String("norman-server"))
 
 	startTime := time.Now()
 	srv := bootstrap(verbose, selectedProvider)
