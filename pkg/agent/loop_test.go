@@ -242,12 +242,17 @@ func TestExecuteBudgetCheckAtStart(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 	fakeWSHub := &FakeWSHub{}
-	fakeClient := NewFakeOpenShellClient()
 
 	cfg := config.DefaultConfig()
 	// Create a minimal activator (empty registry is fine for this test)
 	act := skills.NewActivator(nil, 0)
-	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithBudget(budget.NewBudgetConfig(10000))
+
+	mockClient := &mockLLMClient{
+		responses: []llm.CompletionResponse{{Choices: []llm.ResponseChoice{{Message: llm.Message{Role: "assistant", Content: "done"}}}}},
+	}
+
+	fakeOpenShell := NewFakeOpenShellClient()
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeOpenShell).WithBudget(budget.NewBudgetConfig(10000)).WithLLMClient(mockClient)
 
 	ctx := context.Background()
 	taskID := "test-task-009"
@@ -290,11 +295,16 @@ func TestExecuteCallsCheckTwice(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 	fakeWSHub := &FakeWSHub{}
-	fakeClient := NewFakeOpenShellClient()
 
 	cfg := config.DefaultConfig()
 	act := skills.NewActivator(nil, 0)
-	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithBudget(budget.NewBudgetConfig(10000))
+
+	mockClient := &mockLLMClient{
+		responses: []llm.CompletionResponse{{Choices: []llm.ResponseChoice{{Message: llm.Message{Role: "assistant", Content: "done"}}}}},
+	}
+
+	fakeOpenShell := NewFakeOpenShellClient()
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeOpenShell).WithBudget(budget.NewBudgetConfig(10000)).WithLLMClient(mockClient)
 
 	ctx := context.Background()
 	taskID := "test-task-010"
@@ -483,17 +493,27 @@ func TestRawSourcesContextInjection(t *testing.T) {
 		t.Fatalf("snapshot: %v", err)
 	}
 
-	// Create a loop with raw sources and a fake client that captures the prompt.
+	// Create a loop with raw sources and a mock LLM client that captures the request.
 	store, err := memory.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	fakeWSHub := &FakeWSHub{}
-	fakeClient := NewFakeOpenShellClient()
 
-	loop := New(nil, store, rs, nil, fakeWSHub, fakeClient)
+	var capturedRequests []llm.CompletionRequest
+	mockClient := &mockLLMClient{
+		streamFn: func(ctx context.Context, req llm.CompletionRequest) (llm.StreamReader, error) {
+			capturedRequests = append(capturedRequests, req)
+			return newMockStream(llm.CompletionResponse{
+				Choices: []llm.ResponseChoice{{Message: llm.Message{Role: "assistant", Content: "done"}}},
+			}), nil
+		},
+	}
 
-	// Execute a task — the injected context should appear in the prompt sent to RunCommand.
+	fakeOpenShell := NewFakeOpenShellClient()
+	loop := New(nil, store, rs, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
+
+	// Execute a task — raw sources should be injected into LLM messages.
 	task := &Task{
 		ID:        "test-task-001",
 		Prompt:    "Run ls -la",
@@ -502,19 +522,25 @@ func TestRawSourcesContextInjection(t *testing.T) {
 
 	loop.execute(context.Background(), task)
 
-	// Verify the captured prompt contains raw source context markers.
-	capturedPrompt := fakeClient.CapturedPrompt()
-	t.Logf("Captured prompt (first 800 chars):\n%s", capturedPrompt[:min(800, len(capturedPrompt))])
-	if !strings.Contains(capturedPrompt, "## Raw Environment Context") {
-		t.Errorf("expected injected context header in prompt; got:\n%s", capturedPrompt[:min(500, len(capturedPrompt))])
+	// Verify the captured request contains raw source context in the messages.
+	if len(capturedRequests) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(capturedRequests))
 	}
-	if !strings.Contains(capturedPrompt, "HOME env var") {
+	req := capturedRequests[0]
+	allContent := ""
+	for _, m := range req.Messages {
+		allContent += m.Content
+	}
+	if !strings.Contains(allContent, "## Environment Context") {
+		t.Errorf("expected injected context header; got:\n%s", allContent[:min(800, len(allContent))])
+	}
+	if !strings.Contains(allContent, "HOME env var") {
 		t.Error("expected 'HOME env var' source name in injected context")
 	}
-	if !strings.Contains(capturedPrompt, "Config read") {
+	if !strings.Contains(allContent, "Config read") {
 		t.Error("expected 'Config read' source name in injected context")
 	}
-	if !strings.Contains(capturedPrompt, "Run ls -la") {
+	if !strings.Contains(allContent, "Run ls -la") {
 		t.Error("expected original prompt text after injected context")
 	}
 }
@@ -526,9 +552,13 @@ func TestRawSourcesNilInLoop(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 	fakeWSHub := &FakeWSHub{}
-	fakeClient := NewFakeOpenShellClient()
 
-	loop := New(nil, store, nil, nil, fakeWSHub, fakeClient)
+	mockClient := &mockLLMClient{
+		responses: []llm.CompletionResponse{{Choices: []llm.ResponseChoice{{Message: llm.Message{Role: "assistant", Content: "done"}}}}},
+	}
+
+	fakeOpenShell := NewFakeOpenShellClient()
+	loop := New(nil, store, nil, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
 
 	task := &Task{
 		ID:        "test-task-002",
@@ -703,29 +733,6 @@ func TestSendMessageMultiTurnMaxTurnsReached(t *testing.T) {
 	// Should fail with max turns message after 8 iterations
 	if !strings.Contains(resp.Response, "max turns") && !strings.Contains(resp.Response, "reached") {
 		t.Errorf("expected max turns error, got: %s", resp.Response)
-	}
-}
-
-func TestSendMessageShellOnlyFallback(t *testing.T) {
-	store, err := memory.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	fakeWSHub := &FakeWSHub{}
-	fakeClient := NewFakeOpenShellClient()
-
-	act := skills.NewActivator(nil, 0)
-
-	// No LLM client wired — should fall back to shell-only path
-	loop := New(nil, store, nil, act, fakeWSHub, fakeClient) // no WithLLMClient call
-
-	resp, err := loop.SendMessage(context.Background(), "session-1", "echo hello world", "")
-	if err != nil {
-		t.Fatalf("SendMessage failed: %v", err)
-	}
-
-	if !strings.Contains(resp.Response, "hello world") {
-		t.Errorf("expected 'hello world' in response, got: %s", resp.Response)
 	}
 }
 

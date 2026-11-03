@@ -610,65 +610,14 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		Step:    intPtr(5),
 	})
 
-	// Try LLM-based multi-turn loop first; fall back to shell-only if no client.
-	if l.llmClient != nil {
-		output, err := l.executeWithLLM(ctx, task, sandboxName)
-		if err != nil {
-			task.Status = protocol.TaskStatusFailed
-			task.Error = err.Error()
-			return
-		}
-		task.Output = output
-	} else {
-		// Legacy shell-only path: inject raw sources into prompt and run as a single command.
-		prompt := task.Prompt
-		if l.rawSources != nil {
-			sources, err := l.rawSources.ListAll()
-			if err != nil {
-				log.Printf("agent: failed to read raw sources for task %s: %v", task.ID, err)
-			} else if len(sources) > 0 {
-				var ctxParts []string
-				ctxParts = append(ctxParts, "## Raw Environment Context")
-				ctxParts = append(ctxParts, "")
-				for _, s := range sources {
-					ctxParts = append(ctxParts, fmt.Sprintf("### %s (%s)", s.Name, s.ID))
-					ctxParts = append(ctxParts, fmt.Sprintf("_Created: %s | Category: %s_", s.CreatedAt.Format(time.RFC3339), s.Category))
-					ctxParts = append(ctxParts, "")
-					ctxParts = append(ctxParts, "```")
-					ctxParts = append(ctxParts, s.Content)
-					ctxParts = append(ctxParts, "```")
-					ctxParts = append(ctxParts, "")
-				}
-				prompt = strings.Join(ctxParts, "\n") + "\n\n---\n\n" + task.Prompt
-			}
-		}
-
-		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, prompt)
-		if err != nil {
-			task.Status = protocol.TaskStatusFailed
-			task.Error = fmt.Sprintf("execution failed (exit %d): %v", exitCode, err)
-		} else if exitCode != 0 {
-			task.Status = protocol.TaskStatusFailed
-			task.Error = fmt.Sprintf("non-zero exit code: %d", exitCode)
-		} else {
-			task.Output = []byte(output)
-			task.Status = protocol.TaskStatusCompleted
-
-			// Persist the assistant turn for shell-only path too (item #5 companion)
-			turnMap := map[string]interface{}{
-				"role":    "assistant",
-				"content": string(task.Output),
-			}
-			if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
-				log.Printf("agent: failed to persist shell-only turn for task %s: %v", task.ID, err)
-			}
-
-			// Also persist the tool call result (the RunCommand itself is a "tool" call)
-			if err := l.store.PersistToolCallResult(task.ID, "shell_command", prompt, output, exitCode); err != nil {
-				log.Printf("agent: failed to persist shell command result for task %s: %v", task.ID, err)
-			}
-		}
+	// Run LLM-based multi-turn loop.
+	output, err := l.executeWithLLM(ctx, task, sandboxName)
+	if err != nil {
+		task.Status = protocol.TaskStatusFailed
+		task.Error = err.Error()
+		return
 	}
+	task.Output = output
 
 	l.pushCompletion(task)
 
