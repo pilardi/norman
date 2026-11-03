@@ -89,9 +89,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 				opts = append(opts, llamacpp.WithOpenAICompatibleEmbeddings())
 			}
 
-			p := llamacpp.NewProvider(wsCfg, llmCfg, opts...)
-			p.SetProviderName(providerName)
-			llmClient = p
+			llmClient = llamacpp.NewProvider(providerName, wsCfg, llmCfg, opts...)
 		default:
 			log.Fatalf("unsupported provider type %q", provCfg.Type)
 		}

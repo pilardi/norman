@@ -92,8 +92,9 @@ type Provider struct {
 }
 
 // NewProvider creates a provider configured from workspace config and
-// optional llama.cpp-specific settings.
-func NewProvider(cfg *config.WorkspaceConfig, llmCfg *Config, opts ...Option) *Provider {
+// optional llama.cpp-specific settings. The name is required — a provider
+// cannot exist without one.
+func NewProvider(name string, cfg *config.WorkspaceConfig, llmCfg *Config, opts ...Option) *Provider {
 	p := &Provider{
 		BaseURL:      llmCfg.BaseURL,
 		Model:        cfg.Model,
@@ -104,6 +105,7 @@ func NewProvider(cfg *config.WorkspaceConfig, llmCfg *Config, opts ...Option) *P
 		CacheEnabled: llmCfg.CacheEnabled,
 		CacheSize:    llmCfg.CacheSize,
 		CacheType:    llmCfg.CacheType,
+		providerName: name,
 	}
 
 	for _, opt := range opts {
@@ -442,11 +444,6 @@ func WithNativeEmbeddings() Option {
 // WithOpenAICompatibleEmbeddings explicitly uses the /api/v1/embeddings endpoint.
 func WithOpenAICompatibleEmbeddings() Option {
 	return func(p *Provider) { p.EmbeddingEndpoint = "/api/v1/embeddings" }
-}
-
-// SetProviderName sets the configured provider name for logging/debugging.
-func (p *Provider) SetProviderName(name string) {
-	p.providerName = name
 }
 
 // normalizeQuant ensures the quant suffix in a model identifier has the UD- prefix
