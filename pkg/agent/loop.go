@@ -48,7 +48,8 @@ type Loop struct {
 	activator        *skills.Activator
 	config           *config.Config
 	openShell        OpenShellClient
-	llmClient        llm.LLM // LLM API client (optional, nil = shell-only mode)
+	llmClient        llm.LLM                       // LLM API client (optional, nil = shell-only mode)
+	providerCache    map[string]*llm.ClientAdapter // cached providers keyed by name
 	wsHub            WSHubPublisher
 	notifier         *notify.Notifier
 	resultsCh        chan scheduler.TaskResult // results from scheduler (nil if not wired)
@@ -209,15 +210,16 @@ type WSHubPublisher interface {
 // New creates a new agent loop with the given dependencies.
 func New(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources, activator *skills.Activator, wsHub WSHubPublisher, client OpenShellClient) *Loop {
 	return &Loop{
-		tasks:      make(map[string]*Task),
-		store:      store,
-		rawSources: rawSources,
-		activator:  activator,
-		config:     cfg,
-		openShell:  client,
-		wsHub:      wsHub,
-		maxRetries: 3,
-		budget:     nil, // disabled by default; set via SetBudget()
+		tasks:         make(map[string]*Task),
+		store:         store,
+		rawSources:    rawSources,
+		activator:     activator,
+		config:        cfg,
+		openShell:     client,
+		wsHub:         wsHub,
+		maxRetries:    3,
+		budget:        nil, // disabled by default; set via SetBudget()
+		providerCache: make(map[string]*llm.ClientAdapter),
 	}
 }
 
@@ -257,6 +259,35 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 	l.llmClient = client
 	return l
+}
+
+// getProvider returns the ClientAdapter for a given provider name.
+// It caches created clients to avoid recreating them on each task execution.
+// If the requested name matches the loop's default llmClient, it returns that directly.
+func (l *Loop) getProvider(name string) (*llm.ClientAdapter, error) {
+	// If no explicit provider requested or no client available, fall back to default.
+	if name == "" || l.llmClient == nil {
+		// Try to unwrap as ClientAdapter; if it's a different implementation (e.g., mock in tests),
+		// return nil to signal "use default" — the caller handles this.
+		if ca, ok := l.llmClient.(*llm.ClientAdapter); ok {
+			return ca, nil
+		}
+		return nil, nil
+	}
+
+	// Check cache first.
+	if cached, ok := l.providerCache[name]; ok {
+		return cached, nil
+	}
+
+	// Create new provider and cache it.
+	client, err := llm.GetProviderByName(l.config.System, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider %q: %w", name, err)
+	}
+
+	l.providerCache[name] = client
+	return client, nil
 }
 
 // logf logs with a [llm][{provider}] prefix using the current LLM client's provider name.
@@ -320,7 +351,7 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, se
 		Step:    intPtr(0),
 	})
 
-	go l.execute(ctx, task, "")
+	go l.execute(ctx, task)
 	return task, nil
 }
 
@@ -350,8 +381,8 @@ type AgentResponse struct {
 	TaskID      string   `json:"task_id,omitempty"`
 }
 
-// SendMessage processes a chat message synchronously and returns a structured response.
-// This is the primary interface for the chat-first agent model.
+// SendMessage processes a chat message and returns a structured response.
+// This is the only public entry point for processing messages in the agent loop.
 func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
 	taskID := uuid.New().String()
 
@@ -369,7 +400,7 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 	l.mu.Unlock()
 
 	// Process the message synchronously via execute (blocks until completion).
-	l.execute(ctx, task, providerName)
+	l.execute(ctx, task)
 
 	// Build response.
 	resp := &AgentResponse{
@@ -379,34 +410,6 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 
 	if task.Error != "" {
 		resp.Response = fmt.Sprintf("Error: %s", task.Error)
-	}
-
-	return resp, nil
-}
-
-// SendMessageWithTask processes a chat message and optionally creates an emergent task.
-// If createTask is true, the agent will also invoke CreateTask internally to spawn
-// a background task after processing the message. The response includes task_created
-// and task_id when applicable.
-func (l *Loop) SendMessageWithTask(ctx context.Context, sessionID string, message string, createTask bool) (*AgentResponse, error) {
-	// First, process the message normally (no provider override).
-	resp, err := l.SendMessage(ctx, sessionID, message, "")
-	if err != nil {
-		return nil, err
-	}
-
-	// If task creation is requested, create an emergent task.
-	if createTask && resp.Response != "" {
-		task, err := l.CreateTask(ctx, message, map[string]string{
-			"priority": "normal",
-		})
-		if err != nil {
-			log.Printf("agent: failed to create emergent task: %v", err)
-			return resp, nil // non-fatal; return response without task info
-		}
-
-		resp.TaskCreated = true
-		resp.TaskID = task.ID
 	}
 
 	return resp, nil
@@ -498,13 +501,13 @@ func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]
 	})
 
 	// Execute synchronously (blocks until completion).
-	l.execute(ctx, task, "")
+	l.execute(ctx, task)
 
 	return task, nil
 }
 
 // execute runs the agent loop for a single task.
-func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
+func (l *Loop) execute(ctx context.Context, task *Task) {
 	defer func() {
 		l.mu.Lock()
 		if task.Status == protocol.TaskStatusRunning || task.Status == protocol.TaskStatusPending {
@@ -638,65 +641,14 @@ func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 		Step:    intPtr(5),
 	})
 
-	// Try LLM-based multi-turn loop first; fall back to shell-only if no client.
-	if l.llmClient != nil {
-		output, err := l.executeWithLLM(ctx, task, sandboxName, providerName)
-		if err != nil {
-			task.Status = protocol.TaskStatusFailed
-			task.Error = err.Error()
-			return
-		}
-		task.Output = output
-	} else {
-		// Legacy shell-only path: inject raw sources into prompt and run as a single command.
-		prompt := task.Prompt
-		if l.rawSources != nil {
-			sources, err := l.rawSources.ListAll()
-			if err != nil {
-				log.Printf("agent: failed to read raw sources for task %s: %v", task.ID, err)
-			} else if len(sources) > 0 {
-				var ctxParts []string
-				ctxParts = append(ctxParts, "## Raw Environment Context")
-				ctxParts = append(ctxParts, "")
-				for _, s := range sources {
-					ctxParts = append(ctxParts, fmt.Sprintf("### %s (%s)", s.Name, s.ID))
-					ctxParts = append(ctxParts, fmt.Sprintf("_Created: %s | Category: %s_", s.CreatedAt.Format(time.RFC3339), s.Category))
-					ctxParts = append(ctxParts, "")
-					ctxParts = append(ctxParts, "```")
-					ctxParts = append(ctxParts, s.Content)
-					ctxParts = append(ctxParts, "```")
-					ctxParts = append(ctxParts, "")
-				}
-				prompt = strings.Join(ctxParts, "\n") + "\n\n---\n\n" + task.Prompt
-			}
-		}
-
-		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, prompt)
-		if err != nil {
-			task.Status = protocol.TaskStatusFailed
-			task.Error = fmt.Sprintf("execution failed (exit %d): %v", exitCode, err)
-		} else if exitCode != 0 {
-			task.Status = protocol.TaskStatusFailed
-			task.Error = fmt.Sprintf("non-zero exit code: %d", exitCode)
-		} else {
-			task.Output = []byte(output)
-			task.Status = protocol.TaskStatusCompleted
-
-			// Persist the assistant turn for shell-only path too (item #5 companion)
-			turnMap := map[string]interface{}{
-				"role":    "assistant",
-				"content": string(task.Output),
-			}
-			if err := l.store.PersistTurn(task.ID, turnMap); err != nil {
-				log.Printf("agent: failed to persist shell-only turn for task %s: %v", task.ID, err)
-			}
-
-			// Also persist the tool call result (the RunCommand itself is a "tool" call)
-			if err := l.store.PersistToolCallResult(task.ID, "shell_command", prompt, output, exitCode); err != nil {
-				log.Printf("agent: failed to persist shell command result for task %s: %v", task.ID, err)
-			}
-		}
+	// Run LLM-based multi-turn loop.
+	output, err := l.executeWithLLM(ctx, task, sandboxName)
+	if err != nil {
+		task.Status = protocol.TaskStatusFailed
+		task.Error = err.Error()
+		return
 	}
+	task.Output = output
 
 	l.pushCompletion(task)
 
@@ -716,7 +668,7 @@ func (l *Loop) execute(ctx context.Context, task *Task, providerName string) {
 // executeWithLLM runs a multi-turn agent loop using the LLM client.
 // It builds context from session history + raw sources + skills, calls the LLM,
 // parses tool calls if present, executes them in the sandbox, and loops back.
-func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string, providerName string) ([]byte, error) {
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string) ([]byte, error) {
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
 
@@ -726,15 +678,30 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 	maxTokens := l.MaxTokens(task.Workspace)
 
 	// Validate provider early — if explicitly requested but doesn't exist, fail hard.
-	if providerName != "" {
-		pc, err := l.config.System.ResolveProvider(providerName)
+	if task.ProviderName != "" {
+		pc, err := l.config.System.ResolveProvider(task.ProviderName)
 		if err != nil {
-			return nil, fmt.Errorf("provider %q not found: %w", providerName, err)
+			return nil, fmt.Errorf("provider %q not found: %w", task.ProviderName, err)
 		}
 		// Provider exists — apply its settings.
 		model = pc.Model
 		temp = pc.Temperature
 		maxTokens = pc.MaxTokens
+	}
+
+	// Resolve the LLM client for this task's provider (cached).
+	// Falls back to the loop's default llmClient if no specific provider is set.
+	var provider llm.LLM
+	if task.ProviderName != "" {
+		p, err := l.getProvider(task.ProviderName)
+		if err != nil {
+			return nil, fmt.Errorf("resolve provider for task %s: %w", task.ID, err)
+		}
+		provider = p
+	}
+	// If no specific provider resolved (empty name), fall back to the default client.
+	if provider == nil && l.llmClient != nil {
+		provider = l.llmClient
 	}
 
 	// Multi-turn loop: max 8 iterations to prevent infinite loops
@@ -753,8 +720,8 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		// Debug: log what's being sent to the LLM.
 		if l.debug {
 			var logProvider string
-			if l.llmClient != nil {
-				logProvider = l.llmClient.ProviderInfo().Name
+			if provider != nil {
+				logProvider = provider.ProviderInfo().Name
 			}
 			log.Printf("agent: DEBUG - sending %d messages to model (provider=%s, model=%s)", len(messages), logProvider, model)
 			for i, m := range messages {
@@ -767,7 +734,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		}
 
 		// Use streaming: yield chunks in real-time via WebSocket, accumulate full text.
-		stream, err := l.llmClient.Stream(ctx, llm.CompletionRequest{
+		stream, err := provider.Stream(ctx, llm.CompletionRequest{
 			Messages:    messages,
 			Tools:       tools,
 			Model:       model,

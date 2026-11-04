@@ -143,6 +143,8 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 	}
 
 	ctx := c.Request().Context()
+
+	// Use SendMessage to pass the provider override into the task.
 	resp, err := s.loop.SendMessage(ctx, id, req.Message, req.Provider)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

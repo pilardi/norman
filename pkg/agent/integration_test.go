@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/skills"
@@ -334,12 +335,16 @@ func TestIntegrationExecuteWithLLMPersistsTurns(t *testing.T) {
 	// Create a minimal activator
 	act := skills.NewActivator(nil, 3)
 
+	mockClient := &mockLLMClient{
+		responses: []llm.CompletionResponse{{Choices: []llm.ResponseChoice{{Message: llm.Message{Role: "assistant", Content: "done"}}}}},
+	}
+
 	fakeClient := NewFakeOpenShellClient()
-	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient)
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
 
 	ctx := context.Background()
 
-	// Submit a task (shell-only path since llmClient is nil)
+	// Submit a task (LLM path since llmClient is set)
 	task, err := loop.Submit(ctx, "List files", "", "session-1")
 	if err != nil {
 		t.Fatalf("submit task: %v", err)
@@ -400,8 +405,12 @@ func TestIntegrationWSBroadcastIncludesToolDetail(t *testing.T) {
 
 	act := skills.NewActivator(nil, 3)
 
+	mockClient := &mockLLMClient{
+		responses: []llm.CompletionResponse{{Choices: []llm.ResponseChoice{{Message: llm.Message{Role: "assistant", Content: "done"}}}}},
+	}
+
 	fakeClient := NewFakeOpenShellClient()
-	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient)
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
 
 	ctx := context.Background()
 
@@ -473,8 +482,12 @@ func TestIntegrationFullLoopWithLLM(t *testing.T) {
 
 	act := skills.NewActivator(nil, 3)
 
+	mockClient := &mockLLMClient{
+		responses: []llm.CompletionResponse{{Choices: []llm.ResponseChoice{{Message: llm.Message{Role: "assistant", Content: "done"}}}}},
+	}
+
 	fakeClient := NewFakeOpenShellClient()
-	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient)
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
 
 	ctx := context.Background()
 
