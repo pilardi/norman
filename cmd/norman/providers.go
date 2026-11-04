@@ -13,6 +13,17 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+// validProviderTypes is the single source of truth for provider type names.
+// Derived from protocol.ProviderConfigType constants so adding a new type
+// to the spec will cause compile-time failures in any stale literal reference.
+var validProviderTypes = []string{
+	string(protocol.ProviderConfigTypeOpenai),
+	string(protocol.ProviderConfigTypeAnthropic),
+	string(protocol.ProviderConfigTypeOllama),
+	string(protocol.ProviderConfigTypeGemini),
+	string(protocol.ProviderConfigTypeLlamacpp),
+}
+
 // handleProviders implements the `norman provider` subcommands.
 // Usage: norman providers add <name> --type <type> --endpoint <url> [flags...]
 //
@@ -338,14 +349,7 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		os.Exit(1)
 	}
 
-	validTypes := []string{
-		string(protocol.ProviderConfigTypeOpenai),
-		string(protocol.ProviderConfigTypeAnthropic),
-		string(protocol.ProviderConfigTypeOllama),
-		string(protocol.ProviderConfigTypeGemini),
-		string(protocol.ProviderConfigTypeLlamacpp),
-	}
-	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
+	fmt.Printf("Valid types: %s\n", strings.Join(validProviderTypes, ", "))
 	providerType := prompt("Provider type")
 	if providerType == "" {
 		fmt.Fprintln(os.Stderr, "Error: type is required")
@@ -532,14 +536,7 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 
 	current := *parsed.JSON200
 
-	validTypes := []string{
-		string(protocol.ProviderConfigTypeOpenai),
-		string(protocol.ProviderConfigTypeAnthropic),
-		string(protocol.ProviderConfigTypeOllama),
-		string(protocol.ProviderConfigTypeGemini),
-		string(protocol.ProviderConfigTypeLlamacpp),
-	}
-	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
+	fmt.Printf("Valid types: %s\n", strings.Join(validProviderTypes, ", "))
 
 	providerTypeStr := promptWithCurrent("Provider type", strPtrVal(current.Type))
 	endpoint := promptWithCurrent("Endpoint URL", strPtrVal(current.Endpoint))
