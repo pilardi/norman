@@ -338,7 +338,13 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		os.Exit(1)
 	}
 
-	validTypes := []string{"openai", "anthropic", "ollama", "gemini", "llamacpp"}
+	validTypes := []string{
+		string(protocol.ProviderConfigTypeOpenai),
+		string(protocol.ProviderConfigTypeAnthropic),
+		string(protocol.ProviderConfigTypeOllama),
+		string(protocol.ProviderConfigTypeGemini),
+		string(protocol.ProviderConfigTypeLlamacpp),
+	}
 	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
 	providerType := prompt("Provider type")
 	if providerType == "" {
@@ -526,7 +532,13 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 
 	current := *parsed.JSON200
 
-	validTypes := []string{"openai", "anthropic", "ollama", "gemini", "llamacpp"}
+	validTypes := []string{
+		string(protocol.ProviderConfigTypeOpenai),
+		string(protocol.ProviderConfigTypeAnthropic),
+		string(protocol.ProviderConfigTypeOllama),
+		string(protocol.ProviderConfigTypeGemini),
+		string(protocol.ProviderConfigTypeLlamacpp),
+	}
 	fmt.Printf("Valid types: %s\n", strings.Join(validTypes, ", "))
 
 	providerTypeStr := promptWithCurrent("Provider type", strPtrVal(current.Type))
