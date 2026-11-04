@@ -23,7 +23,7 @@ func ProviderValidator(p *config.ProviderConfig) []string {
 	}
 	if p.Type == "" {
 		errors = append(errors, "type is required")
-	} else if !isValidProviderType(p.Type) {
+	} else if !protocol.ProviderConfigType(p.Type).Valid() {
 		errors = append(errors, fmt.Sprintf("invalid type %q; must be one of: openai, anthropic, ollama, gemini, llamacpp", p.Type))
 	}
 	if p.Endpoint == "" {
@@ -38,21 +38,11 @@ func ProviderValidator(p *config.ProviderConfig) []string {
 	if p.MaxTokens < 1 {
 		errors = append(errors, fmt.Sprintf("max_tokens must be >= 1, got %d", p.MaxTokens))
 	}
-	if (p.Type == "openai" || p.Type == "anthropic") && p.ApiKey == "" {
+	if (p.Type == string(protocol.ProviderConfigTypeOpenai) || p.Type == string(protocol.ProviderConfigTypeAnthropic)) && p.ApiKey == "" {
 		errors = append(errors, "api_key is required for openai and anthropic types")
 	}
 
 	return errors
-}
-
-// isValidProviderType checks if a type string is one of the known provider types.
-func isValidProviderType(t string) bool {
-	switch t {
-	case "openai", "anthropic", "ollama", "gemini", "llamacpp":
-		return true
-	default:
-		return false
-	}
 }
 
 // maskApiKey returns true if the api_key is non-empty (used for ProviderResponse).
@@ -120,7 +110,7 @@ func (s *server) CreateProvider(c echo.Context) error {
 	}
 	if req.Type == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "type is required"})
-	} else if !isValidProviderType(string(req.Type)) {
+	} else if !protocol.ProviderConfigType(req.Type).Valid() {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": fmt.Sprintf("invalid type %q; must be one of: openai, anthropic, ollama, gemini, llamacpp", req.Type),
 		})
@@ -210,7 +200,7 @@ func (s *server) UpdateProvider(c echo.Context, name string) error {
 	prov := &s.cfg.System.LlmProviders[idx]
 
 	if req.Type != nil {
-		if !isValidProviderType(string(*req.Type)) {
+		if !protocol.ProviderConfigType(*req.Type).Valid() {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"error": fmt.Sprintf("invalid type %q; must be one of: openai, anthropic, ollama, gemini, llamacpp", *req.Type),
 			})
@@ -370,7 +360,7 @@ func queryProviderModels(p *config.ProviderConfig) ([]protocol.AvailableModelEnt
 	var entries []protocol.AvailableModelEntry
 
 	switch strings.ToLower(p.Type) {
-	case "openai", "gemini":
+	case string(protocol.ProviderConfigTypeOpenai), string(protocol.ProviderConfigTypeGemini):
 		// OpenAI-compatible: GET /v1/models
 		models, err := fetchOpenAIModels(p.Endpoint, p.ApiKey)
 		if err != nil {
@@ -378,7 +368,7 @@ func queryProviderModels(p *config.ProviderConfig) ([]protocol.AvailableModelEnt
 		}
 		entries = models
 
-	case "ollama":
+	case string(protocol.ProviderConfigTypeOllama):
 		// Ollama: GET /api/tags
 		models, err := fetchOllamaModels(p.Endpoint)
 		if err != nil {
@@ -386,7 +376,7 @@ func queryProviderModels(p *config.ProviderConfig) ([]protocol.AvailableModelEnt
 		}
 		entries = models
 
-	case "llamacpp":
+	case string(protocol.ProviderConfigTypeLlamacpp):
 		// llama.cpp exposes an OpenAI-compatible /v1/models endpoint.
 		models, err := fetchOpenAIModels(p.Endpoint, "")
 		if err != nil {

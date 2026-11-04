@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/protocol"
 )
 
 // Client implements the LLM interface for OpenAI-compatible endpoints.
@@ -172,7 +173,7 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 func (c *Client) ProviderInfo() ProviderMetadata {
 	name := c.ProviderName
 	if name == "" {
-		name = ProviderOpenAI // fallback to type constant "openai"
+		name = string(protocol.ProviderConfigTypeOpenai) // fallback to type constant "openai"
 	}
 	return ProviderMetadata{
 		Name:             name,
@@ -187,7 +188,7 @@ func (c *Client) ProviderInfo() ProviderMetadata {
 func (c *Client) Logf(format string, args ...any) {
 	name := c.ProviderName
 	if name == "" {
-		name = ProviderOpenAI
+		name = string(protocol.ProviderConfigTypeOpenai)
 	}
 	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
 }
