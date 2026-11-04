@@ -8,6 +8,7 @@ import (
 
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/llm/internal/llamacpp"
+	"github.com/norman/norman/pkg/protocol"
 )
 
 // NewProviderFromConfig creates an LLM client adapter from system configuration.
@@ -53,10 +54,10 @@ func GetProviderByName(sysCfg *config.SystemConfig, name string) (*ClientAdapter
 // implementation based on provCfg.Type.
 func newProvider(name string, provCfg *config.ProviderConfig, wsCfg *config.WorkspaceConfig) (*ClientAdapter, error) {
 	switch provCfg.Type {
-	case "openai":
+	case string(protocol.ProviderConfigTypeOpenai):
 		return NewClientAdapter(NewClientWithProvider(provCfg)), nil
 
-	case "llamacpp":
+	case string(protocol.ProviderConfigTypeLlamacpp):
 		return newLlamaCPPProvider(name, provCfg, wsCfg)
 
 	default:

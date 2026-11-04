@@ -1,16 +1,21 @@
 // Package llm provides provider-specific metadata constants.
 package llm
 
+import "github.com/norman/norman/pkg/protocol"
+
 const (
 	// ProviderOpenAI identifies the OpenAI-compatible provider.
-	ProviderOpenAI = "openai"
+	ProviderOpenAI = string(protocol.ProviderConfigTypeOpenai)
 
 	// ProviderAnthropic identifies the Anthropic Claude provider.
-	ProviderAnthropic = "anthropic"
+	ProviderAnthropic = string(protocol.ProviderConfigTypeAnthropic)
 
 	// ProviderOllama identifies the Ollama local-provider.
-	ProviderOllama = "ollama"
+	ProviderOllama = string(protocol.ProviderConfigTypeOllama)
 
 	// ProviderGemini identifies the Google Gemini provider.
-	ProviderGemini = "gemini"
+	ProviderGemini = string(protocol.ProviderConfigTypeGemini)
+
+	// ProviderLlamacpp identifies the llama.cpp provider.
+	ProviderLlamacpp = string(protocol.ProviderConfigTypeLlamacpp)
 )
