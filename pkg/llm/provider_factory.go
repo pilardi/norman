@@ -38,6 +38,16 @@ func NewProviderFromConfig(sysCfg *config.SystemConfig, selectedProvider string)
 	return client, providerName, err
 }
 
+// GetProviderByName creates an LLM client adapter for a specific provider by name.
+// This is used internally by the agent loop to resolve and cache providers per task.
+func GetProviderByName(sysCfg *config.SystemConfig, name string) (*ClientAdapter, error) {
+	provCfg, err := sysCfg.ResolveProvider(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve provider %q: %w", name, err)
+	}
+	return newProvider(name, provCfg, config.DefaultWorkspaceConfig())
+}
+
 // newProvider creates an LLM client adapter from a resolved provider config
 // and workspace configuration. It selects the appropriate backend
 // implementation based on provCfg.Type.

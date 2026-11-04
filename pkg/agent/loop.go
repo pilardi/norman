@@ -48,7 +48,8 @@ type Loop struct {
 	activator        *skills.Activator
 	config           *config.Config
 	openShell        OpenShellClient
-	llmClient        llm.LLM // LLM API client (optional, nil = shell-only mode)
+	llmClient        llm.LLM                       // LLM API client (optional, nil = shell-only mode)
+	providerCache    map[string]*llm.ClientAdapter // cached providers keyed by name
 	wsHub            WSHubPublisher
 	notifier         *notify.Notifier
 	resultsCh        chan scheduler.TaskResult // results from scheduler (nil if not wired)
@@ -209,15 +210,16 @@ type WSHubPublisher interface {
 // New creates a new agent loop with the given dependencies.
 func New(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources, activator *skills.Activator, wsHub WSHubPublisher, client OpenShellClient) *Loop {
 	return &Loop{
-		tasks:      make(map[string]*Task),
-		store:      store,
-		rawSources: rawSources,
-		activator:  activator,
-		config:     cfg,
-		openShell:  client,
-		wsHub:      wsHub,
-		maxRetries: 3,
-		budget:     nil, // disabled by default; set via SetBudget()
+		tasks:         make(map[string]*Task),
+		store:         store,
+		rawSources:    rawSources,
+		activator:     activator,
+		config:        cfg,
+		openShell:     client,
+		wsHub:         wsHub,
+		maxRetries:    3,
+		budget:        nil, // disabled by default; set via SetBudget()
+		providerCache: make(map[string]*llm.ClientAdapter),
 	}
 }
 
@@ -257,6 +259,35 @@ func (l *Loop) WithBudget(cfg *budget.BudgetConfig) *Loop {
 func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 	l.llmClient = client
 	return l
+}
+
+// getProvider returns the ClientAdapter for a given provider name.
+// It caches created clients to avoid recreating them on each task execution.
+// If the requested name matches the loop's default llmClient, it returns that directly.
+func (l *Loop) getProvider(name string) (*llm.ClientAdapter, error) {
+	// If no explicit provider requested or no client available, fall back to default.
+	if name == "" || l.llmClient == nil {
+		// Try to unwrap as ClientAdapter; if it's a different implementation (e.g., mock in tests),
+		// return nil to signal "use default" — the caller handles this.
+		if ca, ok := l.llmClient.(*llm.ClientAdapter); ok {
+			return ca, nil
+		}
+		return nil, nil
+	}
+
+	// Check cache first.
+	if cached, ok := l.providerCache[name]; ok {
+		return cached, nil
+	}
+
+	// Create new provider and cache it.
+	client, err := llm.GetProviderByName(l.config.System, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider %q: %w", name, err)
+	}
+
+	l.providerCache[name] = client
+	return client, nil
 }
 
 // logf logs with a [llm][{provider}] prefix using the current LLM client's provider name.
@@ -658,6 +689,21 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		maxTokens = pc.MaxTokens
 	}
 
+	// Resolve the LLM client for this task's provider (cached).
+	// Falls back to the loop's default llmClient if no specific provider is set.
+	var provider llm.LLM
+	if task.ProviderName != "" {
+		p, err := l.getProvider(task.ProviderName)
+		if err != nil {
+			return nil, fmt.Errorf("resolve provider for task %s: %w", task.ID, err)
+		}
+		provider = p
+	}
+	// If no specific provider resolved (empty name), fall back to the default client.
+	if provider == nil && l.llmClient != nil {
+		provider = l.llmClient
+	}
+
 	// Multi-turn loop: max 8 iterations to prevent infinite loops
 	maxTurns := 8
 	for turn := 0; turn < maxTurns; turn++ {
@@ -674,8 +720,8 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		// Debug: log what's being sent to the LLM.
 		if l.debug {
 			var logProvider string
-			if l.llmClient != nil {
-				logProvider = l.llmClient.ProviderInfo().Name
+			if provider != nil {
+				logProvider = provider.ProviderInfo().Name
 			}
 			log.Printf("agent: DEBUG - sending %d messages to model (provider=%s, model=%s)", len(messages), logProvider, model)
 			for i, m := range messages {
@@ -688,7 +734,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		}
 
 		// Use streaming: yield chunks in real-time via WebSocket, accumulate full text.
-		stream, err := l.llmClient.Stream(ctx, llm.CompletionRequest{
+		stream, err := provider.Stream(ctx, llm.CompletionRequest{
 			Messages:    messages,
 			Tools:       tools,
 			Model:       model,
