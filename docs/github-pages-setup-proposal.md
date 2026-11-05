@@ -1,7 +1,9 @@
 ---
 title: "GitHub Pages Setup Proposal"
-type: source
-updated: 2026-10-25
+type: proposal
+status: draft
+date: 2026-10-25
+author: Norman agent (session assessment)
 tags: [github-pages, ci-cd, docs, scalar]
 workspace: norman
 ---

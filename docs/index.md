@@ -1,7 +1,9 @@
 ---
 title: "Norman Documentation"
 type: source
-updated: 2026-11-05
+status: draft
+date: 2026-11-05
+author: Norman agent (session assessment)
 tags: [docs, landing]
 workspace: norman
 ---

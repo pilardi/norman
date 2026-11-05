@@ -1,3 +1,11 @@
+---
+title: "Provider Configuration Drift Assessment"
+type: assessment
+status: draft
+date: 2026-10-22
+author: Norman agent (session assessment)
+related: [docs/provider-config-design.md, docs/config-embedding-proposal.md]
+---
 # Provider Configuration Drift Assessment
 
 > **Date:** 2026-10-22  
