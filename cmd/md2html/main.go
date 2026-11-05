@@ -152,6 +152,10 @@ func main() {
 		outPath = outPath[:len(outPath)-3] + ".html"
 
 		result := append([]byte(materialCSS), buf.Bytes()...)
+		// Convert .md href links to .html for generated output
+		result = bytes.ReplaceAll(result, []byte(`.md"`), []byte(`.html"`))
+		// Flatten design-log/ subdirectory paths in hrefs (output is flat)
+		result = bytes.ReplaceAll(result, []byte(`href="design-log/`), []byte(`href="`))
 		if err := os.WriteFile(outPath, result, 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", filepath.Base(path), err)
 			continue
