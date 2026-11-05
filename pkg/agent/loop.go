@@ -890,15 +890,6 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					log.Printf("agent: failed to persist tool call result for %s: %v", tc.Name, err)
 				}
 
-				// Accumulate tool result in task output (always show tool name)
-				fullOutput.WriteString("\n--- Tool: ")
-				fullOutput.WriteString(tc.Name)
-				fullOutput.WriteString(" ---")
-				if output != "" {
-					fullOutput.WriteString("\n")
-					fullOutput.WriteString(output)
-				}
-
 				// Add tool result as a message in the conversation
 				messages = append(messages, llm.Message{
 					Role:    "tool",
