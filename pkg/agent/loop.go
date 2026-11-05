@@ -746,7 +746,9 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		provider = l.llmClient
 	}
 
-	// Multi-turn loop: max 8 iterations to prevent infinite loops
+	// Multi-turn loop: max 8 iterations to prevent infinite loops.
+	// task.Output accumulates both text responses and tool call results.
+	var fullOutput strings.Builder
 	maxTurns := 8
 	for turn := 0; turn < maxTurns; turn++ {
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
@@ -880,6 +882,14 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					log.Printf("agent: failed to persist tool call result for %s: %v", tc.Name, err)
 				}
 
+				// Accumulate tool result in task output
+				if output != "" {
+					fullOutput.WriteString("\n--- Tool: ")
+					fullOutput.WriteString(tc.Name)
+					fullOutput.WriteString(" ---\n")
+					fullOutput.WriteString(output)
+				}
+
 				// Add tool result as a message in the conversation
 				messages = append(messages, llm.Message{
 					Role:    "tool",
@@ -888,6 +898,9 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					Content: output,
 				})
 			}
+
+			// Accumulate assistant text in task output
+			fullOutput.WriteString(responseText)
 
 			// Add assistant response to messages for next turn
 			messages = append(messages, llm.Message{
@@ -912,8 +925,9 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			continue // Loop back for another turn
 		}
 
-		// No tool calls — this is the final text response
-		task.Output = []byte(responseText)
+		// No tool calls — accumulate final text and return full output
+		fullOutput.WriteString(responseText)
+		task.Output = []byte(fullOutput.String())
 		l.logf("setting task.Output to: %q", string(task.Output))
 		task.Status = protocol.TaskStatusCompleted
 
