@@ -138,6 +138,31 @@ func (l *Loop) ActivateSkill(name string, session *env.Session) error {
 	return nil
 }
 
+// resolveWorkspace resolves a workspace ID from a session ID.
+// It first checks the sessions store for a workspace_id mapping, then falls back
+// to scanning the workspaces map. Returns empty string if no workspace is found.
+func (l *Loop) resolveWorkspace(sessionID string) string {
+	// Try loading session from store — this has the workspace_id mapping.
+	if l.store != nil {
+		data, err := l.store.LoadSession(sessionID)
+		if err == nil {
+			if wid, ok := data["workspace_id"].(string); ok && wid != "" {
+				return wid
+			}
+		}
+	}
+
+	// Fallback: scan the workspaces map for a matching session.
+	for workspace, session := range l.workspaceManager.Sessions() {
+		if session.SessionID() == sessionID {
+			log.Printf("[loop] resolved workspace '%s' from session '%s'", workspace, sessionID[:8])
+			return workspace
+		}
+	}
+
+	return ""
+}
+
 // GetSession returns an OpenShell session for the given workspace ID.
 // Creates a new sandbox if one doesn't already exist for this workspace.
 func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, error) {
@@ -386,6 +411,9 @@ type AgentResponse struct {
 func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
 	taskID := uuid.New().String()
 
+	// Resolve workspace from session ID.
+	workspaceID := l.resolveWorkspace(sessionID)
+
 	task := &Task{
 		ID:           taskID,
 		Prompt:       message,
@@ -393,6 +421,7 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 		SessionId:    sessionID,
 		ProviderName: providerName,
 		CreatedAt:    time.Now(),
+		Workspace:    workspaceID,
 	}
 
 	l.mu.Lock()
