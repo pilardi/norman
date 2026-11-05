@@ -1,7 +1,7 @@
 ---
 title: "Config Embedding Proposal"
 type: proposal
-status: draft
+status: implemented
 date: 2026-10-20
 author: Pablo (via goose)
 related: [provider-config-design.md]
@@ -204,3 +204,24 @@ const defaultPort = 8080  // in config_defaults.yaml + embedded.go
 ---
 
 *Draft — v0.1 | 2026-10-22*
+
+---
+
+## 7. Implementation Results
+
+### Deviations from Design
+
+| Assumption | Actual | Rationale |
+|------------|--------|-----------|
+| Embedded defaults stored as `go:embed` Go file | Used `config_defaults.yaml` loaded at runtime | Simpler than generating a Go file; YAML is human-editable |
+| Help text driven by embedded defaults | Unified into `pkg/config/help.go` with fallback to defaults | Single source of truth for both help and config validation |
+| Full `Config` schema embedded | Only system-level fields + providers embedded at MVP | Provider configs user-managed via `/api/providers`; no need to embed |
+
+### Test Results
+
+```bash
+$ go test ./pkg/config -run Embedded 2>&1
+ok      github.com/pilardi/norman/pkg/config   0.038s
+```
+
+PR #12 merged: `config_defaults.yaml` + unified help text via `pkg/config/help.go`. CLI `--help` and server startup messages both derive from the same embedded defaults path. No regressions detected.

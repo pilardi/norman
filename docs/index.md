@@ -27,12 +27,11 @@ All design documents follow the [Design-Log Methodology](design-log/README.md), 
 | Document | Status | Description |
 |----------|--------|-------------|
 | [Memory Proposal](design-log/memory-proposal.md) | `draft` | Memory system design (default axis + session bootstrap) |
-| [Config Embedding Proposal](design-log/config-embedding-proposal.md) | `draft` | Embedded defaults + help message unification |
-
 ### ✅ Implemented Designs
 
 | Document | Status | Description |
 |----------|--------|-------------|
+| [Config Embedding Proposal](design-log/config-embedding-proposal.md) | `implemented` | Embedded defaults + help message unification |
 | [MVP Plan](design-log/mvp-plan.md) | `implemented` | End-to-end CLI → Agent Server workflow |
 | [Session Workflow Proposal](design-log/session-workflow-proposal.md) | `implemented` | Session lifecycle design (WS subscription, UUID identity) |
 | [Roger Client Design](design-log/roger-client-design.md) | `implemented` | Lightweight notification/health-check binary |
