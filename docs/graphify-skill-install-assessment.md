@@ -1,7 +1,23 @@
+---
+title: "Graphify Skill Install Assessment"
+type: assessment
+status: draft
+date: 2026-10-19
+author: Pablo (via goose)
+related: [mvp-plan.md, workspace-skill-install-plan.md]
+---
+
 # Assessment: Installing Graphify as a Norman Skill
 
 **Date:** 2026-10-19  
 **Status:** Draft — for discussion, not yet implemented
+
+## Decisions for the Implementer (TL;DR)
+
+- Graphify is a Python CLI (`graphifyy`, v0.9.92) building knowledge graphs via tree-sitter AST parsing
+- ~150MB+ per host install; no per-workspace version pinning yet
+- Goal: skills installed *inside* OpenShell sandbox on demand, no software on host beyond registry metadata
+- Exposes CLI commands: `graphify install`, `graphify query`, `graphify path`, `graphify explain`, `graphify update`
 
 ---
 

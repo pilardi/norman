@@ -1,8 +1,24 @@
+---
+title: "Workspace Definition Assessment"
+type: assessment
+status: implemented
+date: 2026-10-19
+author: Pablo (via goose)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # Workspace Definition Assessment & Plan
 
 > **Status:** ✅ **IMPLEMENTED** — All 7 steps completed and committed on branch `workspace-definition-assessment`.
 > **Date:** 2026-10-19
 > **Author:** Pablo (via goose)
+
+## Decisions for the Implementer (TL;DR)
+
+- Workspace is a namespace/container for sessions and tasks
+- One active workspace per session at MVP
+- Registry persisted to disk; loaded on startup (14h)
+- No multi-workspace parallel environments at MVP (deferred)
 
 ---
 

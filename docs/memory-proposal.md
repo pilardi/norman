@@ -1,8 +1,24 @@
+---
+title: "Memory Architecture Enhancement Proposal"
+type: proposal
+status: draft
+date: 2026-10-15
+author: Pablo (via goose)
+related: [mvp-plan.md, task-management-assessment.md]
+---
+
 # Memory Architecture Enhancement Proposal
 
 > **Status:** Draft — awaiting review before implementation.
 > **Source of ideas:** gajae-way (https://github.com/Yeachan-Heo/gajae-way) memory system and session bootstrap mechanism.
 > **Date:** 2026-10-15
+
+## Decisions for the Implementer (TL;DR)
+
+- Default axis structure ships with zero-config sensible defaults (flat wiki + frontmatter types)
+- Session bootstrap replaces full workspace scan with a curated pointer set (~8 KiB bounded context)
+- Customization via `axes.json` is a *later* capability; default structure works without user-facing config file
+- Memory uses flat markdown pages classified by `type:` frontmatter (`entity`, `source`, `trend`, `task`)
 
 ---
 

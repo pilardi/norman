@@ -1,3 +1,12 @@
+---
+title: "Config Embedding Proposal"
+type: proposal
+status: draft
+date: 2026-10-20
+author: Pablo (via goose)
+related: [provider-config-design.md]
+---
+
 # Proposal: Embedded Default Configuration & Help Message Consistency
 
 ## Problem Statement

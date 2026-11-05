@@ -1,7 +1,24 @@
+---
+title: "Roger Client Design"
+type: implementation
+status: implemented
+date: 2026-10-22
+author: Pablo (via goose)
+related: [session-workflow-proposal.md, openshell-interaction.md]
+---
+
 # Roger Client — Design Document
 
 > A general-purpose, workspace-aware CLI client for Norman's API, designed to be invoked from scripts and the agent loop inside OpenShell sandboxes.
 > **Status:** Implementation complete.
+
+## Decisions for the Implementer (TL;DR)
+
+- `roger` is a lightweight self-contained binary — direct HTTP POST, zero LLM budget consumed
+- Auto-detection: reads `~/.config/norman/context.json` + `$NORMAN_SERVER_URL` env var at sandbox creation
+- Structured output: JSON on stdout (machine-parseable), human-readable summary on stderr
+- Auth encapsulated — no mTLS paths in context file; API auth handled separately
+- Session has single immutable identifier: Norman API session UUID (`sessionId`)
 
 ---
 

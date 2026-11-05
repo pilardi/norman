@@ -1,8 +1,24 @@
+---
+title: "Provider Config Design"
+type: proposal
+status: draft
+date: 2026-10-25
+author: Pablo (via goose)
+related: [config-embedding-proposal.md, llm-integration-plan.md]
+---
+
 # Provider Configuration — Design & Implementation Plan
 
 > **Branch:** `feat/provider-config`  
 > **Date:** 2026-10-25  
 > **Status:** Draft → In Progress
+
+## Decisions for the Implementer (TL;DR)
+
+- Four CRUD endpoints under `/api/providers` for provider management
+- Data model (`ProviderConfig`) and runtime consumer (`NewClientWithProvider`) already exist
+- Gap is CLI display/update path and server-side PUT handler
+- Supports multiple providers per environment (dev, staging, prod)
 
 ---
 

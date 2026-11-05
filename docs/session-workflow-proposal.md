@@ -1,8 +1,25 @@
+---
+title: "Session Workflow Proposal"
+type: implementation
+status: implemented
+date: 2026-10-16
+author: Pablo (via goose)
+related: [mvp-plan.md, roger-client-design.md]
+---
+
 # Session Workflow Proposal
 
 > **Status:** Fully Implemented (all ⬜ → ✅ as of 2026-10-16)  
 > **Date:** 2026-10-16  
 > **Author:** Pablo (via goose)
+
+## Decisions for the Implementer (TL;DR)
+
+- Sessions are identified by UUID, not workspace name
+- WebSocket subscription is mandatory before sending prompts
+- No separate fire-and-forget `run [prompt]` command at CLI level — everything happens within sessions
+- Session cache (`m.sessions`) indexed by session ID, not workspace name
+- `SandboxName()` removed (dead code); sessionId is set at construction and immutable
 
 ---
 

@@ -1,9 +1,25 @@
+---
+title: "Task Management Assessment"
+type: assessment
+status: draft
+date: 2026-10-22
+author: Norman agent (session assessment)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # Task Management Assessment — Norman Agent
 
 > **Date:** 2026-10-22  
 > **Author:** Norman agent (session assessment)  
 > **Scope:** How the agent creates deferred and scheduled tasks, whether task management is presented as a discoverable skill, and how it's wired to OpenShell.  
 > **Constraint:** The agent must never execute commands on the host machine — only inside its sandbox or via interaction with the user.
+
+## Decisions for the Implementer (TL;DR)
+
+- Tasks are emergent from conversation, not manually triggered via CLI
+- Scheduler uses OpenShell's cron API with 10s granularity tick loop
+- `ScheduledTask.skill` field exists but scheduler doesn't activate skills before execution (gap)
+- API endpoints: `GET/POST /api/tasks`, `DELETE /api/tasks/{id}`, `/api/scheduled`
 
 ---
 

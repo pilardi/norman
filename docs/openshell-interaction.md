@@ -1,6 +1,22 @@
+---
+title: "OpenShell Interaction Design"
+type: implementation
+status: implemented
+date: 2026-10-18
+author: Pablo (via goose)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # OpenShell Interaction Model for Norman
 
 > How Norman, its agent loop, tool calls, the `roger` client, and the server interact through the OpenShell sandbox boundary.
+
+## Decisions for the Implementer (TL;DR)
+
+- One persistent OpenShell session per workspace via Go SDK v0.1.x
+- All file I/O goes through OpenShell's tools layer (`read`, `write`, `edit`) — never direct host OS access
+- Session lifecycle: create on `norman workspace create`, reuse across tasks, recover if crashed (3× retry, exponential backoff)
+- Sandbox isolation boundary: agent only operates inside sandbox; host machine never directly accessed
 
 ---
 

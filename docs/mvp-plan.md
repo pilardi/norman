@@ -1,8 +1,26 @@
+---
+title: "MVP Implementation Plan"
+type: implementation
+status: implemented
+date: 2026-10-13
+author: Pablo (via goose)
+related: [session-workflow-proposal.md, memory-proposal.md, llm-integration-plan.md]
+---
+
 # Norman — MVP Implementation Plan
 
 > **Goal:** An end-to-end CLI client → Agent Server workflow where a user can configure an agent, create workspaces, install skills, and run tasks.
 >
 > **Principle:** Minimize custom code. Compose capabilities from existing tools (OpenShell, git, MCP, shell utilities). The server is the only substantial Go implementation (~5–8k lines).
+
+## Decisions for the Implementer (TL;DR)
+
+- Primary interaction model is interactive conversation — everything else supports it
+- Server is the only substantial Go implementation (~5–8k lines); CLI is thin HTTP client
+- Flat markdown wiki (no vector search at MVP); grep/glob + frontmatter metadata suffices
+- One active workspace per session; tasks are emergent from conversation
+- Config resolution: user overlay (`~/.norman/config.yaml`) → embedded defaults
+- Session lifecycle: create on `norman workspace create`, reuse across tasks, recover if crashed (3× retry, exponential backoff)
 
 ---
 

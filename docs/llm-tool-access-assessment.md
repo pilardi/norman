@@ -1,9 +1,25 @@
+---
+title: "LLM Tool Access Assessment"
+type: assessment
+status: implemented
+date: 2026-10-21
+author: Norman agent (session assessment)
+related: [mvp-plan.md, llm-integration-plan.md]
+---
+
 # LLM Tool Access Assessment — Agent-to-Environment Integration
 
 > **Date:** 2026-10-21  
 > **Author:** Norman agent (session assessment)  
 > **Scope:** How tools are granted to the LLM for interacting with the OpenShell workspace environment.  
 > **Constraint:** The agent must never execute commands on the host machine — only inside its sandbox or via interaction with the user.
+
+## Decisions for the Implementer (TL;DR)
+
+- Generic typed tools (`bash`, `read_file`, `write_file`) and bidirectional user tools (`ask_user`, `notify`) always available
+- P0 + ask_user/notify wired on branch `feature/llm-tool-access-assessment`
+- Sandbox isolation boundary: agent only operates inside sandbox; host never directly accessed
+- MCP tools are optional and skill-specific, not general-purpose
 >
 > **Status Update (2026-10-21):** P0 + ask_user/notify wired on branch `feature/llm-tool-access-assessment`.  
 > Generic typed tools (`bash`, `read_file`, `write_file`) and bidirectional user tools (`ask_user`, `notify`) are now always available to the LLM.

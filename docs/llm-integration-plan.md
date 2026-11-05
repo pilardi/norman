@@ -1,8 +1,25 @@
+---
+title: "LLM Integration Plan"
+type: implementation
+status: implemented
+date: 2026-10-19
+author: Pablo (via goose)
+related: [mvp-plan.md, llm-tool-access-assessment.md]
+---
+
 # LLM Integration Plan — Provider-Agnostic Abstraction & Remaining Work
 
 > **Date:** 2026-10-19 (merged)
 > **Status:** Draft — actionable items tracked for MVP completion
 > **Related:** `requirements.md` §4.1, `go.dev/blog/llmpowered`
+
+## Decisions for the Implementer (TL;DR)
+
+- LLM abstraction uses provider-agnostic interfaces (`LLM`, `Embedder`) with compatibility adapter (`ClientAdapter`)
+- Zero breaking changes during transition — legacy `Caller` interface preserved
+- Provider implementations: OpenAI (✅), Ollama (🟡 Planned), Anthropic Claude (🟡 Planned), Google Gemini (🟡 Planned)
+- `CompletionRequest` is universal shape; `ProviderMetadata` describes capabilities
+- Streaming responses via `StreamReader` interface for perceived latency reduction
 
 ---
 

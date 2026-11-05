@@ -1,8 +1,25 @@
+---
+title: "CLI Library Assessment"
+type: assessment
+status: implemented
+date: 2026-10-29
+author: Pablo (via goose)
+related: [mvp-plan.md]
+---
+
 # CLI Library Assessment — Replacing Manual Flag Parsing
 
 > Date: 2026-10-29
 > Branch: `feat/cli-library-assessment`
 > Status: **roger and norman-server migrated; shell completion and cleanup pending**
+
+## Decisions for the Implementer (TL;DR)
+
+- Migrated from manual flag parsing to `urfave/v3` CLI library
+- `norman` client: ~2,428 → ~1,570 lines across 8 files
+- `roger`: ~325 → ~310 lines (single-file CLI)
+- `norman-server`: ~102 → ~115 lines (main + bootstrap)
+- Shell completion and cleanup pending
 
 ---
 

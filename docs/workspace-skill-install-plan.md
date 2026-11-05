@@ -1,8 +1,24 @@
+---
+title: "Workspace Skill Install Plan"
+type: implementation
+status: implemented
+date: 2026-10-21
+author: Pablo (via goose)
+related: [mvp-plan.md, graphify-skill-install-assessment.md]
+---
+
 # Plan: Workspace-Level On-Demand Skill Installation
 
 **Date:** 2026-10-20  
 **Status:** ✅ **COMPLETE** (all phases implemented, committed to `feat/workspace-skill-install`)  
-**Last updated:** 2026-10-21  
+**Last updated:** 2026-10-21
+
+## Decisions for the Implementer (TL;DR)
+
+- Skills discovered from configured paths (`~/.norman/skills/`, `/usr/share/norman/skills/`)
+- Metadata loaded at startup; tools injected on demand
+- Deactivate unused skills to reclaim token budget
+- `AddDiscoveryPaths` method + `POST /api/skills/paths` endpoint for runtime expansion (14i)  
 
 ---
 

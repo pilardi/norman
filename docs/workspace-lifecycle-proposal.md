@@ -1,9 +1,25 @@
+---
+title: "Workspace Lifecycle Proposal"
+type: implementation
+status: implemented
+date: 2026-10-29
+author: Pablo (via goose)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # Workspace Lifecycle Proposal
 
 > **Status:** ✅ IMPLEMENTED — Simplified model (stop/restore/purge), merged to `workspace-lifecycle-proposal` branch  
 > **Date:** 2026-10-28 (proposal) / 2026-10-29 (simplification)  
 > **Author:** Pablo (via goose)  
 > **Related:** `docs/workspace-definition-assessment.md` (previous workspace feature), `AGENTS.md` §3 (decay rules)
+
+## Decisions for the Implementer (TL;DR)
+
+- Workspace states: `active`, `stopped`, `archived`, `purged`
+- Lifecycle commands: `norman workspace stop|restore|archive|purge <name>`
+- Archive format: `.jsonl` (unified from previous inconsistency)
+- Persisted to disk on Create/Delete; loaded on startup (14h)
 
 ---
 
