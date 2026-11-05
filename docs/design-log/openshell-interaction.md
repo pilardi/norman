@@ -198,7 +198,7 @@ The runtime's job is to build the boundary and prove it's in place. Policy behav
 
 - OpenShell Architecture: https://docs.nvidia.com/openshell/about/architecture
 - OpenShell v0.1.5 docs: https://docs.nvidia.com/openshell/v0.1.5/about/overview
-- Norman Roger Client Design: `docs/roger-client-design.md`
+- Norman Roger Client Design: `./roger-client-design.md`
 
 ---
 

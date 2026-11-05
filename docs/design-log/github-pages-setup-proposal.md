@@ -88,5 +88,5 @@ Add a `generate-docs-html` target that converts `.md` → `.html` alongside the 
 | `cmd/docs-gen/main.go` | Add `--css` flag |
 | `.github/workflows/pages.yml` | New file (CI pipeline) |
 | `Makefile` | Add `generate-docs-html` target |
-| `docs/index.md` | New landing page |
+| `../index.md` | New landing page |
 | All existing `.md` in `docs/` | Add API reference link header |

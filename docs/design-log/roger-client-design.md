@@ -201,7 +201,7 @@ sessions map[string]*Session // session ID -> session
 
 | Phase | Deliverable | Files Changed |
 |-------|-------------|---------------|
-| P1 | Design doc (this file) | `docs/roger-client-design.md` (new) |
+| P1 | Design doc (this file) | `./roger-client-design.md` (new) |
 | P2 | `roger` CLI binary (Go) | `cmd/roger/` (new), `go.mod` update |
 | P3 | Sandbox context injection | `pkg/env/client.go`, `pkg/env/workspace.go` (`CreateSandbox`) |
 | P4 | Skill-based deployment | `pkg/skills/builtin/roger/SKILL.md` (new), `pkg/skills/activate.go` (extend) |
@@ -315,7 +315,7 @@ All relevant packages pass: `pkg/env`, `pkg/agent`, `cmd/roger` — all cached O
 
 | Phase | Deliverable | Files Changed |
 |-------|-------------|---------------|
-| P1 | Design doc (this file) | `docs/roger-client-design.md` (new) |
+| P1 | Design doc (this file) | `./roger-client-design.md` (new) |
 | P2 | `roger` CLI binary (Go) | `cmd/roger/` (new), `go.mod` update |
 | P3 | Sandbox context injection | `pkg/env/client.go`, `pkg/env/workspace.go` (`CreateSandbox`) |
 | P4 | Skill-based deployment | `pkg/skills/builtin/roger/SKILL.md` (new), `pkg/skills/activate.go` (extend) |

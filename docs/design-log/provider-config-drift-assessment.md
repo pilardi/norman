@@ -4,7 +4,7 @@ type: assessment
 status: draft
 date: 2026-10-22
 author: Norman agent (session assessment)
-related: [docs/provider-config-design.md, docs/config-embedding-proposal.md]
+related: [./provider-config-design.md, ./config-embedding-proposal.md]
 ---
 # Provider Configuration Drift Assessment
 
@@ -232,7 +232,7 @@ llmClient = createProvider(provCfg, workspaceConfig)
 | `pkg/llm/llamacpp/provider.go` | Constructor reads from provider config's Temperature/MaxTokens | 3, 4 |
 | `cmd/norman-server/main.go` | Simplify resolution path; remove system-level fallback logic | 2, 3 |
 | `pkg/config/embedded.go` | No change (YAML is the source of truth) | — |
-| `docs/provider-config-drift-assessment.md` | This document | — |
+| `./` | This document | — |
 
 ---
 

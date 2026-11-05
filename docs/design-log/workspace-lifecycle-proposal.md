@@ -12,7 +12,7 @@ related: [mvp-plan.md, session-workflow-proposal.md]
 > **Status:** ✅ IMPLEMENTED — Simplified model (stop/restore/purge), merged to `workspace-lifecycle-proposal` branch  
 > **Date:** 2026-10-28 (proposal) / 2026-10-29 (simplification)  
 > **Author:** Pablo (via goose)  
-> **Related:** `docs/workspace-definition-assessment.md` (previous workspace feature), `AGENTS.md` §3 (decay rules)
+> **Related:** `./workspace-definition-assessment.md` (previous workspace feature), `AGENTS.md` §3 (decay rules)
 
 ## Decisions for the Implementer (TL;DR)
 

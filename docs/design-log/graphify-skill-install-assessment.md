@@ -486,7 +486,7 @@ fab74bd feat(skills): add source_url + version tracking for update/uninstall
 | `pkg/skills/activate.go` | +9 | Wire InstallDependencies into Activate() |
 | `pkg/agent/loop.go` | +45/-0 | GetSession, ActivateWithSession for P3 sandbox activation |
 | `cmd/norman/main.go` | +60/-10 | P4: CLI skills list with provenance + remote subcommand |
-| `docs/graphify-skill-install-assessment.md` | +320 | Full assessment document (P1–P4 complete) |
+| `./graphify-skill-install-assessment.md` | +320 | Full assessment document (P1–P4 complete) |
 
 ---
 

@@ -275,14 +275,14 @@ All 19 packages compile and pass tests. No regressions detected.
 ---
 
 ## Related Documents
-- `glossary.md` — Terminology reference
-- `docs/llm-integration-plan.md` — Provider-agnostic LLM abstraction plan
-- `docs/llm-tool-access-assessment.md` — Tool access assessment for environment integration
-- `docs/memory-proposal.md` — Memory architecture enhancement proposal
-- `docs/provider-config-drift-assessment.md` — Config drift assessment
-- `docs/task-management-assessment.md` — Task management assessment
-- `docs/workspace-definition-assessment.md` — Workspace definition plan
-- `docs/workspace-skill-install-plan.md` — On-demand skill installation plan
-- `docs/config-embedding-proposal.md` — Embedded default config proposal
-- `docs/graphify-skill-install-assessment.md` — Graphify skill assessment
-- `docs/roger-client-design.md` — Roger client design
+- `../glossary.md` — Terminology reference
+- `./llm-integration-plan.md` — Provider-agnostic LLM abstraction plan
+- `./llm-tool-access-assessment.md` — Tool access assessment for environment integration
+- `./memory-proposal.md` — Memory architecture enhancement proposal
+- `./provider-config-drift-assessment.md` — Config drift assessment
+- `./task-management-assessment.md` — Task management assessment
+- `./workspace-definition-assessment.md` — Workspace definition plan
+- `./workspace-skill-install-plan.md` — On-demand skill installation plan
+- `./config-embedding-proposal.md` — Embedded default config proposal
+- `./graphify-skill-install-assessment.md` — Graphify skill assessment
+- `./roger-client-design.md` — Roger client design

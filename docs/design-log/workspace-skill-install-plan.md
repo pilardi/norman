@@ -167,7 +167,7 @@ This is a feature, not a bug — it enables gradual migration and testing.
 | `pkg/skills/activate.go` | Add `DeployToSandbox()` method, modify `ActivateWithSession()` | ✅ Done |
 | `cmd/norman-server/main.go` | Add workspace-level API endpoints + registry endpoint + server.registry field | ✅ Done |
 | `pkg/skills/registry.go` | New file — global registry management (JSON-backed, thread-safe) | ✅ Done |
-| `docs/workspace-skill-install-plan.md` | This document (source of truth for this feature) | ✅ Updated |
+| `./workspace-skill-install-plan.md` | This document (source of truth for this feature) | ✅ Updated |
 
 **Note:** `pkg/skills/discover.go` was NOT modified. Instead of adding an `InstallInSandbox` variant, `DeployToSandbox` calls `readSkillMetadata(skillDir)` directly (same package, unexported function).
 

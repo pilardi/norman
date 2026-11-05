@@ -4,7 +4,7 @@ type: proposal
 status: draft
 date: 2026-11-05
 author: Norman agent (session assessment)
-related: [docs/llm-tool-access-assessment.md, docs/roger-client-design.md]
+related: [./llm-tool-access-assessment.md, ./roger-client-design.md]
 ---
 # Clean Client Plan — `feat/clean-client` Branch
 
