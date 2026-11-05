@@ -28,7 +28,6 @@ All design documents follow the [Design-Log Methodology](design-log/README.md), 
 |----------|--------|-------------|
 | [Memory Proposal](design-log/memory-proposal.md) | `draft` | Memory system design (default axis + session bootstrap) |
 | [Config Embedding Proposal](design-log/config-embedding-proposal.md) | `draft` | Embedded defaults + help message unification |
-| [Provider Config Design](design-log/provider-config-design.md) | `draft` | Provider CRUD endpoints (`/api/providers`) |
 
 ### ✅ Implemented Designs
 
@@ -37,6 +36,7 @@ All design documents follow the [Design-Log Methodology](design-log/README.md), 
 | [MVP Plan](design-log/mvp-plan.md) | `implemented` | End-to-end CLI → Agent Server workflow |
 | [Session Workflow Proposal](design-log/session-workflow-proposal.md) | `implemented` | Session lifecycle design (WS subscription, UUID identity) |
 | [Roger Client Design](design-log/roger-client-design.md) | `implemented` | Lightweight notification/health-check binary |
+| [Provider Config Design](design-log/provider-config-design.md) | `implemented` | Provider CRUD endpoints (`/api/providers`) |
 | [OpenShell Interaction](design-log/openshell-interaction.md) | `implemented` | Sandbox boundary + tool flow |
 | [Workspace Lifecycle Proposal](design-log/workspace-lifecycle-proposal.md) | `implemented` | stop/restore/purge states |
 | [LLM Integration Plan](design-log/llm-integration-plan.md) | `implemented` | Provider-agnostic interfaces (`LLM`, `Embedder`) |
