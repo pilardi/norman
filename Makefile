@@ -92,7 +92,7 @@ generate-docs:
 
 generate-docs-html: generate-docs
 	@echo "Converting markdown files to HTML..."
-	go run ./cmd/md2html/ --out docs/ docs/*.md
+	go run ./cmd/md2html/ --out docs/ $(shell find docs -name '*.md' | sort)
 
 # Shell completion scripts for Bash, Zsh, and Fish.
 # Usage: make completion bash|zsh|fish > /etc/bash_completion.d/norman
