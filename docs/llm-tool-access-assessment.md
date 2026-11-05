@@ -26,6 +26,18 @@ related: [mvp-plan.md, llm-integration-plan.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/agent/loop.go` (agent loop) | Constrains: orchestrates multi-turn LLM execution; tool calls parsed from JSON blobs in content |
+| `pkg/llm/client.go` (OpenAI-compatible client) | Solves: provides existing HTTP-based provider implementation with tool-calling support |
+| `pkg/mcp/client.go` (MCP client) | Solves: remote skill tools via SSE transport; `ListTools()` + `CallTool()` exposed as always-available tools |
+| `pkg/skills/activate.go` (Activator) | Constrains: manages active skill set, injects tool definitions into prompt |
+| `pkg/env/session.go` (Session) | Solves: executes commands inside sandbox; `RunCommand()` + `session.Exec()` paths |
+
+---
+
 ## 1. Current Architecture Overview
 
 ### 1.1 Entry Points

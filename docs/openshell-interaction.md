@@ -20,6 +20,18 @@ related: [mvp-plan.md, session-workflow-proposal.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/env/session.go` (OpenShell session wrapper) | Solves: provides sandbox lifecycle + tool dispatch layer (`RunCommand`, `session.Exec`) |
+| OpenShell Go SDK v0.1.x | Constrains: persistent sessions per workspace; no multi-session parallelism at MVP |
+| `read`, `write`, `edit` tools (OpenShell tools layer) | Solves: structured file I/O without direct host OS access |
+| `seccomp`, `Landlock`, `cgroups` kernel-level isolation | Constrains: agent cannot detect sandbox boundary; must assume containment |
+| `pkg/notify/notifier.go` + WebSocket push | Solves: result delivery path from tool execution to user notification |
+
+---
+
 ## 1. The Invisible Boundary
 
 OpenShell is **not visible** to the agent or the tools it invokes. From the agent's perspective:

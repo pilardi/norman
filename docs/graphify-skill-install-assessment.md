@@ -21,6 +21,17 @@ related: [mvp-plan.md, workspace-skill-install-plan.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `graphifyy` CLI (v0.9.92) + `graphify-out/` directory | Solves: existing Python CLI producing HTML viewer + JSON graph + markdown report |
+| `install.py` subsystem (platform-specific hooks/SKILL.md files) | Constrains: writes to platform-specific locations; Norman needs sandbox-level install path |
+| `~/.norman/skills/` (host-level global registry) | Constrains: accumulates all installed skills on host; plan targets per-workspace isolation |
+| `pkg/skills/activate.go` + `POST /api/skills/paths` endpoint | Solves: existing skill discovery and runtime expansion mechanism |
+
+---
+
 ## 1. What is Graphify?
 
 Graphify (Graphify-Labs/graphify) is a Python CLI (`graphifyy`, v0.9.92) that builds a **knowledge graph** from any codebase using tree-sitter AST parsing (deterministic, no LLM cost for code). It exposes query/path/explain capabilities against `graph.json` and provides per-platform skill installers for 15+ AI coding assistants (Claude Code, Cursor, Codex, Gemini CLI, Kilo, etc.).

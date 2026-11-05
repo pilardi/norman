@@ -22,6 +22,18 @@ related: [session-workflow-proposal.md, openshell-interaction.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `~/.config/norman/context.json` (injected at sandbox creation) | Constrains: carries `workspace_id`, `workspace_name`; no `server_url` stored anymore |
+| `$NORMAN_SERVER_URL` env var | Solves: provides server address without coupling context file to deployment URL |
+| `pkg/notify/notifier.go` (WebSocket broadcast) | Solves: existing notification delivery path; roger pushes directly via HTTP POST to `/api/notifications` |
+| `GET /api/workspaces/{id}` + `GET /api/sessions/{id}/events` endpoints | Solves: provides workspace state and recent events for `roger status` / `roger log` commands |
+| `POST /api/notifications` endpoint | Solves: existing broadcast mechanism; roger reuses this for push notifications |
+
+---
+
 ## 1. Motivation
 
 Scripts and scheduled tasks running inside a Norman sandbox need to communicate with the user without consuming LLM agent budget. The current path (`stdout → resultsCh → agent loop → notifier`) is indirect and requires the agent to parse raw output into structured notifications.

@@ -22,6 +22,17 @@ related: [mvp-plan.md, graphify-skill-install-assessment.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `~/.norman/skills/` (host-level global install) | Constrains: accumulates ~150MB+ per Python-based skill; no per-workspace version pinning |
+| `/workspace/<ws>/skills/<name>/` (sandbox-level install) | Solves: workspace-level isolation path already exists; plan targets on-demand installation here |
+| `pkg/skills/activate.go` (skill activation) | Constrains: tools injected on demand; deactivation reclaims token budget |
+| `POST /api/skills/paths` endpoint | Solves: runtime expansion mechanism for discovery paths |
+
+---
+
 ## Problem Statement
 
 Currently, Norman installs skills globally on the server host (`~/.norman/skills/`). All workspaces share the same cloned skill directories. This means:

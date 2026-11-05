@@ -9,6 +9,19 @@ related: [provider-config-design.md]
 
 # Proposal: Embedded Default Configuration & Help Message Consistency
 
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/config/config.go` hardcoded constants (`DefaultModel`, `DefaultServerPort`) | Constrains: scattered Go literals mixed with logic; non-developers can't audit baked-in values without reading source |
+| `~/.config/norman/config.yaml` (user overlay) | Solves: existing user-modifiable config path; proposal changes resolution order (overlay → embedded defaults) |
+| `LoadDefault()` function in `pkg/config` | Constrains: currently only reads user config; must be refactored to handle embedded fallback |
+| `cmd/norman/main.go` + `cmd/norman-server/main.go` help text | Constrains: two separate help texts cause drift; unified via shared templates is the solution |
+
+---
+
 ## Problem Statement
 
 Currently, Norman's configuration has a two-tier model that creates friction:

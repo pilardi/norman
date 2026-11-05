@@ -22,6 +22,16 @@ related: [mvp-plan.md, session-workflow-proposal.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/env/session.go` session cache (`m.sessions`) | Constrains: indexed by session ID, not workspace name; multi-workspace parallelism deferred |
+| `~/.config/norman/config.yaml` (workspace registry) | Solves: persisted to disk on Create/Delete; loaded on startup (14h) |
+| `AGENTS.md` §3 decay rules | Constrains: trend entries stale after 30 days, task entries pruned at 60 days — workspace scoping extends this |
+
+---
+
 ## Problem Statement
 
 The LLM's system prompt (`buildSystemPrompt()`) gives the agent a generic identity ("helpful AI assistant") but **no definition of what the workspace *is*** — its purpose, boundaries, or domain. This means:

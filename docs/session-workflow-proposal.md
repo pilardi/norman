@@ -23,6 +23,18 @@ related: [mvp-plan.md, roger-client-design.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `switch <name>` CLI command | Constrains: global cwd concept was redundant; removed in favor of session-UUID identity |
+| `run [prompt]` fire-and-forget | Constrains: lacked session identity; replaced by WS-based subscription model |
+| `pkg/notify/notifier.go` + `resultsCh` channel | Solves: provides existing notification delivery path (stdout → resultsCh → agent loop → notifier) |
+| `go-sdk/mcp` client (`pkg/mcp/client.go`) | Solves: remote skill tool discovery; not bound to session lifecycle |
+| `SessionID()` method (immutable UUID) | Solves: single identity replacing sandbox-name-based lookup |
+
+---
+
 ## 1. Problem Statement
 
 The original Norman CLI included two commands that blurred the boundary between *workspace context* and *interactive agent interaction*:

@@ -23,6 +23,17 @@ related: [mvp-plan.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| Manual flag parsing in `cmd/norman/main.go` (~2,428 lines before migration) | Constrains: scattered CLI code across 8 files; unified via urfave/v3 reduces duplication |
+| `cmd/roger/main.go` (~325 lines) | Solves: single-file CLI already compact; migration further simplifies to ~310 lines |
+| `cmd/norman-server/main.go` (~102 lines) | Solves: minimal flags; bootstrap logic consolidated into shared library |
+| `urfave/v3` (`github.com/urfave/cli/v3`) | Solves: standard Go CLI library with subcommand routing, global flags, help text generation |
+
+---
+
 ## 1. Current State (Post-Migration)
 
 ### 1.1 Components and Their CLI Code

@@ -23,6 +23,18 @@ related: [mvp-plan.md, llm-tool-access-assessment.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/llm/client.go` (OpenAI-compatible HTTP client) | Constrains: current coupling to single provider; migration path via `ClientAdapter` preserves zero breaking changes |
+| `go.dev/blog/llmpowered` (Go blog article) | Solves: provides patterns for provider-agnostic design, batching, streaming |
+| `pkg/agent/loop.go` (agent loop) | Constrains: must not break existing tool-call parsing; adapter pattern required |
+| `CompletionResponse.RawJSON []byte` field | Solves: preserves raw response for debugging/provider-specific extensions |
+| `ProviderMetadata` struct | Solves: describes capabilities (tools, streaming, max tokens) without hardcoding provider names |
+
+---
+
 ## 0. Design Rationale & Interfaces (from LLM Abstraction Proposal)
 
 ### 0.1 Motivation

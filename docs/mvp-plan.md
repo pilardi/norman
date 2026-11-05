@@ -24,6 +24,19 @@ related: [session-workflow-proposal.md, memory-proposal.md, llm-integration-plan
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| OpenShell Go SDK v0.1.x (`pkg/env/session.go`) | Solves: provides sandbox lifecycle + tool dispatch layer |
+| `go mod init` + `go build ./...` (Go stdlib) | Constrains: no custom module management; composition over reimplementation |
+| `api-spec.yaml` (OpenAPI 3.1) | Solves: single source of truth for client-server protocol via `make generate` |
+| `tiktoken-go` + `go-git` dependencies | Solves: context budgeting (token counting) + wiki versioning |
+| Flat markdown wiki (`.norman/memory/`) | Constrains: no vector search at MVP; grep/glob + frontmatter metadata suffices |
+| `pkg/notify/notifier.go` | Solves: WebSocket/bell/Slack notification routing |
+
+---
+
 ## Vision Summary
 
 Norman is a **chat agent**. You talk to it in a session within a workspace. Tasks and scheduling are *emergent* from conversation, not manually triggered. The primary interaction model is interactive conversation — everything else exists to support it.

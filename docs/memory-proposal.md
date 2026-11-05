@@ -22,6 +22,19 @@ related: [mvp-plan.md, task-management-assessment.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| Flat wiki at `.norman/memory/` with `type:` frontmatter | Constrains: no nested directories at MVP; flat layout + frontmatter classification already in use |
+| `pkg/memory/store` (task/session JSON persistence) | Solves: provides existing JSON-based session/task storage layer |
+| `pkg/memory/raw_sources` (env var snapshots) | Solves: read-only environment snapshot mechanism available for raw context injection |
+| `.norman/memory/tasks/`, `.norman/memory/sessions/` directories | Constrains: current layout is flat; nested dirs planned but not yet implemented |
+| `gajae-way` (https://github.com/Yeachan-Heo/gajae-way) memory system | Solves: session bootstrap mechanism inspiration; bounded context injection (~8 KiB) |
+| `AGENTS.md` §3 decay rules | Constrains: trend entries stale after 30 days, task entries pruned at 60 days unless tagged |
+
+---
+
 ## Overview
 
 This proposal introduces two enhancements to norman's Long-Term Memory (LTM) system:

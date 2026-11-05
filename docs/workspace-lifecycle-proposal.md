@@ -23,6 +23,17 @@ related: [mvp-plan.md, session-workflow-proposal.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| Current workspace struct (`created_at`, `updated_at`) | Constrains: no `last_used_at` field; no idle detection mechanism at MVP |
+| `DELETE /api/workspaces/{name}` endpoint | Constrains: removes sandbox + metadata in one shot — no intermediate state preserves history |
+| `.jsonl` archive format (from previous inconsistency) | Solves: unified from earlier mixed CSV/JSONL approach |
+| `AGENTS.md` §3 decay rules | Solves: provides precedent for stale entry pruning; workspace lifecycle extends this to user-facing states |
+
+---
+
 ## Problem Statement
 
 The current workspace implementation lacks a formal **lifecycle** beyond "create → delete." This creates several operational gaps:

@@ -23,6 +23,18 @@ related: [mvp-plan.md, session-workflow-proposal.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/scheduler/scheduler.go` (cron tick loop, 10s granularity) | Solves: provides existing scheduled task execution mechanism |
+| `ScheduledTask.skill` field in struct | Constrains: exists but not wired to skill activation before execution — gap identified |
+| `GET/POST /api/tasks`, `DELETE /api/tasks/{id}`, `/api/scheduled` endpoints | Solves: existing API surface; assessment focuses on agent-side task creation flow |
+| `CreateTask()` + `SendMessageWithTask()` in agent loop | Solves: emergent task creation path already implemented |
+| OpenShell cron API | Constrains: scheduler accepts `RunCommandFunc` adapter but fallback still returns "exec not connected" |
+
+---
+
 ## 1. Executive Summary
 
 | Aspect | Status | Notes |

@@ -22,6 +22,17 @@ related: [config-embedding-proposal.md, llm-integration-plan.md]
 
 ---
 
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `ProviderConfig` struct + `NewClientWithProvider()` consumer | Constrains: data model and runtime consumption already exist; gap is CLI/API display path |
+| `pkg/config/config.go` default provider field | Solves: provides existing default provider selection mechanism |
+| `config.yaml` `llm_providers` section | Solves: YAML structure for multi-provider config already defined |
+| `${secret:...}` placeholder resolution | Constrains: API keys resolved at runtime, not parse time; CLI must handle this |
+
+---
+
 ## 1. Problem Statement
 
 The `norman config` CLI command exposes general server settings (port, host, bell, rate limit) but does **not** let users configure LLM providers — neither adding new ones nor editing existing ones. The data model (`ProviderConfig`) and runtime consumer (`NewClientWithProvider`) already exist; the gap is the **CLI display/update path** and the **server-side PUT handler**.
