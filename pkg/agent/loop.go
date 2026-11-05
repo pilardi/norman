@@ -460,6 +460,11 @@ func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]
 		workspaceID = ws
 	}
 
+	// Warn if no workspace was resolved (the task will still be created but will fail at execution).
+	if workspaceID == "" {
+		log.Printf("[loop] WARNING: CreateTask called without workspace_id — task will fail during sandbox execution")
+	}
+
 	// Parse priority from config (default: "normal").
 	var priority protocol.TaskCreateRequestPriority
 	switch strings.ToLower(config["priority"]) {
@@ -520,6 +525,14 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 			log.Printf("agent: failed to persist final state for task %s: %v", task.ID, err)
 		}
 	}()
+
+	// Validate workspace — tasks without a workspace cannot execute in a sandbox.
+	if task.Workspace == "" {
+		task.Status = protocol.TaskStatusFailed
+		task.Error = "no workspace resolved; cannot execute task without a workspace context"
+		l.pushCompletion(task)
+		return
+	}
 
 	// Budget threshold check at planning cycle start (before skill resolution).
 	// This ensures early detection of budget breaches and triggers summarization
