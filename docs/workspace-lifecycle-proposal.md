@@ -140,22 +140,19 @@ norman workspaces purge <name>      Permanently delete a workspace (requires --c
 
 ---
 
+## Questions & Answers
+
+### Q: Why simplify from 4 states (`active`, `stopped`, `archived`, `purge`) to 3?
+
+**A:** The distinction between `stopped` and `archived` was confusing — both free the sandbox and both preserve data (but archive's "preserve" wasn't actually implemented). Users don't need two ways to say "I'm done with this for now." The simplified model: `stop` is the single "freeze + release" operation. If you want to recover, `restore` replays from the snapshot. If you want it gone forever, `purge`.
+
+### Q: When should auto-stop trigger?
+
+**A:** Default: 7 days of no activity (configurable via `system.workspace_idle_timeout`). Override: User can explicitly `stop` at any time. Exception: Workspaces with `pinned: true` in frontmatter are never auto-stopped. This balances resource savings with user convenience for active projects.
+
+---
+
 ## Design Decisions & Trade-offs
-
-### Why simplify from 4 states to 3?
-
-The original model had `active` → `stopped` → `archived` → `purge`. The distinction between `stopped` and `archived` was confusing because:
-- Both free the sandbox
-- Both preserve data (but archive's "preserve" wasn't actually implemented)
-- Users don't need two ways to say "I'm done with this for now"
-
-The simplified model: `stop` is the single "freeze + release" operation. If you want to recover, `restore` replays from the snapshot. If you want it gone forever, `purge`.
-
-### When should auto-stop trigger?
-
-- Default: 7 days of no activity (configurable via `system.workspace_idle_timeout`).
-- Override: User can explicitly `stop` at any time.
-- Exception: Workspaces with `pinned: true` in frontmatter are never auto-stopped.
 
 ---
 

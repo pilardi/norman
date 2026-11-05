@@ -187,11 +187,19 @@ const defaultPort = 8080  // in config_defaults.yaml + embedded.go
 
 ---
 
-## Open Questions
+## Questions & Answers
 
-1. Should `config_defaults.yaml` be git-tracked or generated at build time? → *Recommend: git-tracked for reproducibility.*
-2. Should embedded defaults support the full `Config` schema (including providers) or just system-level fields? → *Full schema to avoid split logic.*
-3. How do we handle backward compatibility with existing `~/.norman/config.yaml` files that may use different field names? → *YAML merge semantics: user file fully replaces embedded defaults, so no partial-merge risk.*
+### Q: Should `config_defaults.yaml` be git-tracked or generated at build time?
+
+**A:** *Recommend: git-tracked for reproducibility.* A tracked file gives version control history, enables review of default changes, and avoids build-time generation complexity. Generated defaults lose provenance.
+
+### Q: Should embedded defaults support the full `Config` schema (including providers) or just system-level fields?
+
+**A:** *Full schema to avoid split logic.* If embedded defaults only cover system-level fields, a second resolution pass is needed for provider configs — doubling the config loading path and increasing surface area for bugs. Full-schema embedding keeps one code path.
+
+### Q: How do we handle backward compatibility with existing `~/.norman/config.yaml` files that may use different field names?
+
+**A:** *YAML merge semantics: user file fully replaces embedded defaults, so no partial-merge risk.* The user's config is treated as the canonical source; embedded defaults are only used as a fallback when the file is absent. No migration or field-mapping needed at MVP.
 
 ---
 

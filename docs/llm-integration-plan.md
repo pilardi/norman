@@ -35,6 +35,14 @@ related: [mvp-plan.md, llm-tool-access-assessment.md]
 
 ---
 
+## Questions & Answers
+
+### Q: Should the LLM loop itself be aware of remaining budget and adapt its output length?
+
+**A:** Current approach is reactive — `checkAndCompress` triggers after budget breach (75%/90%). A proactive alternative would pass `remaining_tokens` into the system prompt so the LLM knows to be concise. Trade-off: adds token overhead per turn for the budget hint; avoids unexpected truncation mid-response.
+
+---
+
 ## 0. Design Rationale & Interfaces (from LLM Abstraction Proposal)
 
 ### 0.1 Motivation

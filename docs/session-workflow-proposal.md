@@ -223,11 +223,19 @@ The CLI is a thin wrapper around the REST API + WS subscription, not a separate 
 
 ---
 
-## 6. Open Questions for Review ✅ (all resolved)
+## Questions & Answers
 
-1. **Auto-create sessions?** ✅ Resolved: if `--session <id>` is omitted from `tasks send`, the CLI auto-creates a real session via `POST /api/sessions`. Explicit `norman sessions create --workspace <name>` remains as an option for manual control.
-2. **Conversation continuity?** ✅ Resolved: `session_id` field on `TaskCreateRequest` enables growing context window tied to a session.
-3. **Idle timeout?** ✅ Resolved: 30-minute default, 5-min scan interval; configurable via server config in future.
+### Q: Should sessions be auto-created on first task send?
+
+**A:** ✅ Resolved. If `--session <id>` is omitted from `tasks send`, the CLI auto-creates a real session via `POST /api/sessions`. Explicit `norman sessions create --workspace <name>` remains as an option for manual control. Rationale: reduces friction for casual users; explicit creation preserves control power users need.
+
+### Q: How is conversation continuity maintained across tasks?
+
+**A:** ✅ Resolved. `session_id` field on `TaskCreateRequest` ties each task to a session, enabling a growing context window. The agent loop accumulates messages within the session's boundaries rather than resetting per-task.
+
+### Q: What is the idle timeout policy for sessions?
+
+**A:** ✅ Resolved. 30-minute default with 5-min scan interval; configurable via server config in future. Sessions auto-close after the threshold, freeing sandbox resources.
 
 ---
 
