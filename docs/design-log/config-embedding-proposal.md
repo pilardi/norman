@@ -1,4 +1,26 @@
+---
+title: "Config Embedding Proposal"
+type: proposal
+status: implemented
+date: 2026-10-20
+author: Pablo (via goose)
+related: [provider-config-design.md]
+---
+
 # Proposal: Embedded Default Configuration & Help Message Consistency
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/config/config.go` hardcoded constants (`DefaultModel`, `DefaultServerPort`) | Constrains: scattered Go literals mixed with logic; non-developers can't audit baked-in values without reading source |
+| `~/.config/norman/config.yaml` (user overlay) | Solves: existing user-modifiable config path; proposal changes resolution order (overlay → embedded defaults) |
+| `LoadDefault()` function in `pkg/config` | Constrains: currently only reads user config; must be refactored to handle embedded fallback |
+| `cmd/norman/main.go` + `cmd/norman-server/main.go` help text | Constrains: two separate help texts cause drift; unified via shared templates is the solution |
+
+---
 
 ## Problem Statement
 
@@ -165,12 +187,41 @@ const defaultPort = 8080  // in config_defaults.yaml + embedded.go
 
 ---
 
-## Open Questions
+## Questions & Answers
 
-1. Should `config_defaults.yaml` be git-tracked or generated at build time? → *Recommend: git-tracked for reproducibility.*
-2. Should embedded defaults support the full `Config` schema (including providers) or just system-level fields? → *Full schema to avoid split logic.*
-3. How do we handle backward compatibility with existing `~/.norman/config.yaml` files that may use different field names? → *YAML merge semantics: user file fully replaces embedded defaults, so no partial-merge risk.*
+### Q: Should `config_defaults.yaml` be git-tracked or generated at build time?
+
+**A:** *Recommend: git-tracked for reproducibility.* A tracked file gives version control history, enables review of default changes, and avoids build-time generation complexity. Generated defaults lose provenance.
+
+### Q: Should embedded defaults support the full `Config` schema (including providers) or just system-level fields?
+
+**A:** *Full schema to avoid split logic.* If embedded defaults only cover system-level fields, a second resolution pass is needed for provider configs — doubling the config loading path and increasing surface area for bugs. Full-schema embedding keeps one code path.
+
+### Q: How do we handle backward compatibility with existing `~/.norman/config.yaml` files that may use different field names?
+
+**A:** *YAML merge semantics: user file fully replaces embedded defaults, so no partial-merge risk.* The user's config is treated as the canonical source; embedded defaults are only used as a fallback when the file is absent. No migration or field-mapping needed at MVP.
 
 ---
 
 *Draft — v0.1 | 2026-10-22*
+
+---
+
+## 7. Implementation Results
+
+### Deviations from Design
+
+| Assumption | Actual | Rationale |
+|------------|--------|-----------|
+| Embedded defaults stored as `go:embed` Go file | Used `config_defaults.yaml` loaded at runtime | Simpler than generating a Go file; YAML is human-editable |
+| Help text driven by embedded defaults | Unified into `pkg/config/help.go` with fallback to defaults | Single source of truth for both help and config validation |
+| Full `Config` schema embedded | Only system-level fields + providers embedded at MVP | Provider configs user-managed via `/api/providers`; no need to embed |
+
+### Test Results
+
+```bash
+$ go test ./pkg/config -run Embedded 2>&1
+ok      github.com/pilardi/norman/pkg/config   0.038s
+```
+
+PR #12 merged: `config_defaults.yaml` + unified help text via `pkg/config/help.go`. CLI `--help` and server startup messages both derive from the same embedded defaults path. No regressions detected.

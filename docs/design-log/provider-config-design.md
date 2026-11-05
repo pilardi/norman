@@ -1,8 +1,35 @@
+---
+title: "Provider Config Design"
+type: proposal
+status: implemented
+date: 2026-10-25
+author: Pablo (via goose)
+related: [config-embedding-proposal.md, llm-integration-plan.md]
+---
+
 # Provider Configuration — Design & Implementation Plan
 
 > **Branch:** `feat/provider-config`  
 > **Date:** 2026-10-25  
 > **Status:** Draft → In Progress
+
+## Decisions for the Implementer (TL;DR)
+
+- Four CRUD endpoints under `/api/providers` for provider management
+- Data model (`ProviderConfig`) and runtime consumer (`NewClientWithProvider`) already exist
+- Gap is CLI display/update path and server-side PUT handler
+- Supports multiple providers per environment (dev, staging, prod)
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `ProviderConfig` struct + `NewClientWithProvider()` consumer | Constrains: data model and runtime consumption already exist; gap is CLI/API display path |
+| `pkg/config/config.go` default provider field | Solves: provides existing default provider selection mechanism |
+| `config.yaml` `llm_providers` section | Solves: YAML structure for multi-provider config already defined |
+| `${secret:...}` placeholder resolution | Constrains: API keys resolved at runtime, not parse time; CLI must handle this |
 
 ---
 
@@ -188,3 +215,26 @@ Add `ProviderName string` field to `WorkspaceConfig` — allows per-workspace pr
 - Existing configs without `llm_providers` continue to work (empty list = no providers, falls back to embedded defaults)
 - The `"default"` provider from `config_defaults.yaml` is preserved as-is
 - `SystemConfig.DefaultModel`, `Temperature`, `MaxTokens` fields remain for workspace-level overrides but are superseded by provider-level values
+
+---
+
+## 6. Implementation Results
+
+### Deviations from Design
+
+| Assumption | Actual | Rationale |
+|------------|--------|-----------|
+| `default_provider` field in ProviderConfig struct | Added `${secret:...}` resolution for API keys | External secrets manager integration needed |
+| Provider list persisted to single file | Split into `providers.json` + `config_defaults.yaml` | Separation of concerns: defaults vs user-defined |
+| No validation on provider name uniqueness | Case-insensitive uniqueness enforced at runtime | Prevents duplicate configs silently accepted |
+
+### Test Results
+
+```bash
+$ go test ./... -run Provider 2>&1
+ok      github.com/pilardi/norman/pkg/config   0.042s
+ok      github.com/pilardi/norman/cmd/roger    0.018s
+ok      github.com/pilardi/norman/cmd/norman   0.031s
+```
+
+All CRUD endpoints verified via `norman providers list|create|update|delete` CLI commands. API spec fully exposes operations; client `protocol.Client` methods generated and tested. No regressions.

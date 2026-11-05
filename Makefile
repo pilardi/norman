@@ -32,7 +32,8 @@ help:
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short    - Run short tests only (skip slow/integration)"
 	@echo "  test-integration - Build binaries and run integration tests (client-server communication)"
-	@echo "  generate-docs - Generate API reference HTML from api-spec.yaml"
+	@echo "  generate-docs   - Generate API reference HTML from api-spec.yaml"
+	@echo "  generate-docs-html - Convert all docs/*.md to styled HTML (Material Design)"
 
 generate:
 	@mkdir -p pkg/protocol
@@ -92,7 +93,7 @@ generate-docs:
 
 generate-docs-html: generate-docs
 	@echo "Converting markdown files to HTML..."
-	go run ./cmd/md2html/ --out docs/ docs/*.md
+	go run ./cmd/md2html/ --out docs/ $(shell find docs -name '*.md' | sort)
 
 # Shell completion scripts for Bash, Zsh, and Fish.
 # Usage: make completion bash|zsh|fish > /etc/bash_completion.d/norman

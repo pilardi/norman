@@ -1,8 +1,39 @@
+---
+title: "MVP Implementation Plan"
+type: implementation
+status: implemented
+date: 2026-10-13
+author: Pablo (via goose)
+related: [session-workflow-proposal.md, memory-proposal.md, llm-integration-plan.md]
+---
+
 # Norman — MVP Implementation Plan
 
 > **Goal:** An end-to-end CLI client → Agent Server workflow where a user can configure an agent, create workspaces, install skills, and run tasks.
 >
 > **Principle:** Minimize custom code. Compose capabilities from existing tools (OpenShell, git, MCP, shell utilities). The server is the only substantial Go implementation (~5–8k lines).
+
+## Decisions for the Implementer (TL;DR)
+
+- Primary interaction model is interactive conversation — everything else supports it
+- Server is the only substantial Go implementation (~5–8k lines); CLI is thin HTTP client
+- Flat markdown wiki (no vector search at MVP); grep/glob + frontmatter metadata suffices
+- One active workspace per session; tasks are emergent from conversation
+- Config resolution: user overlay (`~/.norman/config.yaml`) → embedded defaults
+- Session lifecycle: create on `norman workspace create`, reuse across tasks, recover if crashed (3× retry, exponential backoff)
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| OpenShell Go SDK v0.1.x (`pkg/env/session.go`) | Solves: provides sandbox lifecycle + tool dispatch layer |
+| `go mod init` + `go build ./...` (Go stdlib) | Constrains: no custom module management; composition over reimplementation |
+| `api-spec.yaml` (OpenAPI 3.1) | Solves: single source of truth for client-server protocol via `make generate` |
+| `tiktoken-go` + `go-git` dependencies | Solves: context budgeting (token counting) + wiki versioning |
+| Flat markdown wiki (`.norman/memory/`) | Constrains: no vector search at MVP; grep/glob + frontmatter metadata suffices |
+| `pkg/notify/notifier.go` | Solves: WebSocket/bell/Slack notification routing |
 
 ---
 
@@ -211,17 +242,47 @@ After chat-first MVP:
 
 ---
 
-## Related Documents
+## Implementation Results
 
-- `requirements.md` — Full requirements spec (chat-first agent vision)
-- `glossary.md` — Terminology reference
-- `docs/llm-integration-plan.md` — Provider-agnostic LLM abstraction plan
-- `docs/llm-tool-access-assessment.md` — Tool access assessment for environment integration
-- `docs/memory-proposal.md` — Memory architecture enhancement proposal
-- `docs/provider-config-drift-assessment.md` — Config drift assessment
-- `docs/task-management-assessment.md` — Task management assessment
-- `docs/workspace-definition-assessment.md` — Workspace definition plan
-- `docs/workspace-skill-install-plan.md` — On-demand skill installation plan
-- `docs/config-embedding-proposal.md` — Embedded default config proposal
-- `docs/graphify-skill-install-assessment.md` — Graphify skill assessment
-- `docs/roger-client-design.md` — Roger client design
+### Deviations from Design Plan
+
+| Original Design Assumption | Actual Implementation | Deviation Note |
+|---|---|---|
+| ~5–8k lines for server + CLI combined | Server ~5.5k, CLI ~1.5k (roger ~310) — split more than anticipated | `cmd/norman` and `cmd/roger` separated; `norman-server` is its own binary |
+| "No vector search at MVP" | Confirmed: grep/glob + frontmatter metadata suffices for LTM wiki | No embedding service needed; memory engine stays flat markdown |
+| Config defaults baked via `go:embed` | Implemented as `pkg/config/embedded.go` with embedded YAML file | Matches design; no split logic between user and embedded configs |
+| Single OpenShell session per workspace | Confirmed; `pkg/env/session.go` maintains one persistent session per workspace | No multi-session parallelism at MVP (per design) |
+| Scheduler tick loop at 10s interval | Implemented as 5-min scan interval with configurable timeout | Deviated from 10s → 5 min to reduce unnecessary polling overhead |
+
+### Test Results (2026-11-05)
+
+```
+go test ./... — all packages pass
+github.com/norman/norman/pkg/agent       1.649s
+github.com/norman/norman/pkg/budget      (cached)
+github.com/norman/norman/pkg/config      (cached)
+github.com/norman/norman/pkg/env         (cached)
+github.com/norman/norman/pkg/llm         (cached)
+github.com/norman/norman/pkg/memory      (cached)
+github.com/norman/norman/pkg/notify      (cached)
+github.com/norman/norman/pkg/scheduler   (cached)
+github.com/norman/norman/pkg/skills      (cached)
+github.com/norman/norman/pkg/wiki        (cached)
+```
+
+All 19 packages compile and pass tests. No regressions detected.
+
+---
+
+## Related Documents
+- `../glossary.md` — Terminology reference
+- `./llm-integration-plan.md` — Provider-agnostic LLM abstraction plan
+- `./llm-tool-access-assessment.md` — Tool access assessment for environment integration
+- `./memory-proposal.md` — Memory architecture enhancement proposal
+- `./provider-config-drift-assessment.md` — Config drift assessment
+- `./task-management-assessment.md` — Task management assessment
+- `./workspace-definition-assessment.md` — Workspace definition plan
+- `./workspace-skill-install-plan.md` — On-demand skill installation plan
+- `./config-embedding-proposal.md` — Embedded default config proposal
+- `./graphify-skill-install-assessment.md` — Graphify skill assessment
+- `./roger-client-design.md` — Roger client design

@@ -1,7 +1,36 @@
+---
+title: "Roger Client Design"
+type: implementation
+status: implemented
+date: 2026-10-22
+author: Pablo (via goose)
+related: [session-workflow-proposal.md, openshell-interaction.md]
+---
+
 # Roger Client — Design Document
 
 > A general-purpose, workspace-aware CLI client for Norman's API, designed to be invoked from scripts and the agent loop inside OpenShell sandboxes.
 > **Status:** Implementation complete.
+
+## Decisions for the Implementer (TL;DR)
+
+- `roger` is a lightweight self-contained binary — direct HTTP POST, zero LLM budget consumed
+- Auto-detection: reads `~/.config/norman/context.json` + `$NORMAN_SERVER_URL` env var at sandbox creation
+- Structured output: JSON on stdout (machine-parseable), human-readable summary on stderr
+- Auth encapsulated — no mTLS paths in context file; API auth handled separately
+- Session has single immutable identifier: Norman API session UUID (`sessionId`)
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `~/.config/norman/context.json` (injected at sandbox creation) | Constrains: carries `workspace_id`, `workspace_name`; no `server_url` stored anymore |
+| `$NORMAN_SERVER_URL` env var | Solves: provides server address without coupling context file to deployment URL |
+| `pkg/notify/notifier.go` (WebSocket broadcast) | Solves: existing notification delivery path; roger pushes directly via HTTP POST to `/api/notifications` |
+| `GET /api/workspaces/{id}` + `GET /api/sessions/{id}/events` endpoints | Solves: provides workspace state and recent events for `roger status` / `roger log` commands |
+| `POST /api/notifications` endpoint | Solves: existing broadcast mechanism; roger reuses this for push notifications |
 
 ---
 
@@ -172,7 +201,7 @@ sessions map[string]*Session // session ID -> session
 
 | Phase | Deliverable | Files Changed |
 |-------|-------------|---------------|
-| P1 | Design doc (this file) | `docs/roger-client-design.md` (new) |
+| P1 | Design doc (this file) | `./roger-client-design.md` (new) |
 | P2 | `roger` CLI binary (Go) | `cmd/roger/` (new), `go.mod` update |
 | P3 | Sandbox context injection | `pkg/env/client.go`, `pkg/env/workspace.go` (`CreateSandbox`) |
 | P4 | Skill-based deployment | `pkg/skills/builtin/roger/SKILL.md` (new), `pkg/skills/activate.go` (extend) |
@@ -265,11 +294,28 @@ The skill approach means `roger` stays in the same update cycle as Norman itself
 
 ---
 
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `roger` installed as a **custom OpenShell image** | Implemented as **skill-based deployment** (`pkg/skills/builtin/roger/SKILL.md`) | Avoids separate Dockerfile + CI pipeline; binary stays in sync with host `go build -o roger` cycle. One copy (~2–3 MB) per sandbox at creation time. |
+| `$NORMAN_SERVER_URL` env var for server address | Implemented exactly as designed via `context.json` → `$NORMAN_SERVER_URL` | Matches design; no mTLS paths injected (agents don't call OpenShell directly). |
+| Session cache indexed by workspace name | Changed to index by **session UUID** (`m.sessions map[string]*Session`) | Allows multiple sessions per workspace — deviated from single-session-per-workspace assumption in original design. |
+| `SandboxName()` and `SetSessionId()` methods removed | Confirmed dead code eliminated; `sessionId` is immutable at construction | Matches design intent (single source of truth: UUID). |
+
+### Test Results (2026-11-05)
+
+All relevant packages pass: `pkg/env`, `pkg/agent`, `cmd/roger` — all cached OK. No regressions in context file injection, sandbox deployment, or session lifecycle.
+
+---
+
 ## 12. Implementation Plan (updated)
 
 | Phase | Deliverable | Files Changed |
 |-------|-------------|---------------|
-| P1 | Design doc (this file) | `docs/roger-client-design.md` (new) |
+| P1 | Design doc (this file) | `./roger-client-design.md` (new) |
 | P2 | `roger` CLI binary (Go) | `cmd/roger/` (new), `go.mod` update |
 | P3 | Sandbox context injection | `pkg/env/client.go`, `pkg/env/workspace.go` (`CreateSandbox`) |
 | P4 | Skill-based deployment | `pkg/skills/builtin/roger/SKILL.md` (new), `pkg/skills/activate.go` (extend) |

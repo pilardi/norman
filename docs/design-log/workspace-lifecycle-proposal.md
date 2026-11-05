@@ -1,9 +1,36 @@
+---
+title: "Workspace Lifecycle Proposal"
+type: implementation
+status: implemented
+date: 2026-10-29
+author: Pablo (via goose)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # Workspace Lifecycle Proposal
 
 > **Status:** ✅ IMPLEMENTED — Simplified model (stop/restore/purge), merged to `workspace-lifecycle-proposal` branch  
 > **Date:** 2026-10-28 (proposal) / 2026-10-29 (simplification)  
 > **Author:** Pablo (via goose)  
-> **Related:** `docs/workspace-definition-assessment.md` (previous workspace feature), `AGENTS.md` §3 (decay rules)
+> **Related:** `./workspace-definition-assessment.md` (previous workspace feature), `AGENTS.md` §3 (decay rules)
+
+## Decisions for the Implementer (TL;DR)
+
+- Workspace states: `active`, `stopped`, `archived`, `purged`
+- Lifecycle commands: `norman workspace stop|restore|archive|purge <name>`
+- Archive format: `.jsonl` (unified from previous inconsistency)
+- Persisted to disk on Create/Delete; loaded on startup (14h)
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| Current workspace struct (`created_at`, `updated_at`) | Constrains: no `last_used_at` field; no idle detection mechanism at MVP |
+| `DELETE /api/workspaces/{name}` endpoint | Constrains: removes sandbox + metadata in one shot — no intermediate state preserves history |
+| `.jsonl` archive format (from previous inconsistency) | Solves: unified from earlier mixed CSV/JSONL approach |
+| `AGENTS.md` §3 decay rules | Solves: provides precedent for stale entry pruning; workspace lifecycle extends this to user-facing states |
 
 ---
 
@@ -113,22 +140,19 @@ norman workspaces purge <name>      Permanently delete a workspace (requires --c
 
 ---
 
+## Questions & Answers
+
+### Q: Why simplify from 4 states (`active`, `stopped`, `archived`, `purge`) to 3?
+
+**A:** The distinction between `stopped` and `archived` was confusing — both free the sandbox and both preserve data (but archive's "preserve" wasn't actually implemented). Users don't need two ways to say "I'm done with this for now." The simplified model: `stop` is the single "freeze + release" operation. If you want to recover, `restore` replays from the snapshot. If you want it gone forever, `purge`.
+
+### Q: When should auto-stop trigger?
+
+**A:** Default: 7 days of no activity (configurable via `system.workspace_idle_timeout`). Override: User can explicitly `stop` at any time. Exception: Workspaces with `pinned: true` in frontmatter are never auto-stopped. This balances resource savings with user convenience for active projects.
+
+---
+
 ## Design Decisions & Trade-offs
-
-### Why simplify from 4 states to 3?
-
-The original model had `active` → `stopped` → `archived` → `purge`. The distinction between `stopped` and `archived` was confusing because:
-- Both free the sandbox
-- Both preserve data (but archive's "preserve" wasn't actually implemented)
-- Users don't need two ways to say "I'm done with this for now"
-
-The simplified model: `stop` is the single "freeze + release" operation. If you want to recover, `restore` replays from the snapshot. If you want it gone forever, `purge`.
-
-### When should auto-stop trigger?
-
-- Default: 7 days of no activity (configurable via `system.workspace_idle_timeout`).
-- Override: User can explicitly `stop` at any time.
-- Exception: Workspaces with `pinned: true` in frontmatter are never auto-stopped.
 
 ---
 
@@ -141,27 +165,31 @@ The simplified model: `stop` is the single "freeze + release" operation. If you 
 
 ---
 
-## Implementation Notes
+## Implementation Results
 
-All phases implemented on branch `workspace-lifecycle-proposal`. Key details:
+### Deviations from Design
 
-- **API**: Three lifecycle endpoints (`POST /stop`, `/restore`; `DELETE /purge`) added to `api-spec.yaml`.
-- **Protocol**: `WorkspaceStatus` enum is `[active, stopped]`; `LastUsed *time.Time` added.
-- **Store**: `UpdateLastActivity()` tracks workspace activity; `Sessions()` exposes active sessions.
-- **Server handlers**: `StopWorkspace`, `RestoreWorkspace`, `PurgeWorkspace` in `workspaces.go`.
-- **Idle loop**: `StartIdleCleanupLoop(timeout, stopCh)` background goroutine with ticker.
-- **CLI**: `norman workspaces stop|restore|purge <name> [--flags]` commands implemented.
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `DELETE /api/workspaces/:name/purge` endpoint | Changed to `POST /api/workspaces/:name/purge` | JSON body expected by handler; DELETE with body is awkward in REST. Route changed from DELETE → POST to match handler contract. |
+| 4-state model: `active` → `stopped` → `archived` → `purge` | Simplified to 3 states: `active`, `stopped`, `purge` | `archive` removed as redundant — both `stopped` and `archived` freed sandbox + preserved data (but archive's "preserve" wasn't implemented). `stop` is the single freeze+release operation. |
+| Auto-stop at 7 days idle | Implemented with configurable `system.workspace_idle_timeout` | Design hardcoded 7 days; now reads from config with 7-day default fallback. |
+| `pinned: true` frontmatter exemption | Implemented in `StartIdleCleanupLoop()` check | Matches design exactly — pinned workspaces never auto-stop. |
 
 ### Bug Fixes Discovered During Implementation
 
 | Issue | Fix |
 |-------|-----|
-| Slice bounds panic `[:15]` on short names in `closeWorkspaceSessions()` | Conditional slice guard |
-| Same pattern in `CreateWorkspace()` | Identical conditional slice fix |
-| `--help` flag treated as workspace name | Added `--help`/`-h` check before name parsing |
-| Server accepted invalid names (`--bad!name`) → 500 | Added `isValidWorkspaceName()` validation |
-| Purge returned 204 but CLI tried to parse as JSON | CLI handles empty body gracefully |
+| Slice bounds panic `[:15]` on short names in `closeWorkspaceSessions()` | Conditional slice guard: `if len(name) >= 15 { name = name[:15] }` |
+| Same pattern in `CreateWorkspace()` | Identical conditional slice fix applied |
+| `--help` flag treated as workspace name | Added `--help`/`-h` check before name parsing in CLI |
+| Server accepted invalid names (`--bad!name`) → 500 | Added `isValidWorkspaceName()` regex validation |
+| Purge returned 204 but CLI tried to parse as JSON | CLI handles empty body gracefully (no error on 204) |
 | Route used `DELETE` but handler expected JSON body | Changed to `POST /api/workspaces/:name/purge` |
+
+### Test Results (2026-11-05)
+
+All workspace-related packages pass: `pkg/env`, `pkg/memory/store`, `cmd/norman` — all cached OK. No regressions in lifecycle transitions, snapshot writes, or idle cleanup loop.
 
 ---
 

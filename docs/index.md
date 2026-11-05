@@ -1,7 +1,9 @@
 ---
 title: "Norman Documentation"
 type: source
-updated: 2026-10-25
+status: draft
+date: 2026-11-05
+author: Norman agent (session assessment)
 tags: [docs, landing]
 workspace: norman
 ---
@@ -14,25 +16,39 @@ Welcome to the Norman documentation. This site is automatically generated from m
 
 - [Full API Reference](api-reference.html) — Interactive Scalar-powered reference for all endpoints.
 
-## Design Documents
+## Design Log Methodology
 
-| Document | Description |
-|----------|-------------|
-| [MVP Plan](mvp-plan.html) | Minimum viable product roadmap |
-| [Memory Proposal](memory-proposal.html) | Memory system design |
-| [Session Workflow Proposal](session-workflow-proposal.html) | Session lifecycle design |
-| [Task Management Assessment](task-management-assessment.html) | Task management capabilities review |
-| [LLM Integration Plan](llm-integration-plan.html) | LLM integration strategy |
-| [Provider Config Design](provider-config-design.html) | Provider configuration schema |
-| [Provider Config Drift Assessment](provider-config-drift-assessment.html) | Configuration drift analysis |
-| [LLM Tool Access Assessment](llm-tool-access-assessment.html) | Tool access review |
-| [Graphify Skill Install Assessment](graphify-skill-install-assessment.html) | Skill installation assessment |
-| [Workspace Definition Assessment](workspace-definition-assessment.html) | Workspace scoping review |
-| [Workspace Skill Install Plan](workspace-skill-install-plan.html) | Skill installation plan per workspace |
-| [Config Embedding Proposal](config-embedding-proposal.html) | Config embedding strategy |
-| [Roger Client Design](roger-client-design.html) | Roger client architecture |
-| [OpenShell Interaction](openshell-interaction.html) | OpenShell protocol design |
-| [Workspace Lifecycle Proposal](workspace-lifecycle-proposal.html) | Workspace lifecycle (stop, restore, archive, purge) |
+All design documents follow the [Design-Log Methodology](design-log/README.md), which standardizes structure to: **TL;DR → Background → Problem → Prior Art → Q&A → Design → Implementation Plan → Examples → Trade-offs**.
+
+## Design Documents by Category
+
+### 🏗️ Architecture & Proposals
+
+| Document | Status | Description |
+|----------|--------|-------------|
+| [Memory Proposal](design-log/memory-proposal.md) | `draft` | Memory system design (default axis + session bootstrap) |
+### ✅ Implemented Designs
+
+| Document | Status | Description |
+|----------|--------|-------------|
+| [Config Embedding Proposal](design-log/config-embedding-proposal.md) | `implemented` | Embedded defaults + help message unification |
+| [MVP Plan](design-log/mvp-plan.md) | `implemented` | End-to-end CLI → Agent Server workflow |
+| [Session Workflow Proposal](design-log/session-workflow-proposal.md) | `implemented` | Session lifecycle design (WS subscription, UUID identity) |
+| [Roger Client Design](design-log/roger-client-design.md) | `implemented` | Lightweight notification/health-check binary |
+| [Provider Config Design](design-log/provider-config-design.md) | `implemented` | Provider CRUD endpoints (`/api/providers`) |
+| [OpenShell Interaction](design-log/openshell-interaction.md) | `implemented` | Sandbox boundary + tool flow |
+| [Workspace Lifecycle Proposal](design-log/workspace-lifecycle-proposal.md) | `implemented` | stop/restore/purge states |
+| [LLM Integration Plan](design-log/llm-integration-plan.md) | `implemented` | Provider-agnostic interfaces (`LLM`, `Embedder`) |
+
+### 📋 Assessments (Ongoing Review)
+
+| Document | Status | Description |
+|----------|--------|-------------|
+| [Task Management Assessment](design-log/task-management-assessment.md) | `draft` | Deferred/scheduled task capabilities |
+| [Workspace Definition Assessment](design-log/workspace-definition-assessment.md) | `implemented` | Workspace as namespace/container |
+| [LLM Tool Access Assessment](design-log/llm-tool-access-assessment.md) | `implemented` | Typed tool exposure model |
+| [Graphify Skill Install Assessment](design-log/graphify-skill-install-assessment.md) | `draft` | Python knowledge-graph skill install |
+| [CLI Library Assessment](design-log/cli-library-assessment.md) | `implemented` | urfave/v3 migration status |
 
 ## Project Links
 

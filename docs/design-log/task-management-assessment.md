@@ -1,9 +1,37 @@
+---
+title: "Task Management Assessment"
+type: assessment
+status: draft
+date: 2026-10-22
+author: Norman agent (session assessment)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # Task Management Assessment — Norman Agent
 
 > **Date:** 2026-10-22  
 > **Author:** Norman agent (session assessment)  
 > **Scope:** How the agent creates deferred and scheduled tasks, whether task management is presented as a discoverable skill, and how it's wired to OpenShell.  
 > **Constraint:** The agent must never execute commands on the host machine — only inside its sandbox or via interaction with the user.
+
+## Decisions for the Implementer (TL;DR)
+
+- Tasks are emergent from conversation, not manually triggered via CLI
+- Scheduler uses OpenShell's cron API with 10s granularity tick loop
+- `ScheduledTask.skill` field exists but scheduler doesn't activate skills before execution (gap)
+- API endpoints: `GET/POST /api/tasks`, `DELETE /api/tasks/{id}`, `/api/scheduled`
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/scheduler/scheduler.go` (cron tick loop, 10s granularity) | Solves: provides existing scheduled task execution mechanism |
+| `ScheduledTask.skill` field in struct | Constrains: exists but not wired to skill activation before execution — gap identified |
+| `GET/POST /api/tasks`, `DELETE /api/tasks/{id}`, `/api/scheduled` endpoints | Solves: existing API surface; assessment focuses on agent-side task creation flow |
+| `CreateTask()` + `SendMessageWithTask()` in agent loop | Solves: emergent task creation path already implemented |
+| OpenShell cron API | Constrains: scheduler accepts `RunCommandFunc` adapter but fallback still returns "exec not connected" |
 
 ---
 
@@ -246,7 +274,7 @@ Per project rules, generated code (`pkg/protocol/types.go`) is **not** stored in
 | `cmd/norman/main.go` | Ensure scheduler is always wired in REPL mode | P1 |
 | `internal/api/handlers.go` | Wire `GET /api/scheduled` handler; verify `TailTaskLog` | P2 |
 | `pkg/protocol/types.go` | Regenerate from spec (auto-generated) | P3 |
-| `docs/task-management-assessment.md` | This document — update after implementation | N/A |
+| `./task-management-assessment.md` | This document — update after implementation | N/A |
 
 ---
 
@@ -272,7 +300,7 @@ Per project rules, generated code (`pkg/protocol/types.go`) is **not** stored in
 | `pkg/skills/discover.go` | Added `builtin://` prefix handling for built-in skills |
 | `pkg/config/config_defaults.yaml` | Added `"builtin://task-management"` to discovery_paths |
 | `pkg/skills/builtin/task_management/SKILL.md` | New: TaskManagement skill with typed tools (list_tasks, cancel_task, schedule_task, defer_task, task_log) |
-| `docs/task-management-assessment.md` | Comprehensive assessment document (updated with implementation status) |
+| `./task-management-assessment.md` | Comprehensive assessment document (updated with implementation status) |
 
 ---
 
@@ -280,10 +308,10 @@ Per project rules, generated code (`pkg/protocol/types.go`) is **not** stored in
 
 | Document | Coverage of Task Management |
 |----------|-----------------------------|
-| `docs/roadmap.md` | High-level phase tracking (P2 emergent tasks, P4 scheduler) ✅ |
-| `docs/llm-tool-access-assessment.md` | Tool exposure model; mentions `/list tasks` slash-command but no task-as-skill |
-| `docs/step14-plan.md` | Task persistence (`SaveTask`/`LoadTask`) ✅ |
-| `docs/step5-plan.md` through `step9-plan.md` | Individual step implementations; scheduler wired in step 9 |
+| `./roadmap.md` | High-level phase tracking (P2 emergent tasks, P4 scheduler) ✅ |
+| `./llm-tool-access-assessment.md` | Tool exposure model; mentions `/list tasks` slash-command but no task-as-skill |
+| `./step14-plan.md` | Task persistence (`SaveTask`/`LoadTask`) ✅ |
+| `./step5-plan.md` through `step9-plan.md` | Individual step implementations; scheduler wired in step 9 |
 | **This document** | Comprehensive assessment of gaps and recommendations for task management ✅ Updated with implementation status |
 
 ---

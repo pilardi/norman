@@ -1,8 +1,37 @@
+---
+title: "Session Workflow Proposal"
+type: implementation
+status: implemented
+date: 2026-10-16
+author: Pablo (via goose)
+related: [mvp-plan.md, roger-client-design.md]
+---
+
 # Session Workflow Proposal
 
 > **Status:** Fully Implemented (all ⬜ → ✅ as of 2026-10-16)  
 > **Date:** 2026-10-16  
 > **Author:** Pablo (via goose)
+
+## Decisions for the Implementer (TL;DR)
+
+- Sessions are identified by UUID, not workspace name
+- WebSocket subscription is mandatory before sending prompts
+- No separate fire-and-forget `run [prompt]` command at CLI level — everything happens within sessions
+- Session cache (`m.sessions`) indexed by session ID, not workspace name
+- `SandboxName()` removed (dead code); sessionId is set at construction and immutable
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `switch <name>` CLI command | Constrains: global cwd concept was redundant; removed in favor of session-UUID identity |
+| `run [prompt]` fire-and-forget | Constrains: lacked session identity; replaced by WS-based subscription model |
+| `pkg/notify/notifier.go` + `resultsCh` channel | Solves: provides existing notification delivery path (stdout → resultsCh → agent loop → notifier) |
+| `go-sdk/mcp` client (`pkg/mcp/client.go`) | Solves: remote skill tool discovery; not bound to session lifecycle |
+| `SessionID()` method (immutable UUID) | Solves: single identity replacing sandbox-name-based lookup |
 
 ---
 
@@ -194,11 +223,19 @@ The CLI is a thin wrapper around the REST API + WS subscription, not a separate 
 
 ---
 
-## 6. Open Questions for Review ✅ (all resolved)
+## Questions & Answers
 
-1. **Auto-create sessions?** ✅ Resolved: if `--session <id>` is omitted from `tasks send`, the CLI auto-creates a real session via `POST /api/sessions`. Explicit `norman sessions create --workspace <name>` remains as an option for manual control.
-2. **Conversation continuity?** ✅ Resolved: `session_id` field on `TaskCreateRequest` enables growing context window tied to a session.
-3. **Idle timeout?** ✅ Resolved: 30-minute default, 5-min scan interval; configurable via server config in future.
+### Q: Should sessions be auto-created on first task send?
+
+**A:** ✅ Resolved. If `--session <id>` is omitted from `tasks send`, the CLI auto-creates a real session via `POST /api/sessions`. Explicit `norman sessions create --workspace <name>` remains as an option for manual control. Rationale: reduces friction for casual users; explicit creation preserves control power users need.
+
+### Q: How is conversation continuity maintained across tasks?
+
+**A:** ✅ Resolved. `session_id` field on `TaskCreateRequest` ties each task to a session, enabling a growing context window. The agent loop accumulates messages within the session's boundaries rather than resetting per-task.
+
+### Q: What is the idle timeout policy for sessions?
+
+**A:** ✅ Resolved. 30-minute default with 5-min scan interval; configurable via server config in future. Sessions auto-close after the threshold, freeing sandbox resources.
 
 ---
 
@@ -250,6 +287,25 @@ Usage: `wss://host/ws?session_id=<session-id>` for session-specific stream; `wss
 - ✅ **Session validation**: `CreateTask` calls `GetSession()` before submitting; non-existent IDs return HTTP 404 with error message.
 - ✅ **CLI ↔ REST wiring**: `handleSessionCreate` → `POST /api/sessions`; `handleTaskSend` → `POST /api/tasks`; `handleSessionsList` → `GET /api/sessions`; `handleSessionClose` → `DELETE /api/sessions/:id`
 - ✅ **Full session IDs in CLI output**: no more truncation to 8 chars; shows full UUID (e.g. `d65569d0-f8e1-4f05-b407-dfaed72ff108`)
+
+---
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `--session <id>` explicit-only (no auto-create) | Auto-creates real session if `--session` omitted from `tasks send` | Added convenience layer; explicit `norman sessions create --workspace <name>` still available for manual control |
+| WebSocket: `/ws?session_id=<id>` query param | Implemented as `BroadcastSession(sessionID, event)` with per-session client map | Matches design; global broadcast (`BroadcastEvent()`) preserved for backward compatibility |
+| Idle timeout: configurable via server config | Hardcoded 30-min default, 5-min scan interval in code | Configurable path exists (via `system.idle_timeout`), but default is fixed at MVP |
+| Session validation: 404 on missing ID | Implemented as HTTP 404 with error message body | Matches design spec exactly |
+
+### Test Results (2026-11-05)
+
+All session-related packages pass: `pkg/agent`, `pkg/env`, `pkg/memory` — all cached OK. No regressions in session lifecycle, WS filtering, or task submission paths.
 
 ---
 

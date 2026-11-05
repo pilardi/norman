@@ -1,7 +1,34 @@
+---
+title: "Graphify Skill Install Assessment"
+type: assessment
+status: draft
+date: 2026-10-19
+author: Pablo (via goose)
+related: [mvp-plan.md, workspace-skill-install-plan.md]
+---
+
 # Assessment: Installing Graphify as a Norman Skill
 
 **Date:** 2026-10-19  
 **Status:** Draft — for discussion, not yet implemented
+
+## Decisions for the Implementer (TL;DR)
+
+- Graphify is a Python CLI (`graphifyy`, v0.9.92) building knowledge graphs via tree-sitter AST parsing
+- ~150MB+ per host install; no per-workspace version pinning yet
+- Goal: skills installed *inside* OpenShell sandbox on demand, no software on host beyond registry metadata
+- Exposes CLI commands: `graphify install`, `graphify query`, `graphify path`, `graphify explain`, `graphify update`
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `graphifyy` CLI (v0.9.92) + `graphify-out/` directory | Solves: existing Python CLI producing HTML viewer + JSON graph + markdown report |
+| `install.py` subsystem (platform-specific hooks/SKILL.md files) | Constrains: writes to platform-specific locations; Norman needs sandbox-level install path |
+| `~/.norman/skills/` (host-level global registry) | Constrains: accumulates all installed skills on host; plan targets per-workspace isolation |
+| `pkg/skills/activate.go` + `POST /api/skills/paths` endpoint | Solves: existing skill discovery and runtime expansion mechanism |
 
 ---
 
@@ -459,7 +486,7 @@ fab74bd feat(skills): add source_url + version tracking for update/uninstall
 | `pkg/skills/activate.go` | +9 | Wire InstallDependencies into Activate() |
 | `pkg/agent/loop.go` | +45/-0 | GetSession, ActivateWithSession for P3 sandbox activation |
 | `cmd/norman/main.go` | +60/-10 | P4: CLI skills list with provenance + remote subcommand |
-| `docs/graphify-skill-install-assessment.md` | +320 | Full assessment document (P1–P4 complete) |
+| `./graphify-skill-install-assessment.md` | +320 | Full assessment document (P1–P4 complete) |
 
 ---
 

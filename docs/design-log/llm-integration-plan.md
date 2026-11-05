@@ -1,8 +1,45 @@
+---
+title: "LLM Integration Plan"
+type: implementation
+status: implemented
+date: 2026-10-19
+author: Pablo (via goose)
+related: [mvp-plan.md, llm-tool-access-assessment.md]
+---
+
 # LLM Integration Plan — Provider-Agnostic Abstraction & Remaining Work
 
 > **Date:** 2026-10-19 (merged)
 > **Status:** Draft — actionable items tracked for MVP completion
 > **Related:** `requirements.md` §4.1, `go.dev/blog/llmpowered`
+
+## Decisions for the Implementer (TL;DR)
+
+- LLM abstraction uses provider-agnostic interfaces (`LLM`, `Embedder`) with compatibility adapter (`ClientAdapter`)
+- Zero breaking changes during transition — legacy `Caller` interface preserved
+- Provider implementations: OpenAI (✅), Ollama (🟡 Planned), Anthropic Claude (🟡 Planned), Google Gemini (🟡 Planned)
+- `CompletionRequest` is universal shape; `ProviderMetadata` describes capabilities
+- Streaming responses via `StreamReader` interface for perceived latency reduction
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/llm/client.go` (OpenAI-compatible HTTP client) | Constrains: current coupling to single provider; migration path via `ClientAdapter` preserves zero breaking changes |
+| `go.dev/blog/llmpowered` (Go blog article) | Solves: provides patterns for provider-agnostic design, batching, streaming |
+| `pkg/agent/loop.go` (agent loop) | Constrains: must not break existing tool-call parsing; adapter pattern required |
+| `CompletionResponse.RawJSON []byte` field | Solves: preserves raw response for debugging/provider-specific extensions |
+| `ProviderMetadata` struct | Solves: describes capabilities (tools, streaming, max tokens) without hardcoding provider names |
+
+---
+
+## Questions & Answers
+
+### Q: Should the LLM loop itself be aware of remaining budget and adapt its output length?
+
+**A:** Current approach is reactive — `checkAndCompress` triggers after budget breach (75%/90%). A proactive alternative would pass `remaining_tokens` into the system prompt so the LLM knows to be concise. Trade-off: adds token overhead per turn for the budget hint; avoids unexpected truncation mid-response.
 
 ---
 
@@ -370,6 +407,23 @@ The current flow is:
 - PromptTemplate type (§7.3, deferred)
 - Embedding-specific provider configuration
 - Deployment patterns (health checks, graceful shutdown, connection pooling)
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| Provider-agnostic `ClientAdapter` pattern with zero breaking changes | Implemented: `pkg/llm/client.go` with `ProviderConfig` struct + `NewClientAdapter()` factory | Matches design exactly; migration path preserves existing callers. |
+| `CompletionResponse.RawJSON []byte` field for debugging | Confirmed present in response struct | No deviation — raw JSON preserved for provider-specific extensions. |
+| Tool call format: structured `ToolCall` with typed arguments | Implemented via `ArgumentsTyped` on tool calls (P0 from llm-tool-access-assessment) | Deviated from "generic blob" → typed parameters; SKILL.md frontmatter drives schema generation. |
+| Context budget thresholds at 75%/90% | Implemented as `checkAndCompress()` with warn threshold = archive + compress, critical = forced summarization | Matches design exactly; original request + active workspace config + pinned entries always preserved. |
+
+### Test Results (2026-11-05)
+
+All LLM-related packages pass: `pkg/llm`, `pkg/agent`, `pkg/budget` — all cached OK. No regressions in provider switching, tool call parsing, or budget tracking.
 
 ---
 

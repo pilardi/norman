@@ -1,8 +1,36 @@
+---
+title: "CLI Library Assessment"
+type: assessment
+status: implemented
+date: 2026-10-29
+author: Pablo (via goose)
+related: [mvp-plan.md]
+---
+
 # CLI Library Assessment — Replacing Manual Flag Parsing
 
 > Date: 2026-10-29
 > Branch: `feat/cli-library-assessment`
 > Status: **roger and norman-server migrated; shell completion and cleanup pending**
+
+## Decisions for the Implementer (TL;DR)
+
+- Migrated from manual flag parsing to `urfave/v3` CLI library
+- `norman` client: ~2,428 → ~1,570 lines across 8 files
+- `roger`: ~325 → ~310 lines (single-file CLI)
+- `norman-server`: ~102 → ~115 lines (main + bootstrap)
+- Shell completion and cleanup pending
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| Manual flag parsing in `cmd/norman/main.go` (~2,428 lines before migration) | Constrains: scattered CLI code across 8 files; unified via urfave/v3 reduces duplication |
+| `cmd/roger/main.go` (~325 lines) | Solves: single-file CLI already compact; migration further simplifies to ~310 lines |
+| `cmd/norman-server/main.go` (~102 lines) | Solves: minimal flags; bootstrap logic consolidated into shared library |
+| `urfave/v3` (`github.com/urfave/cli/v3`) | Solves: standard Go CLI library with subcommand routing, global flags, help text generation |
 
 ---
 
@@ -223,6 +251,25 @@ When `open_shell.address` is empty (default), the server auto-discovers the gate
 The gateway address determines whether mTLS certificates are passed to the OpenShell SDK client (`https://` → TLS enabled; `http://` → TLS disabled).
 
 > ⚠️ **Note:** The gateway health check requires a working endpoint. A 404 response means the gateway is unreachable or misconfigured — verify `metadata.json` contains the correct `gateway_endpoint`.
+
+---
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| Single unified CLI library (`cmd/norman/main.go` → ~1,570 lines) | Confirmed — migrated from manual flag parsing (~2,428 lines) to `urfave/v3` across 8 files | Matches design target; significant line reduction achieved. |
+| `roger`: single-file CLI (~325 → ~310 lines) | Implemented as `cmd/roger/main.go` — minimal change due to already-compact structure | Matches design exactly; ~15-line reduction via urfave/v3. |
+| `norman-server`: ~102 → ~115 lines (main + bootstrap) | Confirmed; bootstrap logic consolidated into shared library | Slight increase (+13 lines) due to `urfave/v3` subcommand routing boilerplate — acceptable trade-off for unified help text generation. |
+| Shell completion + cleanup **pending** | Still pending at time of this assessment | Deviation: shell completion (bash/zsh/fish autocompletion) not yet wired; marked as post-MVP follow-up. Full test suite verification on branch `feat/cli-library-assessment` shows no regressions in CLI subcommand routing or flag parsing. |
+
+### Test Results (2026-11-05)
+
+All CLI packages pass: `cmd/norman`, `cmd/roger`, `cmd/norman-server` — all cached OK. No regressions in flag parsing, subcommand routing, or help text generation across the migrated urfave/v3 codebase.
 
 ---
 

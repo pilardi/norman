@@ -1,12 +1,40 @@
+---
+title: "LLM Tool Access Assessment"
+type: assessment
+status: implemented
+date: 2026-10-21
+author: Norman agent (session assessment)
+related: [mvp-plan.md, llm-integration-plan.md]
+---
+
 # LLM Tool Access Assessment — Agent-to-Environment Integration
 
 > **Date:** 2026-10-21  
 > **Author:** Norman agent (session assessment)  
 > **Scope:** How tools are granted to the LLM for interacting with the OpenShell workspace environment.  
 > **Constraint:** The agent must never execute commands on the host machine — only inside its sandbox or via interaction with the user.
+
+## Decisions for the Implementer (TL;DR)
+
+- Generic typed tools (`bash`, `read_file`, `write_file`) and bidirectional user tools (`ask_user`, `notify`) always available
+- P0 + ask_user/notify wired on branch `feature/llm-tool-access-assessment`
+- Sandbox isolation boundary: agent only operates inside sandbox; host never directly accessed
+- MCP tools are optional and skill-specific, not general-purpose
 >
 > **Status Update (2026-10-21):** P0 + ask_user/notify wired on branch `feature/llm-tool-access-assessment`.  
 > Generic typed tools (`bash`, `read_file`, `write_file`) and bidirectional user tools (`ask_user`, `notify`) are now always available to the LLM.
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/agent/loop.go` (agent loop) | Constrains: orchestrates multi-turn LLM execution; tool calls parsed from JSON blobs in content |
+| `pkg/llm/client.go` (OpenAI-compatible client) | Solves: provides existing HTTP-based provider implementation with tool-calling support |
+| `pkg/mcp/client.go` (MCP client) | Solves: remote skill tools via SSE transport; `ListTools()` + `CallTool()` exposed as always-available tools |
+| `pkg/skills/activate.go` (Activator) | Constrains: manages active skill set, injects tool definitions into prompt |
+| `pkg/env/session.go` (Session) | Solves: executes commands inside sandbox; `RunCommand()` + `session.Exec()` paths |
 
 ---
 
@@ -317,6 +345,23 @@ Legend: ✅ = implemented, ⚠️ = partially done, 🔲 = not yet started
 | MCP integration | Skill-bound, manual activation | ✅ `mcp_list_tools` + `mcp_call` exposed as always-available tools | Discoverable at runtime via `WithMCPClient()` |
 
 The core constraint — **never access the host machine** — is already well-served by the OpenShell sandbox model. Tool exposure quality has been significantly improved across all phases: P0 resolved typed shell/file I/O, P1 added per-tool schemas + MCP discoverability, and this session completed P2 (blocking `ask_user` via `AskUserBlocking()`, `request_permission` guard tool, `file_diff` read tool, typed `ArgumentsTyped` on ToolCall, and WS client-side response channel wiring). The WS message handler now correctly parses incoming `user_response` events and routes them through `BroadcastMessage()` to all registered response channels.
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| P0: Generic `{args}` blob tools → typed schemas | Implemented with `ArgumentsTyped` struct on `ToolCall` — typed parameters per tool, not just a generic string blob | Matches design target; SKILL.md frontmatter `parameters` field populated for all P1+ tools |
+| P1: MCP tools as always-available | Implemented via `WithMCPClient()` — discoverable at runtime via `ListTools()` + `CallTool()` | Deviated from "always available" → "discoverable on demand"; reduces unnecessary tool noise in system prompt |
+| P2: Blocking `ask_user` variant | Implemented as `AskUserBlocking()` with WS client-side response channel wiring | Matches design; uses `BroadcastMessage()` to route user responses back through WS |
+| Raw Sources: read-only snapshots | Confirmed — injected at task start, never mutated during execution | No deviation from design |
+
+### Test Results (2026-11-05)
+
+All tool-access packages pass: `pkg/agent`, `pkg/mcp`, `pkg/llm` — all cached OK. No regressions in tool call parsing, MCP discovery, or user-response routing.
 
 ---
 

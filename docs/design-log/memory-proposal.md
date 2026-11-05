@@ -1,8 +1,37 @@
+---
+title: "Memory Architecture Enhancement Proposal"
+type: proposal
+status: draft
+date: 2026-10-15
+author: Pablo (via goose)
+related: [mvp-plan.md, task-management-assessment.md]
+---
+
 # Memory Architecture Enhancement Proposal
 
 > **Status:** Draft — awaiting review before implementation.
 > **Source of ideas:** gajae-way (https://github.com/Yeachan-Heo/gajae-way) memory system and session bootstrap mechanism.
 > **Date:** 2026-10-15
+
+## Decisions for the Implementer (TL;DR)
+
+- Default axis structure ships with zero-config sensible defaults (flat wiki + frontmatter types)
+- Session bootstrap replaces full workspace scan with a curated pointer set (~8 KiB bounded context)
+- Customization via `axes.json` is a *later* capability; default structure works without user-facing config file
+- Memory uses flat markdown pages classified by `type:` frontmatter (`entity`, `source`, `trend`, `task`)
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| Flat wiki at `.norman/memory/` with `type:` frontmatter | Constrains: no nested directories at MVP; flat layout + frontmatter classification already in use |
+| `pkg/memory/store` (task/session JSON persistence) | Solves: provides existing JSON-based session/task storage layer |
+| `pkg/memory/raw_sources` (env var snapshots) | Solves: read-only environment snapshot mechanism available for raw context injection |
+| `.norman/memory/tasks/`, `.norman/memory/sessions/` directories | Constrains: current layout is flat; nested dirs planned but not yet implemented |
+| `gajae-way` (https://github.com/Yeachan-Heo/gajae-way) memory system | Solves: session bootstrap mechanism inspiration; bounded context injection (~8 KiB) |
+| `AGENTS.md` §3 decay rules | Constrains: trend entries stale after 30 days, task entries pruned at 60 days unless tagged |
 
 ---
 

@@ -1,6 +1,34 @@
+---
+title: "OpenShell Interaction Design"
+type: implementation
+status: implemented
+date: 2026-10-18
+author: Pablo (via goose)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # OpenShell Interaction Model for Norman
 
 > How Norman, its agent loop, tool calls, the `roger` client, and the server interact through the OpenShell sandbox boundary.
+
+## Decisions for the Implementer (TL;DR)
+
+- One persistent OpenShell session per workspace via Go SDK v0.1.x
+- All file I/O goes through OpenShell's tools layer (`read`, `write`, `edit`) — never direct host OS access
+- Session lifecycle: create on `norman workspace create`, reuse across tasks, recover if crashed (3× retry, exponential backoff)
+- Sandbox isolation boundary: agent only operates inside sandbox; host machine never directly accessed
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/env/session.go` (OpenShell session wrapper) | Solves: provides sandbox lifecycle + tool dispatch layer (`RunCommand`, `session.Exec`) |
+| OpenShell Go SDK v0.1.x | Constrains: persistent sessions per workspace; no multi-session parallelism at MVP |
+| `read`, `write`, `edit` tools (OpenShell tools layer) | Solves: structured file I/O without direct host OS access |
+| `seccomp`, `Landlock`, `cgroups` kernel-level isolation | Constrains: agent cannot detect sandbox boundary; must assume containment |
+| `pkg/notify/notifier.go` + WebSocket push | Solves: result delivery path from tool execution to user notification |
 
 ---
 
@@ -170,7 +198,26 @@ The runtime's job is to build the boundary and prove it's in place. Policy behav
 
 - OpenShell Architecture: https://docs.nvidia.com/openshell/about/architecture
 - OpenShell v0.1.5 docs: https://docs.nvidia.com/openshell/v0.1.5/about/overview
-- Norman Roger Client Design: `docs/roger-client-design.md`
+- Norman Roger Client Design: `./roger-client-design.md`
+
+---
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `roger` deployed via custom OpenShell image rebuild | Implemented as **skill-based deployment** (`pkg/skills/builtin/roger/SKILL.md`) | Avoids separate Dockerfile + CI pipeline; binary stays in sync with host `go build -o roger` cycle. One copy (~2–3 MB) per sandbox at creation time. |
+| `$NORMAN_SERVER_URL` env var + context.json for server address | Implemented exactly as designed: `context.json` stores `server_url`; `roger` reads it via `$NORMAN_SERVER_URL` env | Matches design; no mTLS paths injected (agents don't call OpenShell directly). |
+| HTTP POST to `/api/notifications` from sandbox | Implemented as direct HTTP client (`pkg/env/session.go` wrapper) + WebSocket event push for progress | `roger` makes authenticated HTTP calls; server pushes results via WS events. Zero LLM budget consumed (bypasses agent loop). |
+| Session-scoped: `$SESSION_ID` env var targets correct session | Implemented via `WebSocketEvent.SessionId` field routing | Matches design exactly — each sandbox gets its session ID injected at creation. |
+
+### Test Results (2026-11-05)
+
+All relevant packages pass: `pkg/env`, `pkg/agent`, `cmd/roger` — all cached OK. No regressions in context file injection, sandbox deployment, or WS event routing.
 
 ---
 

@@ -1,3 +1,11 @@
+---
+title: "Clean Client Plan — feat/clean-client"
+type: proposal
+status: draft
+date: 2026-11-05
+author: Norman agent (session assessment)
+related: [./llm-tool-access-assessment.md, ./roger-client-design.md]
+---
 # Clean Client Plan — `feat/clean-client` Branch
 
 > **Goal:** Ensure the Norman CLI client communicates with the server exclusively through generated API-spec code (`pkg/protocol.Client`), eliminating all direct `net/http` calls in client files.

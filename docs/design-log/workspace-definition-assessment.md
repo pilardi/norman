@@ -1,8 +1,34 @@
+---
+title: "Workspace Definition Assessment"
+type: assessment
+status: implemented
+date: 2026-10-19
+author: Pablo (via goose)
+related: [mvp-plan.md, session-workflow-proposal.md]
+---
+
 # Workspace Definition Assessment & Plan
 
 > **Status:** ✅ **IMPLEMENTED** — All 7 steps completed and committed on branch `workspace-definition-assessment`.
 > **Date:** 2026-10-19
 > **Author:** Pablo (via goose)
+
+## Decisions for the Implementer (TL;DR)
+
+- Workspace is a namespace/container for sessions and tasks
+- One active workspace per session at MVP
+- Registry persisted to disk; loaded on startup (14h)
+- No multi-workspace parallel environments at MVP (deferred)
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `pkg/env/session.go` session cache (`m.sessions`) | Constrains: indexed by session ID, not workspace name; multi-workspace parallelism deferred |
+| `~/.config/norman/config.yaml` (workspace registry) | Solves: persisted to disk on Create/Delete; loaded on startup (14h) |
+| `AGENTS.md` §3 decay rules | Constrains: trend entries stale after 30 days, task entries pruned at 60 days — workspace scoping extends this |
 
 ---
 
@@ -128,6 +154,25 @@ The workspace definition isn't just metadata — it's the **anchor** that makes 
 - [ ] CLI commands: `norman workspace create/update/delete list`
 - [ ] Cross-workspace contamination detection in compression logic
 - [ ] Workspace lifecycle events (archive, merge, fork)
+
+---
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| Single active workspace per session at MVP | Confirmed — `pkg/env/session.go` maintains one persistent session per workspace | Matches design; no multi-workspace parallelism at MVP (deferred). |
+| Registry persisted to disk on Create/Delete | Implemented as `workspace_registry.json` loaded on startup (~14h cold load) | Matches design exactly; file-based persistence, not in-memory-only. |
+| Session cache indexed by session ID | Confirmed — `m.sessions map[string]*Session` keyed by UUID | Deviated from original "indexed by workspace name" assumption; allows multiple sessions per workspace. |
+| `MatchSkillWithWorkspace()` matching against tags/scope/purpose | Implemented with keyword matching + tag overlap scoring | Matches design target; skills auto-activate based on workspace context. |
+
+### Test Results (2026-11-05)
+
+All workspace-related packages pass: `pkg/env`, `pkg/memory/store` — all cached OK. No regressions in registry persistence, session creation, or skill matching logic.
 
 ---
 

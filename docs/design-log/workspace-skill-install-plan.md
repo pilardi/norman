@@ -1,8 +1,35 @@
+---
+title: "Workspace Skill Install Plan"
+type: implementation
+status: implemented
+date: 2026-10-21
+author: Pablo (via goose)
+related: [mvp-plan.md, graphify-skill-install-assessment.md]
+---
+
 # Plan: Workspace-Level On-Demand Skill Installation
 
 **Date:** 2026-10-20  
 **Status:** ✅ **COMPLETE** (all phases implemented, committed to `feat/workspace-skill-install`)  
-**Last updated:** 2026-10-21  
+**Last updated:** 2026-10-21
+
+## Decisions for the Implementer (TL;DR)
+
+- Skills discovered from configured paths (`~/.norman/skills/`, `/usr/share/norman/skills/`)
+- Metadata loaded at startup; tools injected on demand
+- Deactivate unused skills to reclaim token budget
+- `AddDiscoveryPaths` method + `POST /api/skills/paths` endpoint for runtime expansion (14i)  
+
+---
+
+## Prior Art / Adjacent Mechanisms
+
+| Existing Item | Solves/Constrains This Problem? |
+|---------------|--------------------------------|
+| `~/.norman/skills/` (host-level global install) | Constrains: accumulates ~150MB+ per Python-based skill; no per-workspace version pinning |
+| `/workspace/<ws>/skills/<name>/` (sandbox-level install) | Solves: workspace-level isolation path already exists; plan targets on-demand installation here |
+| `pkg/skills/activate.go` (skill activation) | Constrains: tools injected on demand; deactivation reclaims token budget |
+| `POST /api/skills/paths` endpoint | Solves: runtime expansion mechanism for discovery paths |
 
 ---
 
@@ -140,7 +167,7 @@ This is a feature, not a bug — it enables gradual migration and testing.
 | `pkg/skills/activate.go` | Add `DeployToSandbox()` method, modify `ActivateWithSession()` | ✅ Done |
 | `cmd/norman-server/main.go` | Add workspace-level API endpoints + registry endpoint + server.registry field | ✅ Done |
 | `pkg/skills/registry.go` | New file — global registry management (JSON-backed, thread-safe) | ✅ Done |
-| `docs/workspace-skill-install-plan.md` | This document (source of truth for this feature) | ✅ Updated |
+| `./workspace-skill-install-plan.md` | This document (source of truth for this feature) | ✅ Updated |
 
 **Note:** `pkg/skills/discover.go` was NOT modified. Instead of adding an `InstallInSandbox` variant, `DeployToSandbox` calls `readSkillMetadata(skillDir)` directly (same package, unexported function).
 
@@ -153,3 +180,22 @@ This is a feature, not a bug — it enables gradual migration and testing.
 - OpenShell sandbox filesystems are persistent (not ephemeral), so cloned skills survive session restarts.
 - **Thin-client upload path** is supported: clients can send `{files[]}` payloads instead of `{repo, version}` for git clone. This avoids needing a network-accessible repo URL.
 - The `~/.norman/skills/` directory still exists on the host as a fallback; the new registry (`skills_registry.json`) tracks workspace-level installs separately.
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `InstallInSandbox()` variant added to `pkg/skills/` | **Not implemented** — instead, `DeployToSandbox()` calls `readSkillMetadata(skillDir)` directly (same package, unexported function) | Avoids API surface bloat; `discover.go` left unmodified. Single code path for metadata reading. |
+| `graphify install --platform agents` step reused inside sandboxes | Implemented via `DeployToSandbox()` — reuses existing graphify logic | Matches design exactly; no new CLI command needed. |
+| Host-level `~/.norman/skills/` accumulation (~150MB+) | Confirmed persistent; new `skills_registry.json` tracks workspace-level installs separately | Deviated from "ephemeral sandbox" assumption — skills survive session restarts due to OpenShell's persistent filesystem model. |
+| Thin-client upload path: `{files[]}` payloads | Implemented as alternative to `{repo, version}` git clone | Added convenience layer; avoids needing network-accessible repo URL for inline file payloads. |
+
+### Test Results (2026-11-05)
+
+All skill-related packages pass: `pkg/skills`, `pkg/env` — all cached OK. No regressions in discovery, activation, or deployment paths.
+
+---
