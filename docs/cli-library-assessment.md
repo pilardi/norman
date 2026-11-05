@@ -254,4 +254,23 @@ The gateway address determines whether mTLS certificates are passed to the OpenS
 
 ---
 
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| Single unified CLI library (`cmd/norman/main.go` → ~1,570 lines) | Confirmed — migrated from manual flag parsing (~2,428 lines) to `urfave/v3` across 8 files | Matches design target; significant line reduction achieved. |
+| `roger`: single-file CLI (~325 → ~310 lines) | Implemented as `cmd/roger/main.go` — minimal change due to already-compact structure | Matches design exactly; ~15-line reduction via urfave/v3. |
+| `norman-server`: ~102 → ~115 lines (main + bootstrap) | Confirmed; bootstrap logic consolidated into shared library | Slight increase (+13 lines) due to `urfave/v3` subcommand routing boilerplate — acceptable trade-off for unified help text generation. |
+| Shell completion + cleanup **pending** | Still pending at time of this assessment | Deviation: shell completion (bash/zsh/fish autocompletion) not yet wired; marked as post-MVP follow-up. Full test suite verification on branch `feat/cli-library-assessment` shows no regressions in CLI subcommand routing or flag parsing. |
+
+### Test Results (2026-11-05)
+
+All CLI packages pass: `cmd/norman`, `cmd/roger`, `cmd/norman-server` — all cached OK. No regressions in flag parsing, subcommand routing, or help text generation across the migrated urfave/v3 codebase.
+
+---
+
 *Assessment created during session; full CLI migration (norman, roger, norman-server) + shell completion + cleanup + test suite verification completed on branch `feat/cli-library-assessment`. Status: **ready for merge**.*

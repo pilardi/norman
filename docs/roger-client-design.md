@@ -294,6 +294,23 @@ The skill approach means `roger` stays in the same update cycle as Norman itself
 
 ---
 
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `roger` installed as a **custom OpenShell image** | Implemented as **skill-based deployment** (`pkg/skills/builtin/roger/SKILL.md`) | Avoids separate Dockerfile + CI pipeline; binary stays in sync with host `go build -o roger` cycle. One copy (~2–3 MB) per sandbox at creation time. |
+| `$NORMAN_SERVER_URL` env var for server address | Implemented exactly as designed via `context.json` → `$NORMAN_SERVER_URL` | Matches design; no mTLS paths injected (agents don't call OpenShell directly). |
+| Session cache indexed by workspace name | Changed to index by **session UUID** (`m.sessions map[string]*Session`) | Allows multiple sessions per workspace — deviated from single-session-per-workspace assumption in original design. |
+| `SandboxName()` and `SetSessionId()` methods removed | Confirmed dead code eliminated; `sessionId` is immutable at construction | Matches design intent (single source of truth: UUID). |
+
+### Test Results (2026-11-05)
+
+All relevant packages pass: `pkg/env`, `pkg/agent`, `cmd/roger` — all cached OK. No regressions in context file injection, sandbox deployment, or session lifecycle.
+
+---
+
 ## 12. Implementation Plan (updated)
 
 | Phase | Deliverable | Files Changed |

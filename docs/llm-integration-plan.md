@@ -410,6 +410,23 @@ The current flow is:
 
 ---
 
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| Provider-agnostic `ClientAdapter` pattern with zero breaking changes | Implemented: `pkg/llm/client.go` with `ProviderConfig` struct + `NewClientAdapter()` factory | Matches design exactly; migration path preserves existing callers. |
+| `CompletionResponse.RawJSON []byte` field for debugging | Confirmed present in response struct | No deviation — raw JSON preserved for provider-specific extensions. |
+| Tool call format: structured `ToolCall` with typed arguments | Implemented via `ArgumentsTyped` on tool calls (P0 from llm-tool-access-assessment) | Deviated from "generic blob" → typed parameters; SKILL.md frontmatter drives schema generation. |
+| Context budget thresholds at 75%/90% | Implemented as `checkAndCompress()` with warn threshold = archive + compress, critical = forced summarization | Matches design exactly; original request + active workspace config + pinned entries always preserved. |
+
+### Test Results (2026-11-05)
+
+All LLM-related packages pass: `pkg/llm`, `pkg/agent`, `pkg/budget` — all cached OK. No regressions in provider switching, tool call parsing, or budget tracking.
+
+---
+
 ## 9. References
 
 - **OpenAI Chat Completions API:** https://platform.openai.com/docs/api-reference/chat/create

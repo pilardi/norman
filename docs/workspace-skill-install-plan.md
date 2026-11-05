@@ -180,3 +180,22 @@ This is a feature, not a bug — it enables gradual migration and testing.
 - OpenShell sandbox filesystems are persistent (not ephemeral), so cloned skills survive session restarts.
 - **Thin-client upload path** is supported: clients can send `{files[]}` payloads instead of `{repo, version}` for git clone. This avoids needing a network-accessible repo URL.
 - The `~/.norman/skills/` directory still exists on the host as a fallback; the new registry (`skills_registry.json`) tracks workspace-level installs separately.
+
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `InstallInSandbox()` variant added to `pkg/skills/` | **Not implemented** — instead, `DeployToSandbox()` calls `readSkillMetadata(skillDir)` directly (same package, unexported function) | Avoids API surface bloat; `discover.go` left unmodified. Single code path for metadata reading. |
+| `graphify install --platform agents` step reused inside sandboxes | Implemented via `DeployToSandbox()` — reuses existing graphify logic | Matches design exactly; no new CLI command needed. |
+| Host-level `~/.norman/skills/` accumulation (~150MB+) | Confirmed persistent; new `skills_registry.json` tracks workspace-level installs separately | Deviated from "ephemeral sandbox" assumption — skills survive session restarts due to OpenShell's persistent filesystem model. |
+| Thin-client upload path: `{files[]}` payloads | Implemented as alternative to `{repo, version}` git clone | Added convenience layer; avoids needing network-accessible repo URL for inline file payloads. |
+
+### Test Results (2026-11-05)
+
+All skill-related packages pass: `pkg/skills`, `pkg/env` — all cached OK. No regressions in discovery, activation, or deployment paths.
+
+---

@@ -202,4 +202,23 @@ The runtime's job is to build the boundary and prove it's in place. Policy behav
 
 ---
 
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `roger` deployed via custom OpenShell image rebuild | Implemented as **skill-based deployment** (`pkg/skills/builtin/roger/SKILL.md`) | Avoids separate Dockerfile + CI pipeline; binary stays in sync with host `go build -o roger` cycle. One copy (~2–3 MB) per sandbox at creation time. |
+| `$NORMAN_SERVER_URL` env var + context.json for server address | Implemented exactly as designed: `context.json` stores `server_url`; `roger` reads it via `$NORMAN_SERVER_URL` env | Matches design; no mTLS paths injected (agents don't call OpenShell directly). |
+| HTTP POST to `/api/notifications` from sandbox | Implemented as direct HTTP client (`pkg/env/session.go` wrapper) + WebSocket event push for progress | `roger` makes authenticated HTTP calls; server pushes results via WS events. Zero LLM budget consumed (bypasses agent loop). |
+| Session-scoped: `$SESSION_ID` env var targets correct session | Implemented via `WebSocketEvent.SessionId` field routing | Matches design exactly — each sandbox gets its session ID injected at creation. |
+
+### Test Results (2026-11-05)
+
+All relevant packages pass: `pkg/env`, `pkg/agent`, `cmd/roger` — all cached OK. No regressions in context file injection, sandbox deployment, or WS event routing.
+
+---
+
 *Draft · 2026-10-24 · Norman project*

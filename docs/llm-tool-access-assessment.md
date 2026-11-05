@@ -348,4 +348,21 @@ The core constraint — **never access the host machine** — is already well-se
 
 ---
 
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| P0: Generic `{args}` blob tools → typed schemas | Implemented with `ArgumentsTyped` struct on `ToolCall` — typed parameters per tool, not just a generic string blob | Matches design target; SKILL.md frontmatter `parameters` field populated for all P1+ tools |
+| P1: MCP tools as always-available | Implemented via `WithMCPClient()` — discoverable at runtime via `ListTools()` + `CallTool()` | Deviated from "always available" → "discoverable on demand"; reduces unnecessary tool noise in system prompt |
+| P2: Blocking `ask_user` variant | Implemented as `AskUserBlocking()` with WS client-side response channel wiring | Matches design; uses `BroadcastMessage()` to route user responses back through WS |
+| Raw Sources: read-only snapshots | Confirmed — injected at task start, never mutated during execution | No deviation from design |
+
+### Test Results (2026-11-05)
+
+All tool-access packages pass: `pkg/agent`, `pkg/mcp`, `pkg/llm` — all cached OK. No regressions in tool call parsing, MCP discovery, or user-response routing.
+
+---
+
 *Assessment complete. See `requirements.md` §4 for design constraints.*

@@ -290,4 +290,23 @@ Usage: `wss://host/ws?session_id=<session-id>` for session-specific stream; `wss
 
 ---
 
+---
+
+## Implementation Results
+
+### Deviations from Design
+
+| Original Design | Actual Implementation | Deviation Note |
+|---|---|---|
+| `--session <id>` explicit-only (no auto-create) | Auto-creates real session if `--session` omitted from `tasks send` | Added convenience layer; explicit `norman sessions create --workspace <name>` still available for manual control |
+| WebSocket: `/ws?session_id=<id>` query param | Implemented as `BroadcastSession(sessionID, event)` with per-session client map | Matches design; global broadcast (`BroadcastEvent()`) preserved for backward compatibility |
+| Idle timeout: configurable via server config | Hardcoded 30-min default, 5-min scan interval in code | Configurable path exists (via `system.idle_timeout`), but default is fixed at MVP |
+| Session validation: 404 on missing ID | Implemented as HTTP 404 with error message body | Matches design spec exactly |
+
+### Test Results (2026-11-05)
+
+All session-related packages pass: `pkg/agent`, `pkg/env`, `pkg/memory` — all cached OK. No regressions in session lifecycle, WS filtering, or task submission paths.
+
+---
+
 *All ⬜ items resolved (2026-10-16). All endpoints wired, CLI ↔ REST fully connected.*

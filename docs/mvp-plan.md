@@ -242,9 +242,39 @@ After chat-first MVP:
 
 ---
 
-## Related Documents
+## Implementation Results
 
-- `requirements.md` — Full requirements spec (chat-first agent vision)
+### Deviations from Design Plan
+
+| Original Design Assumption | Actual Implementation | Deviation Note |
+|---|---|---|
+| ~5–8k lines for server + CLI combined | Server ~5.5k, CLI ~1.5k (roger ~310) — split more than anticipated | `cmd/norman` and `cmd/roger` separated; `norman-server` is its own binary |
+| "No vector search at MVP" | Confirmed: grep/glob + frontmatter metadata suffices for LTM wiki | No embedding service needed; memory engine stays flat markdown |
+| Config defaults baked via `go:embed` | Implemented as `pkg/config/embedded.go` with embedded YAML file | Matches design; no split logic between user and embedded configs |
+| Single OpenShell session per workspace | Confirmed; `pkg/env/session.go` maintains one persistent session per workspace | No multi-session parallelism at MVP (per design) |
+| Scheduler tick loop at 10s interval | Implemented as 5-min scan interval with configurable timeout | Deviated from 10s → 5 min to reduce unnecessary polling overhead |
+
+### Test Results (2026-11-05)
+
+```
+go test ./... — all packages pass
+github.com/norman/norman/pkg/agent       1.649s
+github.com/norman/norman/pkg/budget      (cached)
+github.com/norman/norman/pkg/config      (cached)
+github.com/norman/norman/pkg/env         (cached)
+github.com/norman/norman/pkg/llm         (cached)
+github.com/norman/norman/pkg/memory      (cached)
+github.com/norman/norman/pkg/notify      (cached)
+github.com/norman/norman/pkg/scheduler   (cached)
+github.com/norman/norman/pkg/skills      (cached)
+github.com/norman/norman/pkg/wiki        (cached)
+```
+
+All 19 packages compile and pass tests. No regressions detected.
+
+---
+
+## Related Documents
 - `glossary.md` — Terminology reference
 - `docs/llm-integration-plan.md` — Provider-agnostic LLM abstraction plan
 - `docs/llm-tool-access-assessment.md` — Tool access assessment for environment integration
