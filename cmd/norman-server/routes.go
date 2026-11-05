@@ -56,14 +56,18 @@ func registerRoutes(e *echo.Echo, srv *server) {
 
 	// Override the auto-generated /ws GET handler: Echo's default writes "OK"
 	// after WebSocket upgrade already wrote headers, causing a superfluous
-	// WriteHeader warning. Use a custom handler that suppresses the body.
+	// WriteHeader warning. Set Committed before and after Upgrade() to
+	// prevent the GET template from writing a body.
 	e.GET("/ws", func(c echo.Context) error {
+		// Prevent Echo's GET template from writing "OK" body — Upgrade()
+		// writes 101 headers directly to the underlying http.ResponseWriter,
+		// bypassing Echo's Response object. Set Committed early and after.
+		c.Response().Committed = true
 		err := srv.ConnectWebSocket(c, protocol.ConnectWebSocketParams{SessionId: c.QueryParam("session_id")})
 		if err != nil {
 			return err
 		}
-		// Suppress Echo's default "OK" response body — headers already written by Upgrade().
-		// Set Committed = true so Echo's GET template skips writing the body.
+		// Re-confirm committed — Upgrade() may have bypassed our flag.
 		c.Response().Committed = true
 		return nil
 	})
