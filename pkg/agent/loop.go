@@ -1444,9 +1444,14 @@ func (l *Loop) pushCompletion(task *Task) {
 		}
 
 		n := notify.Notification{
-			TaskID:    task.ID,
-			Title:     fmt.Sprintf("Task %s", task.ID[:8]),
-			Body:      string(task.Output),
+			TaskID: task.ID,
+			Title:  fmt.Sprintf("Task %s", task.ID[:8]),
+			Body: func() string {
+				if task.Error != "" {
+					return task.Error
+				}
+				return string(task.Output)
+			}(),
 			Severity:  severity,
 			Timestamp: time.Now(),
 		}
