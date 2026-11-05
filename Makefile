@@ -32,7 +32,8 @@ help:
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short    - Run short tests only (skip slow/integration)"
 	@echo "  test-integration - Build binaries and run integration tests (client-server communication)"
-	@echo "  generate-docs - Generate API reference HTML from api-spec.yaml"
+	@echo "  generate-docs   - Generate API reference HTML from api-spec.yaml"
+	@echo "  generate-docs-html - Convert all docs/*.md to styled HTML (Material Design)"
 
 generate:
 	@mkdir -p pkg/protocol
