@@ -1479,7 +1479,11 @@ func (l *Loop) pushCompletion(task *Task) {
 				if task.Error != "" {
 					return task.Error
 				}
-				return string(task.Output)
+				trimmed := strings.TrimSpace(string(task.Output))
+				if trimmed == "" {
+					return "completed"
+				}
+				return trimmed
 			}(),
 			Severity:  severity,
 			Timestamp: time.Now(),
