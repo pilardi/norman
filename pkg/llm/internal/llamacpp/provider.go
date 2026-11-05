@@ -368,7 +368,25 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 		if fr, ok := delta["finish_reason"].(string); ok {
 			chunk.FinishReason = fr
 		}
-		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q", s.providerName, chunk.Delta, chunk.FinishReason)
+		// Extract tool calls from delta.tool_calls array.
+		if tcArr, ok := delta["tool_calls"].([]interface{}); ok && len(tcArr) > 0 {
+			for _, tcRaw := range tcArr {
+				tcMap, ok := tcRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				id, _ := tcMap["id"].(string)
+				fnRaw, _ := tcMap["function"].(map[string]interface{})
+				name, _ := fnRaw["name"].(string)
+				argsRaw, _ := tcMap["arguments"].(string)
+				chunk.ToolCalls = append(chunk.ToolCalls, api.ToolCall{
+					ID:        id,
+					Name:      name,
+					Arguments: json.RawMessage(argsRaw),
+				})
+			}
+		}
+		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls))
 		return chunk, nil
 	}
 

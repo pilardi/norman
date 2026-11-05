@@ -796,6 +796,9 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		var usage llm.Usage
 		done := false
 
+		// Accumulate tool calls captured during streaming.
+		var accumulatedToolCalls []llm.ToolCall
+
 		for !done {
 			chunk, err := stream.Next()
 			if err != nil {
@@ -805,12 +808,17 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				_ = stream.Close()
 				return nil, fmt.Errorf("streaming failed at turn %d: %v", turn, err)
 			}
-			if chunk.FinishReason == "[done]" {
+			if chunk.FinishReason == "[done]" || chunk.FinishReason == "tool_calls" {
 				done = true
 				continue
 			}
 
 			fullText.WriteString(chunk.Delta)
+
+			// Accumulate tool calls captured from delta.tool_calls field.
+			if len(chunk.ToolCalls) > 0 {
+				accumulatedToolCalls = append(accumulatedToolCalls, chunk.ToolCalls...)
+			}
 
 			// Track token usage if available
 			if chunk.Usage != nil {
@@ -844,8 +852,8 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			log.Printf("agent: turn %d used %d tokens (total session: %d)", turn+1, usage.TotalTokens, l.budget.TokenCount)
 		}
 
-		// Parse tool calls from the accumulated response text
-		toolCalls := llm.ParseToolCalls(llm.Message{Role: "assistant", Content: responseText})
+		// Use tool calls captured during streaming (more reliable than parsing text).
+		toolCalls := accumulatedToolCalls
 
 		if len(toolCalls) > 0 {
 			// Execute tool calls in the sandbox (item #6: enhanced WS events)

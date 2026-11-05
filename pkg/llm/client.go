@@ -238,12 +238,30 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 
 		chunk := Chunk{}
 
-		// OpenAI SSE format: {"choices":[{"delta":{"content":"..."},"finish_reason":null}]}
+		// OpenAI SSE format: {"choices":[{"delta":{"content":"...","tool_calls":[...]},"finish_reason":null}]}
 		if choices, ok := delta["choices"].([]interface{}); ok && len(choices) > 0 {
 			if choice, ok := choices[0].(map[string]interface{}); ok {
 				if deltaMap, ok := choice["delta"].(map[string]interface{}); ok {
 					if content, ok := deltaMap["content"].(string); ok {
 						chunk.Delta = content
+					}
+					// Extract tool calls from delta.tool_calls array.
+					if tcArr, ok := deltaMap["tool_calls"].([]interface{}); ok && len(tcArr) > 0 {
+						for _, tcRaw := range tcArr {
+							tcMap, ok := tcRaw.(map[string]interface{})
+							if !ok {
+								continue
+							}
+							id, _ := tcMap["id"].(string)
+							fnRaw, _ := tcMap["function"].(map[string]interface{})
+							name, _ := fnRaw["name"].(string)
+							argsRaw, _ := tcMap["arguments"].(string)
+							chunk.ToolCalls = append(chunk.ToolCalls, ToolCall{
+								ID:        id,
+								Name:      name,
+								Arguments: json.RawMessage(argsRaw),
+							})
+						}
 					}
 				}
 				if fr, ok := choice["finish_reason"].(string); ok {
@@ -252,7 +270,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 			}
 		}
 
-		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q", s.providerName, chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls))
 
 		return chunk, nil
 	}

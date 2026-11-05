@@ -88,6 +88,7 @@ type Chunk struct {
 	Delta        string
 	FinishReason string
 	Usage        *Usage
+	ToolCalls    []ToolCall // Captured tool calls from delta.tool_calls field
 }
 
 // ResponseChoice is kept for backward compatibility with existing code that accesses resp.Choices[0].Message.
