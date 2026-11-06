@@ -378,7 +378,7 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 				id, _ := tcMap["id"].(string)
 				fnRaw, _ := tcMap["function"].(map[string]interface{})
 				name, _ := fnRaw["name"].(string)
-				argsRaw, _ := tcMap["arguments"].(string)
+				argsRaw, _ := fnRaw["arguments"].(string)
 				chunk.ToolCalls = append(chunk.ToolCalls, api.ToolCall{
 					ID:        id,
 					Name:      name,

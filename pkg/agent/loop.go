@@ -833,8 +833,9 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 						// New tool call — store name + start accumulating args
 						lastID = tc.ID
 						callsByID[tc.ID] = &toolCallAccum{name: tc.Name}
-					} else if lastID != "" {
-						// Continuation of the same tool call — append args
+					}
+					// Always accumulate args (first chunk's args must be captured too)
+					if lastID != "" {
 						if acc, ok := callsByID[lastID]; ok {
 							acc.args = append(acc.args, tc.Arguments...)
 						}
