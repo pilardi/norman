@@ -362,6 +362,18 @@ func putConfig(ctx context.Context, updates map[string]interface{}) error {
 		return fmt.Errorf("PUT /api/config: %w", err)
 	}
 
-	_, _ = protocol.ParsePutConfigResponse(resp)
+	parsed, err := protocol.ParsePutConfigResponse(resp)
+	if err != nil {
+		return fmt.Errorf("PUT /api/config: parse response: %w", err)
+	}
+
+	if parsed.StatusCode() >= 400 {
+		msg := string(parsed.GetBody())
+		if msg == "" {
+			msg = resp.Status
+		}
+		return fmt.Errorf("PUT /api/config: %s (status %d)", msg, parsed.StatusCode())
+	}
+
 	return nil
 }
