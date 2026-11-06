@@ -226,7 +226,9 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 
 		var delta map[string]interface{}
 		if err := json.Unmarshal(data, &delta); err != nil {
-			return Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
+			// Gracefully handle malformed lines (e.g., leftover [DONE] or partial reads).
+			log.Printf("[llm][%s] SSE parse warning: %v (raw: %.80s...)", s.providerName, err, string(data))
+			continue // skip this malformed line and try next
 		}
 
 		// Debug: show actual JSON keys to diagnose parser mismatch.

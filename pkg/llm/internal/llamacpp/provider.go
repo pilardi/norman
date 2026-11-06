@@ -390,8 +390,9 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 		return chunk, nil
 	}
 
-	log.Printf("[llm][%s] SSE unparseable data: %s", s.providerName, data)
-	return api.Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
+	// Gracefully handle malformed lines (e.g., leftover [DONE] or partial reads).
+	log.Printf("[llm][%s] SSE parse warning: %v (raw: %.80s...)", s.providerName, err, data)
+	return api.Chunk{}, nil // return empty chunk; caller will retry next line
 }
 
 func (s *sseStreamReader) Close() error {

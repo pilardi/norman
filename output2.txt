@@ -1,0 +1,408 @@
+norman-server 1ee966a (2026-11-06T03:18:41Z) - server starting...
+2026/11/05 22:21:09 server: loaded 1 persisted workspaces from disk
+2026/11/05 22:21:09 ──────────────────────────────────────────────
+2026/11/05 22:21:09   Norman Agent Server — Startup Diagnostics
+2026/11/05 22:21:09 ──────────────────────────────────────────────
+2026/11/05 22:21:09   [config] Loaded from: /home/pablo/.norman/config.yaml (modified: 2026-11-02T22:08:08-05:00)
+2026/11/05 22:21:09   [provider] Active provider: unsloth (type=openai, model=IsValorum/Qwen3.8-35B-A3B-Distill-MTP-APEX-I-MiniPlus-V2.1-Abliterated-GGUF)
+2026/11/05 22:21:09                 endpoint: https://unsloth.tailb64f0a.ts****
+2026/11/05 22:21:09                 max_tokens: 55000
+2026/11/05 22:21:09                 temperature: 0.85
+2026/11/05 22:21:09   [server] Listening on 127.0.0.1:8080
+2026/11/05 22:21:09   [openshell] Gateway address auto-resolved from metadata.json
+2026/11/05 22:21:09   [memory] Store directory: /home/pablo/.norman/store
+2026/11/05 22:21:09   [raw-sources] Directory: /home/pablo/.norman/raw_sources
+2026/11/05 22:21:09   [skills] Discovery paths: [builtin://task-management ~/.norman/skills/ /usr/share/norman/skills/]
+2026/11/05 22:21:09   [skills] Max active skills: 3
+2026/11/05 22:21:09   [scheduler] Loaded tasks: 0 (last tick: 0001-01-01T00:00:00Z)
+2026/11/05 22:21:09   [notify] Bell enabled: true
+2026/11/05 22:21:09   [notify] Rate limit: 10/min
+2026/11/05 22:21:09   [timing] Startup completed in 15ms
+2026/11/05 22:21:09 ──────────────────────────────────────────────
+2026/11/05 22:21:09 Norman Agent Server starting on 127.0.0.1:8080
+
+   ____    __
+  / __/___/ /  ___
+ / _// __/ _ \/ _ \
+/___/\__/_//_/\___/ v4.15.0
+High performance, minimalist Go web framework
+https://echo.labstack.com
+____________________________________O/_______
+                                    O\
+⇨ http server started on 127.0.0.1:8080
+2026/11/05 22:21:14 [http] GET /version - status=200 (OK) latency=56.049µs
+2026/11/05 22:21:14 [http] GET /api/workspaces - status=200 (OK) latency=283.774µs
+2026/11/05 22:21:14 [http] GET /api/sessions - status=200 (OK) latency=228.691µs
+2026/11/05 22:21:14 [http] GET /ws?session_id=3a142e69-603e-4a92-a24c-c75c843c5c95 - status=200 (OK) latency=15.089µs
+2026/11/05 22:21:23 [loop] using existing sandbox 'ws-3c907591c811429' for workspace '3c907591-c811-429c-a4f5-5bfff460b742'
+2026/11/05 22:21:23 [loop] deploy to sandbox for 'task-management': parse SKILL.md in sandbox '': read SKILL.md: open /workspace/skills/task-management/SKILL.md: no such file or directory
+2026/11/05 22:21:23 agent: DEBUG - sending 3 messages to model (provider=unsloth, model=unsloth/LFM2.5-8B-A1B-GGUF:Q8_0)
+2026/11/05 22:21:23 agent: DEBUG - msg[0] role="system" content="## Agent Identity & Origin\n\n**You are Norman**, a chat-first AI agent.\nVersion: 1.0\nPronouns: he/him (for the agent)\n\n**Purpose:**\n  Norman is your personal AI assistant agent that helps you work on y..."
+2026/11/05 22:21:23 agent: DEBUG - msg[1] role="user" content="### Skill: task-management\nManage, monitor, and control tasks — list active/scheduled/deferred tasks, cancel or delete them, create new scheduled or deferred tasks, and view task logs. Tools are ava..."
+2026/11/05 22:21:23 agent: DEBUG - msg[2] role="user" content="create a text file file1.txt with \"test\" as the content"
+2026/11/05 22:21:23 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1793935283,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:23 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:23 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"\nThe","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" user","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" wants","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" to","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" create","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" a","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" text","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" file","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" named","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" file","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"1","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":".txt","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" containing","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" the","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [object choices created id model system_fingerprint]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" word","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [object choices created id model system_fingerprint]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" \"","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"test","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"\".","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" This","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" is","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" a","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" straightforward","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" file","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [object choices created id model system_fingerprint]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" creation","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" task","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":".","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" The","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" appropriate","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" tool","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" for","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" writing","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" content","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" to","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" a","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" file","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" is","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" `","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"write","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"_file","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"`,","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" which","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" takes","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" a","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" path","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" and","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" content","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":".","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" I","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" will","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" use","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" the","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" path","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" \"","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"file","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"1","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":".txt","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"\"","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" and","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" the","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" content","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" \"","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"test","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"\".","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" No","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" other","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" information","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" or","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" prior","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" tool","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" results","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" are","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" needed","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [object choices created id model system_fingerprint]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":".\n","content":""}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"\n"}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="\n" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"id":"naYPRbk9qpXajUVEoXvzMMbaTLaLumA5","type":"function","function":{"name":"write_file","arguments":"{"}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"path\":\""}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"file"}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [object choices created id model system_fingerprint]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1"}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":".txt"}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\""}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":",\"content\":\""}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"test"}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"}"}}]}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":"tool_calls","index":0,"delta":{}}],"created":1793935284,"id":"chatcmpl-bX8XkkNSYb0hzZChOfvJA68q12ZQQwGD","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="tool_calls" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] accumulated response text: "\n"
+2026/11/05 22:21:24 agent: DEBUG - sending 5 messages to model (provider=unsloth, model=unsloth/LFM2.5-8B-A1B-GGUF:Q8_0)
+2026/11/05 22:21:24 agent: DEBUG - msg[0] role="system" content="## Agent Identity & Origin\n\n**You are Norman**, a chat-first AI agent.\nVersion: 1.0\nPronouns: he/him (for the agent)\n\n**Purpose:**\n  Norman is your personal AI assistant agent that helps you work on y..."
+2026/11/05 22:21:24 agent: DEBUG - msg[1] role="user" content="### Skill: task-management\nManage, monitor, and control tasks — list active/scheduled/deferred tasks, cancel or delete them, create new scheduled or deferred tasks, and view task logs. Tools are ava..."
+2026/11/05 22:21:24 agent: DEBUG - msg[2] role="user" content="create a text file file1.txt with \"test\" as the content"
+2026/11/05 22:21:24 agent: DEBUG - msg[3] role="tool" content="''test'''>''file1.txt'"
+2026/11/05 22:21:24 agent: DEBUG - msg[4] role="assistant" content="\n"
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"\n"}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk","prompt_progress":{"total":2087,"cache":2066,"processed":2066,"time_ms":0}}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object prompt_progress choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="\n" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"id":"n2IaaP9z1lRm1XmqgS5sFYzwpURERBLM","type":"function","function":{"name":"write_file","arguments":"{"}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"content\":\""}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"test"}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\""}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":",\"path\":\""}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"file"}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [created id model system_fingerprint object choices]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1"}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":".txt"}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"}"}}]}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":"tool_calls","index":0,"delta":{}}],"created":1793935284,"id":"chatcmpl-izpH0wDu4o1ypnEKB5djh0kyclYyYDRl","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [object choices created id model system_fingerprint]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="tool_calls" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] accumulated response text: "\n"
+2026/11/05 22:21:24 agent: DEBUG - sending 7 messages to model (provider=unsloth, model=unsloth/LFM2.5-8B-A1B-GGUF:Q8_0)
+2026/11/05 22:21:24 agent: DEBUG - msg[0] role="system" content="## Agent Identity & Origin\n\n**You are Norman**, a chat-first AI agent.\nVersion: 1.0\nPronouns: he/him (for the agent)\n\n**Purpose:**\n  Norman is your personal AI assistant agent that helps you work on y..."
+2026/11/05 22:21:24 agent: DEBUG - msg[1] role="user" content="### Skill: task-management\nManage, monitor, and control tasks — list active/scheduled/deferred tasks, cancel or delete them, create new scheduled or deferred tasks, and view task logs. Tools are ava..."
+2026/11/05 22:21:24 agent: DEBUG - msg[2] role="user" content="create a text file file1.txt with \"test\" as the content"
+2026/11/05 22:21:24 agent: DEBUG - msg[3] role="tool" content="''test'''>''file1.txt'"
+2026/11/05 22:21:24 agent: DEBUG - msg[4] role="assistant" content="\n"
+2026/11/05 22:21:24 agent: DEBUG - msg[5] role="tool" content="''test'''>''file1.txt'"
+2026/11/05 22:21:24 agent: DEBUG - msg[6] role="assistant" content="\n"
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [id model system_fingerprint object choices created]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"\n"}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk","prompt_progress":{"total":2106,"cache":2083,"processed":2083,"time_ms":0}}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [object prompt_progress choices created id model system_fingerprint]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="\n" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"id":"UNDORDHGKgVSgNxvYoS9c8D8DvXec629","type":"function","function":{"name":"write_file","arguments":"{"}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"content\":\""}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"test"}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\""}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":",\"path\":\""}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"file"}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [model system_fingerprint object choices created id]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1"}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":".txt"}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [system_fingerprint object choices created id model]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"}"}}]}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="" tool_calls=1
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":"tool_calls","index":0,"delta":{}}],"created":1793935284,"id":"chatcmpl-Y7h9nZbSfu5Hhwb2PaZyaBu7pYmuBxUa","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+2026/11/05 22:21:24 [llm][unsloth] SSE delta keys: [choices created id model system_fingerprint object]
+2026/11/05 22:21:24 [llm][unsloth] SSE parsed: delta="" finish_reason="tool_calls" tool_calls=0
+2026/11/05 22:21:24 [llm][unsloth] accumulated response text: "\n"
+2026/11/05 22:21:24 agent: DEBUG - sending 9 messages to model (provider=unsloth, model=unsloth/LFM2.5-8B-A1B-GGUF:Q8_0)
+2026/11/05 22:21:24 agent: DEBUG - msg[0] role="system" content="## Agent Identity & Origin\n\n**You are Norman**, a chat-first AI agent.\nVersion: 1.0\nPronouns: he/him (for the agent)\n\n**Purpose:**\n  Norman is your personal AI assistant agent that helps you work on y..."
+2026/11/05 22:21:24 agent: DEBUG - msg[1] role="user" content="### Skill: task-management\nManage, monitor, and control tasks — list active/scheduled/deferred tasks, cancel or delete them, create new scheduled or deferred tasks, and view task logs. Tools are ava..."
+2026/11/05 22:21:24 agent: DEBUG - msg[2] role="user" content="create a text file file1.txt with \"test\" as the content"
+2026/11/05 22:21:24 agent: DEBUG - msg[3] role="tool" content="''test'''>''file1.txt'"
+2026/11/05 22:21:24 agent: DEBUG - msg[4] role="assistant" content="\n"
+2026/11/05 22:21:24 agent: DEBUG - msg[5] role="tool" content="''test'''>''file1.txt'"
+2026/11/05 22:21:24 agent: DEBUG - msg[6] role="assistant" content="\n"
+2026/11/05 22:21:24 agent: DEBUG - msg[7] role="tool" content="''test'''>''file1.txt'"
+2026/11/05 22:21:24 agent: DEBUG - msg[8] role="assistant" content="\n"
+2026/11/05 22:21:24 [llm][unsloth] SSE raw data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1793935284,"id":"chatcmpl-JhEi98UeneZf3pOE75jngGsDOGQqsaJA","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"\n"}}],"created":1793935284,"id":"chatcmpl-JhEi98UeneZf3pOE75jngGsDOGQqsaJA","model":"unsloth/LFM2.5-8B-A1B-GGUF","system_fingerprint":"b1-c1d0e7a","object":"chat.completion.chunk","prompt_progress":{"total":2125,"cache":2102,"processed":2102,"time_ms":0}}
+2026/11/05 22:21:24 agent: stream read error at turn 3: unmarshal SSE data: invalid character 'd' after top-level value
+2026/11/05 22:21:24 [http] POST /api/sessions/3a142e69-603e-4a92-a24c-c75c843c5c95/messages - status=200 (OK) latency=2.721843944s
+2026/11/05 22:21:30 shutting down...

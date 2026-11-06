@@ -883,6 +883,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				Name:      acc.name,
 				Arguments: json.RawMessage(acc.args),
 			})
+			l.logf("accumulated tool call args (id=%s): %q", id, string(acc.args))
 		}
 
 		// Fallback to text-based parsing if structured capture found nothing.
