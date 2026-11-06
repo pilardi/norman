@@ -53,14 +53,13 @@ type Loop struct {
 	wsHub            WSHubPublisher
 	notifier         *notify.Notifier
 	resultsCh        chan scheduler.TaskResult // results from scheduler (nil if not wired)
-	maxRetries       int
-	budget           *budget.SessionState     // token budget tracker (nil if disabled)
-	workspaceDef     *env.WorkspaceDefinition // workspace identity for system prompt injection
-	openShellClient  *env.Client              // concrete client for session creation (P3 sandbox dep install)
-	mcpClient        *mcp.Client              // MCP client for remote tool discovery/invocation (optional)
-	systemPrompt     string                   // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
-	debug            bool                     // if true, log detailed message contents before sending to LLM
-	workspaceManager *env.WorkspaceManager    // workspace-to-sandbox mapping manager
+	budget           *budget.SessionState      // token budget tracker (nil if disabled)
+	workspaceDef     *env.WorkspaceDefinition  // workspace identity for system prompt injection
+	openShellClient  *env.Client               // concrete client for session creation (P3 sandbox dep install)
+	mcpClient        *mcp.Client               // MCP client for remote tool discovery/invocation (optional)
+	systemPrompt     string                    // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
+	debug            bool                      // if true, log detailed message contents before sending to LLM
+	workspaceManager *env.WorkspaceManager     // workspace-to-sandbox mapping manager
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -242,7 +241,6 @@ func New(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources,
 		config:        cfg,
 		openShell:     client,
 		wsHub:         wsHub,
-		maxRetries:    3,
 		budget:        nil, // disabled by default; set via SetBudget()
 		providerCache: make(map[string]*llm.ClientAdapter),
 	}
@@ -746,15 +744,14 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		provider = l.llmClient
 	}
 
-	// Multi-turn loop: max 8 iterations to prevent infinite loops.
+	// Multi-turn loop: max l.config.System.MaxTurns iterations to prevent infinite loops.
 	// task.Output accumulates both text responses and tool call results.
 	var fullOutput strings.Builder
-	maxTurns := 8
-	for turn := 0; turn < maxTurns; turn++ {
+	for turn := 0; turn < l.config.System.MaxTurns; turn++ {
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 			Event:   protocol.TaskProgress,
 			TaskId:  &task.ID,
-			Message: strPtr(fmt.Sprintf("LLM turn %d/%d", turn+1, maxTurns)),
+			Message: strPtr(fmt.Sprintf("LLM turn %d/%d", turn+1, l.config.System.MaxTurns)),
 			Step:    intPtr(6 + turn),
 		})
 
@@ -799,14 +796,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		// Accumulate tool calls captured during streaming.
 		// Arguments stream incrementally across chunks; we group by ID
 		// and concatenate so the final JSON object is complete.
-		type toolCallAccum struct {
-			name string
-			args []byte
-		}
-		var (
-			callsByID = make(map[string]*toolCallAccum)
-			lastID    string
-		)
+		callsByID := make(map[string]*llm.ToolCallAccum)
 
 		for !done {
 			chunk, err := stream.Next()
@@ -817,7 +807,11 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				_ = stream.Close()
 				return nil, fmt.Errorf("streaming failed at turn %d: %v", turn, err)
 			}
-			if chunk.FinishReason == "[done]" || chunk.FinishReason == "tool_calls" || chunk.FinishReason == "stop" {
+			// Only stop reading at the [DONE] sentinel.
+			// finish_reason="tool_calls"/"stop" signals the model is done generating,
+			// but arguments stream incrementally as delta content — we must keep
+			// consuming chunks until [DONE] to capture all argument fragments.
+			if chunk.FinishReason == "[done]" {
 				done = true
 				continue
 			}
@@ -825,20 +819,20 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			fullText.WriteString(chunk.Delta)
 
 			// Accumulate tool calls captured from delta.tool_calls field.
-			// Arguments are streamed incrementally across chunks; group by ID
-			// and concatenate so the final JSON object is complete.
+			// Arguments stream incrementally across chunks; group by ID and concatenate.
+			// Track currentID to associate continuation chunks (no ID) with the right accumulator.
+			var currentID string
 			if len(chunk.ToolCalls) > 0 {
 				for _, tc := range chunk.ToolCalls {
 					if tc.ID != "" {
-						// New tool call — store name + start accumulating args
-						lastID = tc.ID
-						callsByID[tc.ID] = &toolCallAccum{name: tc.Name}
-					}
-					// Always accumulate args (first chunk's args must be captured too)
-					if lastID != "" {
-						if acc, ok := callsByID[lastID]; ok {
-							acc.args = append(acc.args, tc.Arguments...)
+						currentID = tc.ID
+						if _, ok := callsByID[currentID]; !ok {
+							callsByID[currentID] = &llm.ToolCallAccum{Name: tc.Name}
 						}
+					}
+					// Append args from ALL chunks (including continuation chunks with no ID)
+					if len(tc.Arguments) > 0 && currentID != "" {
+						callsByID[currentID].Args = append(callsByID[currentID].Args, tc.Arguments...)
 					}
 				}
 			}
@@ -880,15 +874,26 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		for id, acc := range callsByID {
 			toolCalls = append(toolCalls, llm.ToolCall{
 				ID:        id,
-				Name:      acc.name,
-				Arguments: json.RawMessage(acc.args),
+				Name:      acc.Name,
+				Arguments: json.RawMessage(acc.Args),
 			})
-			l.logf("accumulated tool call args (id=%s): %q", id, string(acc.args))
+			l.logf("accumulated tool call args (id=%s): %q", id, string(acc.Args))
 		}
 
-		// Fallback to text-based parsing if structured capture found nothing.
-		if len(toolCalls) == 0 {
+		// Validate accumulated args; discard incomplete ones and fall back to text parsing.
+		validCalls := []llm.ToolCall{}
+		for _, tc := range toolCalls {
+			var m map[string]interface{}
+			if err := json.Unmarshal(tc.Arguments, &m); err != nil {
+				log.Printf("agent: discarding incomplete tool call (id=%s): %v", tc.ID, err)
+				continue // invalid JSON — fall back to text parsing below
+			}
+			validCalls = append(validCalls, tc)
+		}
+		if len(validCalls) == 0 {
 			toolCalls = llm.ParseToolCalls(llm.Message{Role: "assistant", Content: responseText})
+		} else {
+			toolCalls = validCalls
 		}
 
 		if len(toolCalls) > 0 {
@@ -982,7 +987,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 	// Max turns reached without a clean completion
 	if len(task.Output) == 0 {
 		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("reached max turns (%d) without completing", maxTurns)
+		task.Error = fmt.Sprintf("reached max turns (%d) without completing", l.config.System.MaxTurns)
 	}
 	return task.Output, nil
 }
