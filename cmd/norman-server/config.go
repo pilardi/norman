@@ -47,13 +47,20 @@ func (s *server) PutConfig(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 
-	if err := mergeUpdatesIntoSystem(s.cfg.System, updates); err != nil {
+	// Validate the proposed update BEFORE mutating in-memory state.
+	// Merge into a temp copy of SystemConfig so that even if validation
+	// fails, the live config remains unchanged (GET /api/config stays consistent).
+	tmpSystem := *s.cfg.System
+	if err := mergeUpdatesIntoSystem(&tmpSystem, updates); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	if err := s.cfg.Validate(); err != nil {
+	if err := tmpSystem.Validate(); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+
+	// Now apply the mutation to the real config.
+	mergeUpdatesIntoSystem(s.cfg.System, updates)
 
 	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {

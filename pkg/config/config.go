@@ -60,6 +60,42 @@ func (sc *SystemConfig) ResolveProvider(name string) (*ProviderConfig, error) {
 	return nil, fmt.Errorf("provider %q not found in configured providers", name)
 }
 
+// Validate checks that all SystemConfig fields have valid values.
+func (sc *SystemConfig) Validate() error {
+	if sc.ServerPort < 1 || sc.ServerPort > 65535 {
+		return fmt.Errorf("system.server_port must be between 1 and 65535, got %d", sc.ServerPort)
+	}
+	if sc.Skills.MaxActive < 0 {
+		return fmt.Errorf("system.skills.max_active must be >= 0, got %d", sc.Skills.MaxActive)
+	}
+	if sc.Notify.RateLimitPerMin < 1 {
+		return fmt.Errorf("system.notify.rate_limit_per_minute must be >= 1, got %d", sc.Notify.RateLimitPerMin)
+	}
+
+	for i, p := range sc.LlmProviders {
+		if p.Name == "" {
+			return fmt.Errorf("llm_providers[%d]: name is required", i)
+		}
+		if p.Type == "" {
+			return fmt.Errorf("llm_providers[%d].%s: type is required", i, p.Name)
+		}
+		if p.Model == "" {
+			return fmt.Errorf("llm_providers[%d].%s: model is required", i, p.Name)
+		}
+		if p.Type == "openai" && p.ApiKey == "" {
+			return fmt.Errorf("llm_providers[%d].%s: api_key is required for openai providers", i, p.Name)
+		}
+		if p.Temperature < 0 || p.Temperature > 2 {
+			return fmt.Errorf("llm_providers[%d].%s: temperature must be between 0 and 2, got %.2f", i, p.Name, p.Temperature)
+		}
+		if p.MaxTokens < 1 {
+			return fmt.Errorf("llm_providers[%d].%s: max_tokens must be >= 1, got %d", i, p.Name, p.MaxTokens)
+		}
+	}
+
+	return nil
+}
+
 // WorkspaceConfig holds per-workspace overrides.
 // Each workspace can override model, token budget, skill set, etc.
 type WorkspaceConfig struct {
