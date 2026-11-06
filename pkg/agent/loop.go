@@ -808,7 +808,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				_ = stream.Close()
 				return nil, fmt.Errorf("streaming failed at turn %d: %v", turn, err)
 			}
-			if chunk.FinishReason == "[done]" || chunk.FinishReason == "tool_calls" {
+			if chunk.FinishReason == "[done]" || chunk.FinishReason == "tool_calls" || chunk.FinishReason == "stop" {
 				done = true
 				continue
 			}
@@ -852,8 +852,12 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			log.Printf("agent: turn %d used %d tokens (total session: %d)", turn+1, usage.TotalTokens, l.budget.TokenCount)
 		}
 
-		// Use tool calls captured during streaming (more reliable than parsing text).
+		// Use tool calls captured during streaming (preferred), falling back to
+		// text-based parsing if the structured capture missed anything.
 		toolCalls := accumulatedToolCalls
+		if len(toolCalls) == 0 {
+			toolCalls = llm.ParseToolCalls(llm.Message{Role: "assistant", Content: responseText})
+		}
 
 		if len(toolCalls) > 0 {
 			// Execute tool calls in the sandbox (item #6: enhanced WS events)
