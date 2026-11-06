@@ -1083,6 +1083,7 @@ components:
       properties:
         workspace_id:
           type: string
+          minLength: 1
           description: ID of the workspace to create session for
         client_type:
           type: string

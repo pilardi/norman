@@ -31,6 +31,11 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	// A session must have a non-empty workspace_id — no derivation from index.
+	if req.WorkspaceId == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "workspace_id is required"})
+	}
+
 	clientType := "custom"
 	if req.ClientType != nil {
 		clientType = string(*req.ClientType)

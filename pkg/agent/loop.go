@@ -138,24 +138,15 @@ func (l *Loop) ActivateSkill(name string, session *env.Session) error {
 }
 
 // resolveWorkspace resolves a workspace ID from a session ID.
-// It first checks the sessions store for a workspace_id mapping, then falls back
-// to scanning the workspaces map. Returns empty string if no workspace is found.
+// Reads workspace_id directly from the session's persisted data.
+// If not set (empty string), returns "" — no fallback derivation needed.
 func (l *Loop) resolveWorkspace(sessionID string) string {
-	// Try loading session from store — this has the workspace_id mapping.
 	if l.store != nil {
 		data, err := l.store.LoadSession(sessionID)
 		if err == nil {
 			if wid, ok := data["workspace_id"].(string); ok && wid != "" {
 				return wid
 			}
-		}
-	}
-
-	// Fallback: scan the workspaces map for a matching session.
-	for workspace, session := range l.workspaceManager.Sessions() {
-		if session.SessionID() == sessionID {
-			log.Printf("[loop] resolved workspace '%s' from session '%s'", workspace, sessionID[:8])
-			return workspace
 		}
 	}
 
@@ -411,6 +402,25 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 
 	// Resolve workspace from session ID.
 	workspaceID := l.resolveWorkspace(sessionID)
+
+	// If the session has no workspace_id, fail immediately with a clear error.
+	if workspaceID == "" {
+		task := &Task{
+			ID:           taskID,
+			Prompt:       message,
+			Status:       protocol.TaskStatusFailed,
+			SessionId:    sessionID,
+			ProviderName: providerName,
+			CreatedAt:    time.Now(),
+			Workspace:    "",
+		}
+		task.Error = "session has no workspace_id attached"
+		l.mu.Lock()
+		l.tasks[taskID] = task
+		l.mu.Unlock()
+		l.pushCompletion(task)
+		return &AgentResponse{SessionID: sessionID, Response: task.Error}, nil
+	}
 
 	task := &Task{
 		ID:           taskID,
