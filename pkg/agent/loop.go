@@ -797,7 +797,16 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		done := false
 
 		// Accumulate tool calls captured during streaming.
-		var accumulatedToolCalls []llm.ToolCall
+		// Arguments stream incrementally across chunks; we group by ID
+		// and concatenate so the final JSON object is complete.
+		type toolCallAccum struct {
+			name string
+			args []byte
+		}
+		var (
+			callsByID = make(map[string]*toolCallAccum)
+			lastID    string
+		)
 
 		for !done {
 			chunk, err := stream.Next()
@@ -816,8 +825,21 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			fullText.WriteString(chunk.Delta)
 
 			// Accumulate tool calls captured from delta.tool_calls field.
+			// Arguments are streamed incrementally across chunks; group by ID
+			// and concatenate so the final JSON object is complete.
 			if len(chunk.ToolCalls) > 0 {
-				accumulatedToolCalls = append(accumulatedToolCalls, chunk.ToolCalls...)
+				for _, tc := range chunk.ToolCalls {
+					if tc.ID != "" {
+						// New tool call — store name + start accumulating args
+						lastID = tc.ID
+						callsByID[tc.ID] = &toolCallAccum{name: tc.Name}
+					} else if lastID != "" {
+						// Continuation of the same tool call — append args
+						if acc, ok := callsByID[lastID]; ok {
+							acc.args = append(acc.args, tc.Arguments...)
+						}
+					}
+				}
 			}
 
 			// Track token usage if available
@@ -852,9 +874,17 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			log.Printf("agent: turn %d used %d tokens (total session: %d)", turn+1, usage.TotalTokens, l.budget.TokenCount)
 		}
 
-		// Use tool calls captured during streaming (preferred), falling back to
-		// text-based parsing if the structured capture missed anything.
-		toolCalls := accumulatedToolCalls
+		// Build final tool calls by concatenating streamed arguments per ID.
+		var toolCalls []llm.ToolCall
+		for id, acc := range callsByID {
+			toolCalls = append(toolCalls, llm.ToolCall{
+				ID:        id,
+				Name:      acc.name,
+				Arguments: json.RawMessage(acc.args),
+			})
+		}
+
+		// Fallback to text-based parsing if structured capture found nothing.
 		if len(toolCalls) == 0 {
 			toolCalls = llm.ParseToolCalls(llm.Message{Role: "assistant", Content: responseText})
 		}
