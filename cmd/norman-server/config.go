@@ -60,7 +60,9 @@ func (s *server) PutConfig(c echo.Context) error {
 	}
 
 	// Now apply the mutation to the real config.
-	mergeUpdatesIntoSystem(s.cfg.System, updates)
+	if err := mergeUpdatesIntoSystem(s.cfg.System, updates); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to apply config update"})
+	}
 
 	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
@@ -78,10 +80,18 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 	for k, v := range updates {
 		switch k {
 		case "server_port":
-			if f, ok := v.(float64); ok {
-				cfg.ServerPort = int(f)
-			} else {
-				return fmt.Errorf("server_port must be a number")
+			switch val := v.(type) {
+			case int:
+				cfg.ServerPort = val
+			case int64:
+				cfg.ServerPort = int(val)
+			case float64:
+				if val != float64(int(val)) {
+					return fmt.Errorf("server_port must be an integer, got %v", val)
+				}
+				cfg.ServerPort = int(val)
+			default:
+				return fmt.Errorf("server_port must be an integer")
 			}
 		case "host":
 			if s, ok := v.(string); ok {
@@ -90,10 +100,18 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				return fmt.Errorf("host must be a string")
 			}
 		case "max_active_skills":
-			if f, ok := v.(float64); ok {
-				cfg.Skills.MaxActive = int(f)
-			} else {
-				return fmt.Errorf("max_active_skills must be a number")
+			switch val := v.(type) {
+			case int:
+				cfg.Skills.MaxActive = val
+			case int64:
+				cfg.Skills.MaxActive = int(val)
+			case float64:
+				if val != float64(int(val)) {
+					return fmt.Errorf("max_active_skills must be an integer, got %v", val)
+				}
+				cfg.Skills.MaxActive = int(val)
+			default:
+				return fmt.Errorf("max_active_skills must be an integer")
 			}
 		case "bell_enabled":
 			if b, ok := v.(bool); ok {
@@ -102,10 +120,18 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				return fmt.Errorf("bell_enabled must be a boolean")
 			}
 		case "rate_limit_per_min":
-			if f, ok := v.(float64); ok {
-				cfg.Notify.RateLimitPerMin = int(f)
-			} else {
-				return fmt.Errorf("rate_limit_per_min must be a number")
+			switch val := v.(type) {
+			case int:
+				cfg.Notify.RateLimitPerMin = val
+			case int64:
+				cfg.Notify.RateLimitPerMin = int(val)
+			case float64:
+				if val != float64(int(val)) {
+					return fmt.Errorf("rate_limit_per_min must be an integer, got %v", val)
+				}
+				cfg.Notify.RateLimitPerMin = int(val)
+			default:
+				return fmt.Errorf("rate_limit_per_min must be an integer")
 			}
 		case "openshell_address":
 			if s, ok := v.(string); ok {
@@ -118,6 +144,20 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				cfg.DefaultProvider = s
 			} else {
 				return fmt.Errorf("default_provider must be a string")
+			}
+		case "max_turns":
+			switch val := v.(type) {
+			case int:
+				cfg.MaxTurns = val
+			case int64:
+				cfg.MaxTurns = int(val)
+			case float64:
+				if val != float64(int(val)) {
+					return fmt.Errorf("max_turns must be an integer, got %v", val)
+				}
+				cfg.MaxTurns = int(val)
+			default:
+				return fmt.Errorf("max_turns must be an integer")
 			}
 		default:
 			// Handle provider dot-path keys (e.g., "providers.0.name", "providers.1.temperature")

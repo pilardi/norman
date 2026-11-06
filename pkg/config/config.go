@@ -71,6 +71,9 @@ func (sc *SystemConfig) Validate() error {
 	if sc.Notify.RateLimitPerMin < 1 {
 		return fmt.Errorf("system.notify.rate_limit_per_minute must be >= 1, got %d", sc.Notify.RateLimitPerMin)
 	}
+	if sc.MaxTurns < 1 {
+		return fmt.Errorf("system.max_turns must be >= 1, got %d", sc.MaxTurns)
+	}
 
 	for i, p := range sc.LlmProviders {
 		if p.Name == "" {
@@ -273,6 +276,9 @@ func (c *Config) Validate() error {
 	}
 	if c.System.Notify.RateLimitPerMin < 1 {
 		return fmt.Errorf("system.notify.rate_limit_per_minute must be >= 1, got %d", c.System.Notify.RateLimitPerMin)
+	}
+	if c.System.MaxTurns < 1 {
+		return fmt.Errorf("system.max_turns must be >= 1, got %d", c.System.MaxTurns)
 	}
 
 	// Validate providers

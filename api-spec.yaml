@@ -1669,6 +1669,10 @@ components:
         max_tokens:
           type: integer
           description: Global default max tokens (0 = use system default)
+        max_turns:
+          type: integer
+          minimum: 1
+          description: Maximum number of LLM turns allowed per task execution
         openshell:
           $ref: "#/components/schemas/OpenShellConfig"
 

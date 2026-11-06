@@ -66,13 +66,22 @@ func handleConfigSet(ctx context.Context, args []string) error {
 		if err != nil {
 			return fmt.Errorf("invalid server_port value: %s", val)
 		}
-		update["server_port"] = port
+		update["server_port"] = float64(port)
 	case "max_tokens":
 		t, err := strconv.Atoi(val)
 		if err != nil {
 			return fmt.Errorf("invalid max_tokens value: %s", val)
 		}
 		update["max_tokens"] = t
+	case "max_turns":
+		t, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("invalid max_turns value: %s", val)
+		}
+		if t < 1 {
+			return fmt.Errorf("max_turns must be >= 1, got %d", t)
+		}
+		update["max_turns"] = float64(t)
 	case "temperature":
 		t, err := strconv.ParseFloat(val, 64)
 		if err != nil {
@@ -119,6 +128,7 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 			"bell_enabled":       derefBool(cfg.Notify.BellEnabled),
 			"rate_limit_per_min": derefInt(cfg.Notify.RateLimitPerMin),
 			"openshell_address":  resolvedGateway,
+			"max_turns":          derefInt(cfg.MaxTurns),
 		}
 		if len(llmProviders) > 0 {
 			providers := make([]map[string]interface{}, len(llmProviders))
@@ -153,6 +163,7 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 		fmt.Printf("  bell_enabled:       %v\n", derefBool(cfg.Notify.BellEnabled))
 		fmt.Printf("  rate_limit_per_min: %d\n", derefInt(cfg.Notify.RateLimitPerMin))
 	}
+	fmt.Printf("  max_turns:          %d\n", derefInt(cfg.MaxTurns))
 	if resolvedGateway != "" {
 		fmt.Printf("  openshell_address:  %s\n", resolvedGateway)
 	} else if cfg.Openshell != nil && cfg.Openshell.Address != nil {
@@ -234,6 +245,12 @@ func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, st
 		if n, ok := v.(float64); ok {
 			val := int(n)
 			cfg.MaxTokens = &val
+		}
+	}
+	if v, ok := result.System["MaxTurns"]; ok && v != nil {
+		if n, ok := v.(float64); ok {
+			val := int(n)
+			cfg.MaxTurns = &val
 		}
 	}
 	if v, ok := result.System["Temperature"]; ok && v != nil {

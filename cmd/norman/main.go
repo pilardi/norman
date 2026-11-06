@@ -84,7 +84,12 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 						return handleConfigJSON(ctx, cmd)
 					}
 					if setVal := cmd.String("set"); setVal != "" {
-						return handleConfigSet(ctx, []string{setVal})
+						err := handleConfigSet(ctx, []string{setVal})
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							return err
+						}
+						return nil
 					}
 					return handleConfig(ctx, cmd)
 				},
