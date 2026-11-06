@@ -15,5 +15,6 @@ type StreamReader = api.StreamReader
 type Chunk = api.Chunk
 type ResponseChoice = api.ResponseChoice
 type ToolCall = api.ToolCall
+type ToolCallAccum = api.ToolCallAccum
 type ProviderMetadata = api.ProviderMetadata
 type Caller = api.Caller

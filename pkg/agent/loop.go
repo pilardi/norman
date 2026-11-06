@@ -797,6 +797,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		// Arguments stream incrementally across chunks; we group by ID
 		// and concatenate so the final JSON object is complete.
 		callsByID := make(map[string]*llm.ToolCallAccum)
+		var currentID string // persistent across chunks (not reset per iteration)
 
 		for !done {
 			chunk, err := stream.Next()
@@ -820,8 +821,6 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 
 			// Accumulate tool calls captured from delta.tool_calls field.
 			// Arguments stream incrementally across chunks; group by ID and concatenate.
-			// Track currentID to associate continuation chunks (no ID) with the right accumulator.
-			var currentID string
 			if len(chunk.ToolCalls) > 0 {
 				for _, tc := range chunk.ToolCalls {
 					if tc.ID != "" {
@@ -891,6 +890,14 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			validCalls = append(validCalls, tc)
 		}
 		if len(validCalls) == 0 {
+			// If we accumulated tool calls but all failed validation, fail the task
+			// instead of silently completing with empty output.
+			if len(toolCalls) > 0 {
+				task.Status = protocol.TaskStatusFailed
+				task.Error = fmt.Sprintf("failed to parse %d tool call(s): arguments incomplete or invalid", len(toolCalls))
+				l.pushCompletion(task)
+				return task.Output, nil
+			}
 			toolCalls = llm.ParseToolCalls(llm.Message{Role: "assistant", Content: responseText})
 		} else {
 			toolCalls = validCalls

@@ -194,6 +194,13 @@ func ParseToolCalls(msg Message) []ToolCall {
 	return calls
 }
 
+// ToolCallAccum accumulates streamed arguments for a single tool call.
+// Used during SSE streaming to concatenate partial argument chunks across multiple deltas.
+type ToolCallAccum struct {
+	Name string
+	Args []byte
+}
+
 // ParseResponseText extracts the text content from a completion response.
 func ParseResponseText(resp *CompletionResponse) string {
 	if len(resp.Choices) == 0 {

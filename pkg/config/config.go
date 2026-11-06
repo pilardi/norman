@@ -31,6 +31,10 @@ type SystemConfig struct {
 	// ServerURL is the external-facing URL for the Norman API (e.g., https://norman.example.com).
 	// If set, it overrides the auto-derived http://host:port URL used in context files and agent communication.
 	ServerURL string `yaml:"server_url,omitempty"`
+
+	// MaxTurns is the maximum number of LLM turns allowed per task execution.
+	// Default is 8 if unset.
+	MaxTurns int `yaml:"max_turns,omitempty"`
 }
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.

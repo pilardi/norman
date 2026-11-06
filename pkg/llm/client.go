@@ -259,7 +259,14 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 							id, _ := tcMap["id"].(string)
 							fnRaw, _ := tcMap["function"].(map[string]interface{})
 							name, _ := fnRaw["name"].(string)
-							argsRaw, _ := fnRaw["arguments"].(string)
+							// Arguments are normally a JSON string; handle map if provider returns parsed object.
+							argsRaw, ok := fnRaw["arguments"].(string)
+							if !ok {
+								if m, ok := fnRaw["arguments"].(map[string]interface{}); ok {
+									b, _ := json.Marshal(m)
+									argsRaw = string(b)
+								}
+							}
 							chunk.ToolCalls = append(chunk.ToolCalls, ToolCall{
 								ID:        id,
 								Name:      name,
