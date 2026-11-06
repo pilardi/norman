@@ -95,7 +95,8 @@ func handleConfigSet(ctx context.Context, args []string) error {
 	}
 
 	if err := putConfig(ctx, update); err != nil {
-		return fmt.Errorf("error updating config: %v", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return err
 	}
 	fmt.Printf("Updated %s → %s\n", key, val)
 	return nil
@@ -371,6 +372,14 @@ func putConfig(ctx context.Context, updates map[string]interface{}) error {
 		msg := string(parsed.GetBody())
 		if msg == "" {
 			msg = resp.Status
+		} else {
+			// Try to extract the "error" field from JSON body
+			var errResp map[string]interface{}
+			if json.Unmarshal([]byte(msg), &errResp) == nil {
+				if e, ok := errResp["error"].(string); ok {
+					msg = e
+				}
+			}
 		}
 		return fmt.Errorf("PUT /api/config: %s (status %d)", msg, parsed.StatusCode())
 	}
