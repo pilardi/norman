@@ -511,7 +511,8 @@ func TestRawSourcesContextInjection(t *testing.T) {
 	}
 
 	fakeOpenShell := NewFakeOpenShellClient()
-	loop := New(nil, store, rs, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, rs, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
 
 	// Execute a task — raw sources should be injected into LLM messages.
 	task := &Task{
@@ -558,7 +559,8 @@ func TestRawSourcesNilInLoop(t *testing.T) {
 	}
 
 	fakeOpenShell := NewFakeOpenShellClient()
-	loop := New(nil, store, nil, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
 
 	task := &Task{
 		ID:        "test-task-002",
@@ -680,7 +682,13 @@ func TestSendMessageMultiTurnWithToolCall(t *testing.T) {
 		},
 	}
 
-	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+
+	// Create session with workspace_id so SendMessage can resolve it.
+	if err := store.SaveSession("session-1", map[string]interface{}{"workspace_id": "default"}); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
 
 	resp, err := loop.SendMessage(context.Background(), "session-1", "List files in /tmp", "")
 	if err != nil {
@@ -723,7 +731,13 @@ func TestSendMessageMultiTurnMaxTurnsReached(t *testing.T) {
 		}
 	}
 
-	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+
+	// Create session with workspace_id so SendMessage can resolve it.
+	if err := store.SaveSession("session-1", map[string]interface{}{"workspace_id": "default"}); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
 
 	resp, err := loop.SendMessage(context.Background(), "session-1", "Keep calling tools", "")
 	if err != nil {
