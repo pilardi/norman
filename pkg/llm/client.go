@@ -226,9 +226,11 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 
 		var delta map[string]interface{}
 		if err := json.Unmarshal(data, &delta); err != nil {
-			// Gracefully handle malformed lines (e.g., leftover [DONE] or partial reads).
-			log.Printf("[llm][%s] SSE parse warning: %v (raw: %.80s...)", s.providerName, err, string(data))
-			continue // skip this malformed line and try next
+			// Do not silently skip — log the full raw data for debugging.
+			// A malformed line often indicates a request schema issue (e.g., invalid tool_calls format)
+			// rather than a provider-side quirk.
+			log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, string(data))
+			return Chunk{}, fmt.Errorf("SSE parse error: %w", err)
 		}
 
 		// Debug: show actual JSON keys to diagnose parser mismatch.
@@ -291,8 +293,17 @@ func readSSELine(r io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Trim trailing newline(s) that separate SSE events
-	return string(bytes.TrimSpace(buf[:n])), nil
+	data := buf[:n]
+	// Split on newlines and return the last non-empty segment.
+	// This handles cases where [DONE] is concatenated with the preceding data chunk.
+	parts := bytes.Split(data, []byte("\n"))
+	for i := len(parts) - 1; i >= 0; i-- {
+		line := string(bytes.TrimSpace(parts[i]))
+		if line != "" {
+			return line, nil
+		}
+	}
+	return "", nil
 }
 
 // --- Helpers ---

@@ -332,33 +332,39 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 		return api.Chunk{}, fmt.Errorf("read SSE: %w", err)
 	}
 
-	line := strings.TrimSpace(string(buf[:n]))
-	if line == "" || line == "data: [DONE]" {
-		return api.Chunk{FinishReason: "[done]"}, nil
+	data := buf[:n]
+	// Split on newlines and return the last non-empty segment.
+	// This handles cases where [DONE] is concatenated with the preceding data chunk.
+	parts := bytes.Split(data, []byte("\n"))
+	var rawData string
+	for i := len(parts) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(string(parts[i]))
+		if line == "" || line == "data: [DONE]" {
+			return api.Chunk{FinishReason: "[done]"}, nil
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue // skip non-data lines
+		}
+		rawData = strings.TrimPrefix(line, "data: ")
+		break
 	}
-
-	if !strings.HasPrefix(line, "data: ") {
-		return s.Next() // skip non-data lines
-	}
-
-	data := strings.TrimPrefix(line, "data: ")
 
 	// Debug: expose raw SSE data for troubleshooting.
-	log.Printf("[llm][%s] SSE raw data: %s", s.providerName, data)
+	log.Printf("[llm][%s] SSE raw data: %s", s.providerName, rawData)
 
 	// Native /completion format: {"content":"...","stop_reason":"..."}
 	var nativeResp struct {
 		Content    string `json:"content"`
 		StopReason string `json:"stop_reason,omitempty"`
 	}
-	if err := json.Unmarshal([]byte(data), &nativeResp); err == nil && nativeResp.Content != "" {
+	if err := json.Unmarshal([]byte(rawData), &nativeResp); err == nil && nativeResp.Content != "" {
 		log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
 		return api.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
 	}
 
 	// Fallback to OpenAI-compatible format for backward compat
 	var delta map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &delta); err == nil {
+	if err := json.Unmarshal([]byte(rawData), &delta); err == nil {
 		chunk := api.Chunk{}
 		if msg, ok := delta["message"].(map[string]interface{}); ok {
 			if content, ok := msg["content"].(string); ok {
@@ -390,9 +396,11 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 		return chunk, nil
 	}
 
-	// Gracefully handle malformed lines (e.g., leftover [DONE] or partial reads).
-	log.Printf("[llm][%s] SSE parse warning: %v (raw: %.80s...)", s.providerName, err, data)
-	return api.Chunk{}, nil // return empty chunk; caller will retry next line
+	// Do not silently skip — log the full raw data for debugging.
+	// A malformed line often indicates a request schema issue (e.g., invalid tool_calls format)
+	// rather than a provider-side quirk.
+	log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, data)
+	return api.Chunk{}, fmt.Errorf("SSE parse error: %w", err)
 }
 
 func (s *sseStreamReader) Close() error {
