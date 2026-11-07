@@ -219,6 +219,11 @@ func handleChat(args []string) {
 			os.Exit(1)
 		}
 		sess := parsedSess.GetJSON201()
+		if sess == nil {
+			// Server returned an error response (e.g., 409 max sessions reached).
+			fmt.Fprintln(os.Stderr, "Error: session creation failed: server returned non-201 response")
+			os.Exit(1)
+		}
 		sessionID = sess.Id.String()
 		fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
 	}
