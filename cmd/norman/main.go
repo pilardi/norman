@@ -94,6 +94,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 					return handleConfig(ctx, cmd)
 				},
 			},
+
 			// --- version subcommand ---
 			{
 				Name:        "version",
@@ -346,6 +347,57 @@ Examples:
   norman sessions open my-project abc12345`,
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							handleChat(cmd.Args().Slice())
+							return nil
+						},
+					},
+					{
+						Name:  "history",
+						Usage: "Show conversation history for a session",
+						Description: `sessions history — Show the last N messages of a session
+
+Usage: norman sessions history <session_id_or_alias> [N] [--json]
+
+Options:
+  --json    Output as machine-readable JSON instead of human-readable format
+
+Examples:
+  norman sessions history ab953ff5          # Last 10 messages (default)
+  norman sessions history ab953ff5 20      # Last 20 messages
+  norman sessions history my-session --json  # Raw JSON output`,
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "json",
+								Usage: "Output as machine-readable JSON instead of human-readable format",
+							},
+						},
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							args := cmd.Args().Slice()
+							if len(args) == 0 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman sessions history <session_id_or_alias> [N] [--json]\n")
+								return fmt.Errorf("usage: norman sessions history <session_id_or_alias> [N] [--json]")
+							}
+
+							var sessionID string
+							n := 10
+							for _, arg := range args {
+								if sessionID == "" && !strings.HasPrefix(arg, "-") {
+									sessionID = arg
+								} else if num, _ := fmt.Sscanf(arg, "%d", &n); num > 0 {
+									n = num
+								}
+							}
+
+							if sessionID == "" {
+								fmt.Fprintf(os.Stderr, "Error: session ID or alias is required\n")
+								return fmt.Errorf("usage: norman sessions history <session_id_or_alias> [N] [--json]")
+							}
+
+							var extraArgs []string
+							extraArgs = append(extraArgs, fmt.Sprintf("%d", n))
+							if cmd.Bool("json") {
+								extraArgs = append(extraArgs, "--json")
+							}
+							showHistory(sessionID, extraArgs)
 							return nil
 						},
 					},

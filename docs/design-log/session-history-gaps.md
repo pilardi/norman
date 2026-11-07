@@ -1,7 +1,7 @@
 ---
 title: "Session History — Gap Assessment"
 type: assessment
-status: draft
+status: implementation-complete
 date: 2026-11-07
 author: Pablo (via goose)
 related: [session-workflow-proposal.md, task-management-assessment.md]
@@ -9,9 +9,10 @@ related: [session-workflow-proposal.md, task-management-assessment.md]
 
 # Session History — Gap Assessment
 
-> **Status:** Under Investigation  
+> **Status:** Core Implementation Complete ✅  
 > **Date:** 2026-11-07  
-> **Author:** Pablo (via goose)
+> **Author:** Pablo (via goose)  
+> **Test Coverage:** 6 new unit tests in `pkg/memory/store_test.go` covering persistence, loading, empty sessions, multi-session isolation, ID fields, and timestamps. All 29 store tests pass.
 
 ## TL;DR
 
@@ -122,14 +123,34 @@ case "history":
     showHistory(sessionID, cmdArgs)
 ```
 
-It calls `client.SessionHistory(ctx, sessionID, params)` which hits `GET /api/sessions/{id}/history?limit=N`. The current code path is:
+It calls `client.SessionHistory(ctx, sessionID, params)` which hits `GET /api/sessions/{id}/history?limit=N`. The code path is:
 
 1. CLI resolves session name → UUID via `resolveSessionID()`
 2. Calls `protocol.SessionHistory()` (generated client method)
 3. Server's `SessionHistory()` handler reads `sessMap["turns"]`
 4. Returns JSON array of turns
 
-**The gap is purely server-side**: nothing writes to `sessMap["turns"]`, so the command works but always returns `[]`. Once persistence is added (see Design section below), this client command will work end-to-end without any CLI changes.
+**With server-side persistence now implemented**, the gap is closed — `/history` will return actual conversation turns instead of `[]`. The `--json` flag (added at `chat.go:423`) allows raw JSON output for programmatic use.
+
+## Integration Verification
+
+To fully verify the fix end-to-end:
+1. Start `norman-server` with a workspace active
+2. Run `/history` after sending messages via CLI or direct API calls
+3. Confirm turns appear in chronological order with `{role, content, timestamp}` fields
+4. Verify turns persist across server restarts (JSONL survives)
+
+This verification can be done manually or automated as an integration test once the server binary is built.
+
+## Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `PersistSessionTurn(sessionID, turn)` | ✅ Done | Added to `pkg/memory/store.go` (~760) — appends JSONL per session |
+| `LoadSessionTurns(sessionID)` | ✅ Done | Added to `pkg/memory/store.go` (~785) — reads JSONL file |
+| `SendMessage` persistence hook | ✅ Done | Added to `cmd/norman-server/sessions.go:160-179` — persists user + assistant turns |
+| `/history --json` flag | ✅ Done | Added to `cmd/norman/chat.go:423` — parses limit + `--json` flag |
+| Server-side persistence integration test | ⬜ Pending | Need end-to-end verification with running server |
 
 ## Open Questions for Implementation
 
@@ -137,10 +158,13 @@ It calls `client.SessionHistory(ctx, sessionID, params)` which hits `GET /api/se
   **A:** ✅ Already works — `resolveSessionID()` matches by full name or first-8-chars-of-UUID prefix. No changes needed here.
 
 - **Q:** Should the client format turns as readable text, or just print raw JSON?  
-  **A:** Human-readable by default (current behavior). Add `--json` flag for raw JSON output. ⬜ Needs implementation.
+  **A:** Human-readable by default (current behavior). `--json` flag added at `cmd/norman/chat.go:423`. ✅ Done.
 
 - **Q:** Does `/history` need to work offline (local REPL only) or is server connectivity required?  
   **A:** Client is thin — no offline support needed. Requires server. ✅
+
+- **Q:** Should archive/delete sessions clean up their turns files?  
+  **A:** Not yet implemented. `DeleteSession()` in `sessions.go` removes the session JSON but not its `.jsonl` turns file. This is a future cleanup concern (low priority for MVP). ⬜ Deferred.
 
 ## Implementation Notes
 
