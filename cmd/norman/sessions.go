@@ -126,16 +126,6 @@ func listSessions() {
 	fmt.Println("---")
 }
 
-// sessionHelpText is used by the REPL /help slash command.
-const sessionHelpText = `sessions — Manage chat sessions
-
-Usage: norman sessions <subcommand> [args...]
-
-Subcommands:
-  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-  list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript`
-
 // showHistory displays the last N messages of a session.
 func showHistory(sessionID string, args []string) {
 	n := 10 // default

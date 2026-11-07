@@ -15,6 +15,8 @@ import (
 
 // runWebSocketLoop connects to the WebSocket endpoint and displays incoming events.
 // It runs concurrently with the REPL input loop.
+const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)"
+
 func runWebSocketLoop(sessionID string) {
 	client, err := getProtocolClient()
 	if err != nil {
@@ -127,14 +129,14 @@ func handleChat(args []string) {
 	}
 
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, sessionHelpText)
+		fmt.Fprintln(os.Stderr, chatHelpText)
 		os.Exit(1)
 	}
 
 	// Parse args: first is workspace name, second optional is session ID.
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-h" || args[i] == "--help" {
-			fmt.Fprintln(os.Stderr, sessionHelpText)
+			fmt.Fprintln(os.Stderr, chatHelpText)
 			return
 		} else if workspaceName == "" {
 			workspaceName = args[i]
@@ -152,14 +154,14 @@ func handleChat(args []string) {
 			}
 		} else {
 			fmt.Fprintf(os.Stderr, "Too many arguments. Usage: norman sessions open <workspace_name> [<session_id>]\n")
-			fmt.Fprintln(os.Stderr, sessionHelpText)
+			fmt.Fprintln(os.Stderr, chatHelpText)
 			os.Exit(1)
 		}
 	}
 
 	if workspaceName == "" {
 		fmt.Fprintln(os.Stderr, "Error: workspace name is required")
-		fmt.Fprintln(os.Stderr, sessionHelpText)
+		fmt.Fprintln(os.Stderr, chatHelpText)
 		os.Exit(1)
 	}
 
@@ -263,7 +265,7 @@ func handleChat(args []string) {
 		if isSlash {
 			switch cmd {
 			case "help":
-				fmt.Fprintln(os.Stderr, sessionHelpText)
+				fmt.Fprintln(os.Stderr, chatHelpText)
 			case "list", "tasks":
 				listEmergentTasks(sessionID)
 			case "close":
