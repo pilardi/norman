@@ -6,10 +6,8 @@ import (
 	"os"
 
 	"github.com/norman/norman/pkg/protocol"
-	"github.com/urfave/cli/v3"
 )
 
-// handleSessions manages sessions via CLI.
 // shortID returns a truncated UUID representation (first 8 chars).
 func shortID(id string) string {
 	if len(id) > 8 {
@@ -17,43 +15,6 @@ func shortID(id string) string {
 	}
 	return id
 }
-
-func handleSessions(ctx context.Context, cmd *cli.Command) error {
-	if cmd.Args().Len() == 0 {
-		fmt.Println(sessionHelpText)
-		return nil
-	}
-
-	subcommand := cmd.Args().First()
-	subargs := cmd.Args().Tail()
-
-	switch subcommand {
-	case "list":
-		return handleSessionList(subargs)
-	case "archive":
-		if len(subargs) < 1 {
-			return fmt.Errorf("usage: norman sessions archive <session_id>")
-		}
-		if err := handleSessionArchive(subargs[0]); err != nil {
-			return fmt.Errorf("archive failed: %v", err)
-		}
-		return nil
-	case "open", "chat":
-		handleChat(subargs)
-		return nil
-	default:
-		return fmt.Errorf("unknown sessions subcommand: %s\n\n%s", subcommand, sessionHelpText)
-	}
-}
-
-const sessionHelpText = `sessions — Manage chat sessions
-
-Usage: norman sessions <subcommand> [args...]
-
-Subcommands:
-  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-  list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript`
 
 // handleSessionList lists active sessions using the generated protocol client.
 func handleSessionList(args []string) error {

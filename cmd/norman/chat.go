@@ -13,6 +13,16 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
+// sessionHelpText is used by the REPL /help slash command.
+const sessionHelpText = `sessions — Manage chat sessions
+
+Usage: norman sessions <subcommand> [args...]
+
+Subcommands:
+  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
+  list                          List active chat sessions
+  archive <session_id>          Archive a session's transcript`
+
 // runWebSocketLoop connects to the WebSocket endpoint and displays incoming events.
 // It runs concurrently with the REPL input loop.
 func runWebSocketLoop(sessionID string) {

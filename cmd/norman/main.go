@@ -289,7 +289,10 @@ Examples:
 				Name:        "sessions",
 				Usage:       "Manage chat sessions",
 				Description: `sessions — Manage chat sessions`,
-				Action:      handleSessions,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
+					return nil
+				},
 				Commands: []*cli.Command{
 					{
 						Name:    "list",
