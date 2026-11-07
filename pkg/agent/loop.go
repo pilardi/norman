@@ -47,7 +47,7 @@ type Loop struct {
 	rawSources       *memory.RawSources // raw environment snapshots for context injection
 	activator        *skills.Activator
 	config           *config.Config
-	openShell        OpenShellClient
+	ws               env.Workspace        // single workspace abstraction replacing openShell/openShellClient/workspaceManager
 	llmClient        llm.LLM                       // LLM API client (optional, nil = shell-only mode)
 	providerCache    map[string]*llm.ClientAdapter // cached providers keyed by name
 	wsHub            WSHubPublisher
@@ -55,11 +55,9 @@ type Loop struct {
 	resultsCh        chan scheduler.TaskResult // results from scheduler (nil if not wired)
 	budget           *budget.SessionState      // token budget tracker (nil if disabled)
 	workspaceDef     *env.WorkspaceDefinition  // workspace identity for system prompt injection
-	openShellClient  *env.Client               // concrete client for session creation (P3 sandbox dep install)
 	mcpClient        *mcp.Client               // MCP client for remote tool discovery/invocation (optional)
 	systemPrompt     string                    // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
 	debug            bool                      // if true, log detailed message contents before sending to LLM
-	workspaceManager *env.WorkspaceManager     // workspace-to-sandbox mapping manager
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -153,45 +151,15 @@ func (l *Loop) resolveWorkspace(sessionID string) string {
 	return ""
 }
 
-// GetSession returns an OpenShell session for the given workspace ID.
-// Creates a new sandbox if one doesn't already exist for this workspace.
+// GetSession returns a session for the given workspace ID.
+// Returns NotFound error if the session doesn't exist — no auto-creation.
 func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, error) {
-	// Use the concrete client to create sessions
-	client := l.openShellClient
-
-	// Resolve sandbox name via workspace manager (checks actual SDK-assigned name).
-	sandboxName, err := l.workspaceManager.SandboxName(workspaceID)
+	session, err := l.ws.Get(context.Background(), sessionId)
 	if err != nil {
-		return nil, fmt.Errorf("resolve sandbox name for workspace %s: %w", workspaceID, err)
+		return nil, fmt.Errorf("session %s not found for workspace %s: %w", sessionId[:8], workspaceID, err)
 	}
 
-	// Try to get existing sandbox by name.
-	sb, err := client.GetSandbox(context.Background(), "default", sandboxName)
-	if err == nil && sb != nil {
-		log.Printf("[loop] using existing sandbox '%s' for workspace '%s'", sb.Name, workspaceID)
-		return env.NewSession(client, "default", sb.Name, sessionId), nil
-	}
-
-	// Create a new sandbox with context file (server URL + mTLS paths).
-	ctxFile := l.buildContextFile(workspaceID)
-	_, err = client.CreateSandbox(context.Background(), workspaceID, sandboxName, ctxFile, sessionId)
-	if err != nil {
-		return nil, fmt.Errorf("create sandbox for workspace %s: %w", workspaceID, err)
-	}
-
-	// Deploy roger binary skill into the new sandbox
-	session := env.NewSession(client, "default", sandboxName, sessionId)
-	if l.activator != nil {
-		_, deployErr := l.activator.DeployToSandbox("roger", session)
-		if deployErr != nil {
-			log.Printf("[loop] deploy roger to sandbox '%s': %v", sandboxName, deployErr)
-			// Non-fatal — sandbox still usable without roger
-		} else {
-			log.Printf("[loop] deployed roger skill into sandbox '%s'", sandboxName)
-		}
-	}
-
-	log.Printf("[loop] created new sandbox '%s' for workspace '%s'", sandboxName, workspaceID)
+	log.Printf("[loop] using existing session '%s' for workspace '%s'", sessionId[:8], workspaceID)
 	return session, nil
 }
 
@@ -223,25 +191,20 @@ type WSHubPublisher interface {
 }
 
 // New creates a new agent loop with the given dependencies.
-func New(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources, activator *skills.Activator, wsHub WSHubPublisher, client OpenShellClient) *Loop {
+// The workspace parameter implements env.Workspace and encapsulates all
+// OpenShell interaction — the loop no longer knows about OpenShell internals.
+func New(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources, activator *skills.Activator, wsHub WSHubPublisher, ws env.Workspace) *Loop {
 	return &Loop{
 		tasks:         make(map[string]*Task),
 		store:         store,
 		rawSources:    rawSources,
 		activator:     activator,
 		config:        cfg,
-		openShell:     client,
+		ws:            ws,
 		wsHub:         wsHub,
 		budget:        nil, // disabled by default; set via SetBudget()
 		providerCache: make(map[string]*llm.ClientAdapter),
 	}
-}
-
-// NewWithClient is like New but also stores the concrete *env.Client for sandbox-based dep install (P3).
-func NewWithClient(cfg *config.Config, store *memory.Store, rawSources *memory.RawSources, activator *skills.Activator, wsHub WSHubPublisher, client OpenShellClient, concreteClient *env.Client) *Loop {
-	l := New(cfg, store, rawSources, activator, wsHub, client)
-	l.openShellClient = concreteClient
-	return l
 }
 
 // WithNotifier injects a notification notifier into the loop. Returns the modified Loop.
@@ -329,12 +292,6 @@ func (l *Loop) WithSystemPrompt(s string) *Loop {
 	return l
 }
 
-// WithWorkspaceManager sets the workspace manager for sandbox name resolution.
-func (l *Loop) WithWorkspaceManager(m *env.WorkspaceManager) *Loop {
-	l.workspaceManager = m
-	return l
-}
-
 // Submit enqueues a task and begins execution.
 func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, sessionID string) (*Task, error) {
 	taskID := uuid.New().String()
@@ -381,9 +338,9 @@ func (l *Loop) GetTask(taskID string) (*Task, error) {
 	return task, nil
 }
 
-// GetLogs returns the log lines for a sandbox/session by ID.
-func (l *Loop) GetLogs(ctx context.Context, sandboxID string) ([]string, error) {
-	return l.openShell.GetLogs(ctx, sandboxID)
+// GetLogs returns the log lines for a sandbox/session by session ID.
+func (l *Loop) GetLogs(ctx context.Context, sessionId string) ([]string, error) {
+	return l.ws.GetLogs(ctx, sessionId)
 }
 
 // AgentResponse represents the structured response from processing a chat message.
@@ -621,7 +578,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:7])
 	ctxFile := l.buildContextFile(task.Workspace)
-	_, err := l.openShell.CreateSandbox(ctx, task.Workspace, sandboxName, ctxFile, "")
+	_, err := l.ws.CreateSandbox(ctx, task.Workspace, sandboxName, ctxFile, "")
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("sandbox creation failed: %v", err)
@@ -645,7 +602,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// Wait for sandbox to be ready.
 	var waitErr error
-	_, waitErr = l.openShell.WaitReady(ctx, task.Workspace, sandboxName, 60*time.Second)
+	_, waitErr = l.ws.WaitReady(ctx, task.Workspace, sandboxName, 60*time.Second)
 	if waitErr != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("sandbox not ready: %v", waitErr)
@@ -655,15 +612,20 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// P3: Re-activate active skills with workspace session for sandbox-based dependency install.
 	if l.activator != nil && len(l.activator.Active()) > 0 {
-		wsSession, err := l.GetSession(task.Workspace, "")
-		if err != nil {
-			log.Printf("[loop] get session for workspace '%s': %v", task.Workspace, err)
-		} else {
-			for _, name := range l.activator.Active() {
-				if err := l.ActivateWithSession(name, wsSession); err != nil {
-					log.Printf("[loop] activate with session for '%s': %v", name, err)
+		// Only activate if a session already exists for this task's workspace — no auto-creation.
+		if l.ws.Exists(ctx, task.SessionId) {
+			wsSession, err := l.ws.Get(ctx, task.SessionId)
+			if err != nil {
+				log.Printf("[loop] get session for workspace '%s': %v", task.Workspace, err)
+			} else {
+				for _, name := range l.activator.Active() {
+					if err := l.ActivateWithSession(name, wsSession); err != nil {
+						log.Printf("[loop] activate with session for '%s': %v", name, err)
+					}
 				}
 			}
+		} else {
+			log.Printf("[loop] no existing session for workspace '%s', skipping skill activation", task.Workspace)
 		}
 	}
 
@@ -671,7 +633,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	// This catches the case where the gateway auto-deletes sandboxes (idle timeout)
 	// between WaitReady and RunCommand.
 	var getErr error
-	_, getErr = l.openShell.GetSandbox(ctx, "default", sandboxName)
+	_, getErr = l.ws.GetSandbox(ctx, "default", sandboxName)
 	if getErr != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("sandbox not found before execution: %v", getErr)
@@ -709,7 +671,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// Cleanup sandbox
 	go func() {
-		if delErr := l.openShell.DeleteSandbox(context.Background(), task.Workspace, sandboxName); delErr != nil {
+		if delErr := l.ws.DeleteSandbox(context.Background(), task.Workspace, sandboxName); delErr != nil {
 			log.Printf("agent: failed to delete sandbox %s: %v", sandboxName, delErr)
 		}
 	}()
@@ -976,7 +938,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			}
 
 			// Keepalive heartbeat between turns (item #7) — prevents idle-timeout deletion
-			if err := l.openShell.KeepAlive(ctx, sandboxName); err != nil {
+			if err := l.ws.KeepAlive(ctx, sandboxName); err != nil {
 				log.Printf("agent: keepalive failed for sandbox %s: %v", sandboxName, err)
 			}
 
@@ -1748,7 +1710,7 @@ func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name st
 		return l.handleMCPCall(sandboxName, argsRaw)
 	default:
 		// Fall back to raw RunCommand for activated skill tools
-		output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, argsRaw)
+		output, exitCode, err := l.ws.RunCommandBySandbox(ctx, sandboxName, argsRaw)
 		return output, exitCode, err
 	}
 }
@@ -1765,7 +1727,7 @@ func (l *Loop) handleBash(ctx context.Context, sandboxName string, argsRaw strin
 		return "", 0, fmt.Errorf("bash requires a 'command' field (string)")
 	}
 
-	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, cmd)
+	output, exitCode, err := l.ws.RunCommandBySandbox(ctx, sandboxName, cmd)
 	return output, exitCode, err
 }
 
@@ -1781,7 +1743,7 @@ func (l *Loop) handleReadFile(ctx context.Context, sandboxName string, argsRaw s
 		return "", 0, fmt.Errorf("read_file requires a 'path' field (string)")
 	}
 
-	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, "cat "+shellEscape(path))
+	output, exitCode, err := l.ws.RunCommandBySandbox(ctx, sandboxName, "cat "+shellEscape(path))
 	return output, exitCode, err
 }
 
@@ -1803,7 +1765,7 @@ func (l *Loop) handleWriteFile(ctx context.Context, sandboxName string, argsRaw 
 	}
 
 	cmd := "printf '%s' '" + shellEscape(content) + "' > " + shellEscape(path)
-	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, cmd)
+	output, exitCode, err := l.ws.RunCommandBySandbox(ctx, sandboxName, cmd)
 	return output, exitCode, err
 }
 
@@ -1911,7 +1873,7 @@ func (l *Loop) handleFileDiff(ctx context.Context, sandboxName string, argsRaw s
 	}
 
 	// Read the file via cat command in the sandbox.
-	output, exitCode, err := l.openShell.RunCommand(ctx, sandboxName, "cat "+shellEscape(path))
+	output, exitCode, err := l.ws.RunCommandBySandbox(ctx, sandboxName, "cat "+shellEscape(path))
 	if err != nil {
 		return "", exitCode, fmt.Errorf("file_diff read error: %w", err)
 	}
@@ -1932,7 +1894,7 @@ func (l *Loop) handleListDir(sandboxName string, argsRaw string) (string, int, e
 	}
 
 	cmd := "ls -la " + shellEscape(path)
-	output, exitCode, err := l.openShell.RunCommand(context.Background(), sandboxName, cmd)
+	output, exitCode, err := l.ws.RunCommandBySandbox(context.Background(), sandboxName, cmd)
 	return output, exitCode, err
 }
 
@@ -1949,7 +1911,7 @@ func (l *Loop) handleFindFiles(sandboxName string, argsRaw string) (string, int,
 	}
 
 	cmd := "find . -name '" + pattern + "'"
-	output, exitCode, err := l.openShell.RunCommand(context.Background(), sandboxName, cmd)
+	output, exitCode, err := l.ws.RunCommandBySandbox(context.Background(), sandboxName, cmd)
 	return output, exitCode, err
 }
 

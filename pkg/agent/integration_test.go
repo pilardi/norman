@@ -292,11 +292,10 @@ func TestIntegrationKeepAlive(t *testing.T) {
 
 	fakeWSHub := &FakeWSHub{}
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
-
 	// Create a FakeOpenShellClient with a known sandbox
 	fakeClient := NewFakeOpenShellClient()
-	loop.openShell = fakeClient
+
+	_ = New(cfg, store, nil, nil, fakeWSHub, fakeClient) // constructor exercise only
 
 	ctx := context.Background()
 

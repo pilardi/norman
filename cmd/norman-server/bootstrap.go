@@ -98,8 +98,6 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		log.Fatalf("[server] FATAL: OpenShell gateway connection failed at %s: %v\nServer refusing to start.", openShellAddr, err)
 	}
 
-	loopClient := env.NewSDKAdapter(openShellClient)
-
 	// Create workspace manager — handles sandbox creation with context file injection.
 	serverURL := cfg.System.ServerURL
 	if serverURL == "" {
@@ -117,9 +115,8 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		log.Fatalf("failed to init raw sources store: %v", err)
 	}
 
-	// Create agent loop (with concrete client for P3 sandbox dep install).
-	loop := agent.NewWithClient(cfg, store, rawSources, activator, wsHub, loopClient, openShellClient).
-		WithWorkspaceManager(wsManager)
+	// Create agent loop with workspace abstraction.
+	loop := agent.New(cfg, store, rawSources, activator, wsHub, wsManager)
 
 	// Wire LLM client into the agent loop.
 	if llmClient != nil {

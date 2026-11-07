@@ -931,3 +931,57 @@ func (f *FakeOpenShellClient) GetMTLSPaths() (certPath, keyPath string) {
 	// Fake client has no mTLS config
 	return "", ""
 }
+
+// --- env.Workspace interface methods ---
+
+func (f *FakeOpenShellClient) Exists(ctx context.Context, sessionId string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.sandboxes[sessionId]
+	return ok
+}
+
+func (f *FakeOpenShellClient) Session() *env.Session {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.sandboxes) == 0 {
+		return nil
+	}
+	for range f.sandboxes {
+		return &env.Session{} // minimal mock session for read-only view
+	}
+	return nil
+}
+
+func (f *FakeOpenShellClient) RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.commands = append(f.commands, "sandbox:"+command)
+	f.capturedPrompt = "sandbox:" + command
+	output := fmt.Sprintf("Executed in sandbox %s: %s", sandboxName, command)
+	return output, 0, nil
+}
+
+func (f *FakeOpenShellClient) Create(ctx context.Context, sessionId string) (*env.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(sessionId, "-", ""))
+	f.sandboxes[sessionId] = sid
+	return &env.Session{}, nil
+}
+
+func (f *FakeOpenShellClient) Get(ctx context.Context, sessionId string) (*env.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.sandboxes[sessionId]; !ok {
+		return nil, fmt.Errorf("session %s not found", sessionId)
+	}
+	return &env.Session{}, nil
+}
+
+func (f *FakeOpenShellClient) Delete(ctx context.Context, sessionId string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.sandboxes, sessionId)
+	return nil
+}
