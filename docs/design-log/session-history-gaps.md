@@ -134,7 +134,7 @@ It calls `client.SessionHistory(ctx, sessionID, params)` which hits `GET /api/se
 ## Open Questions for Implementation
 
 - **Q:** Should `/history` accept a session name alias (e.g., `/history test`) or only UUID?  
-  **A:** Already handled — `resolveSessionID()` maps names to UUIDs before calling the server.
+  **A:** Already handled — `resolveSessionID()` maps names to UUIDs before calling the server. The "alias" is the auto-generated `Name` field (`{id[:8]}-session`). Matching works by full name or first-8-chars-of-UUID prefix.
 
 - **Q:** Should the client format turns as readable text, or just print raw JSON?  
   **A:** Current code at line 452 iterates and prints `{role}: {content}` per turn — human-readable output, not raw JSON. ✅
