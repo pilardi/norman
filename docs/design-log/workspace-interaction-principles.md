@@ -226,11 +226,31 @@ loop := agent.New(cfg, store, rawSources, activator, wsHub, ws)  // New() takes 
 - Add getter: `func (w *WorkspaceDefinition) Name() string`
 - Remove `SandboxName()` public method from WorkspaceManager; keep internal
 
-### Phase 5: Clean Up Server Layer
-**Scope:** `cmd/norman-server/bootstrap.go`, `tasks.go`
-- Single workspace dependency injection in bootstrap
-- Route `GetLogs()` through workspace (session ID → sandbox ID mapping)
-- Remove direct `client.GetSandbox()` calls from server handlers
+### Phase 5: Clean Up Server Layer — Implementation Results
+**Status:** ✅ Completed (PR #71, committed to `fix/empty-workspace-abort`)
+
+**Scope:** `cmd/norman-server/sessions.go`, `pkg/env/workspace_interface.go`, `pkg/env/workspace.go`, `pkg/agent/loop_test.go`
+
+| Change | Rationale |
+|--------|-----------|
+| Added `UpdateActivity(ctx, sessionId string)` to `Workspace` interface | Activity is per-session, not per-workspace-name. The handler has a `sessionID`, so the method looks up by session ID directly. Replaces `s.workspaceManager.UpdateLastActivity(workspaceId)`. |
+| Added `Sessions() map[string]*Session` to `Workspace` interface | Already implemented on `WorkspaceManager` (line 290 of workspace.go); added to interface for completeness. |
+| Replaced `s.workspaceManager.GetSession(ctx, wsId, sid)` → `l.Ws.Get(ctx, sid)` in `CreateSession()` | Semantic: `GetSession()` auto-creates (recoverOrCreate), `Get()` returns NotFound. In CreateSession we already created the session first, so verification via Get() is correct. |
+| Replaced `s.workspaceManager.UpdateLastActivity(wsId)` → `l.Ws.UpdateActivity(ctx, sid)` | Session-ID keyed lookup instead of workspace-name keyed. |
+
+**Design decisions preserved (not changed):**
+- `s.workspaces` map in server struct kept — it's a server-level registry for workspace metadata (purpose, scope, tags), not replaced by the Workspace interface.
+- `updateWorkspaceActivity()` and `checkWorkspaceIdle()` remain unchanged — these iterate `s.workspaces` to find workspace mappings for session IDs; they are server-level concerns.
+
+**Post-Implementation Verification:**
+- [x] `go build ./...` — compiles without errors
+- [x] `go test ./...` — all tests pass (agent, env, agent/integration)
+- [x] `make lint` — 0 issues
+- [x] `git diff --stat` — 5 files changed, +55/-19 lines
+
+---
+
+**Deviation from original plan:** The original scope listed `bootstrap.go` and `tasks.go`, but the actual implementation focused on `sessions.go` (the core server handler). The `GetLogs()` routing through workspace was deferred to a future iteration.
 
 ### Phase 6: Update Tests
 **Scope:** `pkg/agent/integration_test.go`, `loop_test.go`
