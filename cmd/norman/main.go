@@ -286,15 +286,10 @@ Examples:
 			},
 			// --- sessions subcommand ---
 			{
-				Name:  "sessions",
-				Usage: "Manage chat sessions",
-				Description: `sessions — Manage chat sessions
-
-Commands:
-  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-  list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript via POST /api/sessions/{id}`,
-				Action: handleSessions,
+				Name:        "sessions",
+				Usage:       "Manage chat sessions",
+				Description: `sessions — Manage chat sessions`,
+				Action:      handleSessions,
 				Commands: []*cli.Command{
 					{
 						Name:    "list",
@@ -405,15 +400,9 @@ Examples:
 			},
 			// --- skills subcommand ---
 			{
-				Name:  "skills",
-				Usage: "Manage installed skills",
-				Description: `skills — Manage installed skills
-
-Commands:
-  list       Show installed skills with provenance
-  install <path|repo>  Install a skill from a local path or git repo URL
-  remote <git-url>     Install a skill from a git repository (alias for install)
-  remove <name>   Remove an installed skill by name`,
+				Name:        "skills",
+				Usage:       "Manage installed skills",
+				Description: `skills — Manage installed skills`,
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
 					return nil
