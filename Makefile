@@ -29,7 +29,7 @@ help:
 	@echo "  lint        - Run golangci-lint on all packages (includes generated .gen.go)"
 	@echo "  build       - Run generate + lint + compile all packages (binaries in $(DIST)/)"
 	@echo "  rebuild     - Clean + regenerate + build (safe sequential rebuild)"
-	@echo "  verify      - Run all CI steps in a single command (generate+lint+build+tests)"
+	@echo "  verify      - Run full CI pipeline: generate → lint → build → unit tests + integration tests"
 	@echo "  test        - Run all unit tests with coverage report"
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short    - Run short tests only (skip slow/integration)"
@@ -125,7 +125,7 @@ completion:
 
 # Verify runs all CI steps in a single command.
 verify:
-	@echo "Running full CI verification (generate + lint + build + tests)..."
+	@echo "Running full CI pipeline: generate → lint → build → unit tests + integration tests"
 	@$(MAKE) generate
 	@echo ""
 	@golangci-lint run ./...
