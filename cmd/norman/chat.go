@@ -407,9 +407,16 @@ func listEmergentTasks(sessionID string) {
 // showHistory displays the last N messages of a session.
 func showHistory(sessionID string, args []string) {
 	n := 10 // default
-	if len(args) > 0 {
-		if num, err := fmt.Sscanf(args[0], "%d", &n); err != nil || num == 0 {
-			fmt.Fprintf(os.Stderr, "Invalid number: %s\n", args[0])
+	jsonFlag := false
+
+	// Parse args: first arg is limit (N), remaining can include --json flag.
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonFlag = true
+			continue
+		}
+		if num, err := fmt.Sscanf(arg, "%d", &n); err != nil || num == 0 {
+			fmt.Fprintf(os.Stderr, "Invalid number: %s\n", arg)
 			return
 		}
 	}
@@ -448,6 +455,13 @@ func showHistory(sessionID string, args []string) {
 	}
 
 	turns := parsed.GetJSON200()
+
+	if jsonFlag {
+		data, _ := json.MarshalIndent(*turns, "", "  ")
+		fmt.Printf("%s\n", string(data))
+		return
+	}
+
 	fmt.Printf("\n--- Last %d messages ---\n", n)
 	for i, t := range *turns {
 		role := ""
