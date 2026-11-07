@@ -41,23 +41,23 @@ type Task struct {
 
 // Loop is the main agent loop managing session messages and emergent/manual task execution.
 type Loop struct {
-	mu               sync.Mutex
-	tasks            map[string]*Task   // taskID -> Task state
-	store            *memory.Store      // persistent state
-	rawSources       *memory.RawSources // raw environment snapshots for context injection
-	activator        *skills.Activator
-	config           *config.Config
-	Ws               env.Workspace        // single workspace abstraction replacing openShell/openShellClient/workspaceManager
-	llmClient        llm.LLM                       // LLM API client (optional, nil = shell-only mode)
-	providerCache    map[string]*llm.ClientAdapter // cached providers keyed by name
-	wsHub            WSHubPublisher
-	notifier         *notify.Notifier
-	resultsCh        chan scheduler.TaskResult // results from scheduler (nil if not wired)
-	budget           *budget.SessionState      // token budget tracker (nil if disabled)
-	workspaceDef     *env.WorkspaceDefinition  // workspace identity for system prompt injection
-	mcpClient        *mcp.Client               // MCP client for remote tool discovery/invocation (optional)
-	systemPrompt     string                    // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
-	debug            bool                      // if true, log detailed message contents before sending to LLM
+	mu            sync.Mutex
+	tasks         map[string]*Task   // taskID -> Task state
+	store         *memory.Store      // persistent state
+	rawSources    *memory.RawSources // raw environment snapshots for context injection
+	activator     *skills.Activator
+	config        *config.Config
+	Ws            env.Workspace                 // single workspace abstraction replacing openShell/openShellClient/workspaceManager
+	llmClient     llm.LLM                       // LLM API client (optional, nil = shell-only mode)
+	providerCache map[string]*llm.ClientAdapter // cached providers keyed by name
+	wsHub         WSHubPublisher
+	notifier      *notify.Notifier
+	resultsCh     chan scheduler.TaskResult // results from scheduler (nil if not wired)
+	budget        *budget.SessionState      // token budget tracker (nil if disabled)
+	workspaceDef  *env.WorkspaceDefinition  // workspace identity for system prompt injection
+	mcpClient     *mcp.Client               // MCP client for remote tool discovery/invocation (optional)
+	systemPrompt  string                    // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
+	debug         bool                      // if true, log detailed message contents before sending to LLM
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.

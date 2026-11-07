@@ -71,4 +71,10 @@ type Workspace interface {
 
 	// KeepAlive verifies a named sandbox is still alive (heartbeat).
 	KeepAlive(ctx context.Context, sandboxName string) error
+
+	// UpdateActivity updates the last activity timestamp for a session.
+	UpdateActivity(ctx context.Context, sessionId string)
+
+	// Sessions returns all registered sessions keyed by session ID.
+	Sessions() map[string]*Session
 }

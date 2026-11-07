@@ -994,3 +994,22 @@ func (f *FakeOpenShellClient) GetSandboxName(ctx context.Context, sessionId stri
 	}
 	return "", fmt.Errorf("session %s not found", sessionId)
 }
+
+func (f *FakeOpenShellClient) UpdateActivity(ctx context.Context, sessionId string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.sandboxes[sessionId]; ok {
+		// Simulate activity update (no-op in fake)
+		_ = ok // suppress SA4006 warning
+	}
+}
+
+func (f *FakeOpenShellClient) Sessions() map[string]*env.Session {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	result := make(map[string]*env.Session, len(f.sandboxes))
+	for id := range f.sandboxes {
+		result[id] = &env.Session{}
+	}
+	return result
+}

@@ -326,6 +326,17 @@ func (m *WorkspaceManager) UpdateLastActivity(workspace string) {
 	}
 }
 
+// UpdateActivity updates the last activity timestamp for a session by its ID.
+func (m *WorkspaceManager) UpdateActivity(ctx context.Context, sessionId string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if session, ok := m.sessions[sessionId]; ok {
+		now := time.Now()
+		session.lastActivity = &now
+	}
+}
+
 // StartIdleCleanupLoop starts a background goroutine that periodically checks
 // for idle workspaces and stops them after the given timeout. Returns a cancel func.
 func (m *WorkspaceManager) StartIdleCleanupLoop(timeout time.Duration, stopCh chan struct{}) {
