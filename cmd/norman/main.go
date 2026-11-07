@@ -112,29 +112,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 				Usage: "Manage LLM providers (add, list, get, update, delete)",
 				Description: `provider — Manage LLM providers (add, list, get, update, delete)
 
-Commands:
-  add [name] [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
-      Add a new LLM provider. If no flags are provided, interactive prompts will be used (auto-fetches available models).
-      Type must be one of: openai, anthropic, ollama, gemini, llamacpp.
-
-  list (ls)
-      List all configured providers with their settings.
-
-  get <name>
-      Show full details for a specific provider by name.
-
-  update <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
-      Update an existing provider's fields (partial update).
-
-  delete <name> (del)
-      Remove a provider. Fails if it's the last remaining one.
-
-  set-default <name> (sd)
-      Set the default provider for sessions and CLI operations.
-
-  list-models <name> (lm)
-      List available models for a configured provider by querying its API endpoint.
-
 Examples:
   norman providers add local --type ollama --endpoint http://localhost:11434 --model llama3
   norman providers add openai-default --type openai --endpoint https://api.openai.com/v1 --model gpt-4o --temp 0.7 --max-tokens 8192
