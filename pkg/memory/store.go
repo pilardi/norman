@@ -85,6 +85,11 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("rename session archive: %w", err)
 	}
+
+	// Remove the original active session file — it's now archived.
+	activePath := filepath.Join(dir, taskID+".json")
+	_ = os.Remove(activePath)
+
 	return nil
 }
 
