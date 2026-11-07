@@ -476,3 +476,77 @@ func TestServerEnvVarsAll(t *testing.T) {
 		}
 	}
 }
+
+// --- max_active_sessions config tests ---
+
+func TestMaxActiveSessionsDefault(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.System.MaxActiveSessions != 3 {
+		t.Errorf("expected default MaxActiveSessions=3, got %d", cfg.System.MaxActiveSessions)
+	}
+}
+
+func TestMaxActiveSessionsValidationZero(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.System.MaxActiveSessions = 0 // zero means unlimited
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected no error for max_active_sessions=0, got: %v", err)
+	}
+}
+
+func TestMaxActiveSessionsValidationNegative(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.System.MaxActiveSessions = -1
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for max_active_sessions=-1")
+	}
+	expected := "system.max_active_sessions must be >= 0, got -1"
+	if err.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, err.Error())
+	}
+}
+
+func TestMaxActiveSessionsYAMLUnmarshal(t *testing.T) {
+	yaml := `system:
+  max_active_sessions: 5`
+
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "test_config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if cfg.System.MaxActiveSessions != 5 {
+		t.Errorf("expected MaxActiveSessions=5 from YAML, got %d", cfg.System.MaxActiveSessions)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+}
+
+func TestMaxActiveSessionsYAMLDefault(t *testing.T) {
+	yaml := `system:
+  server_port: 8080`
+
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "test_config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// Missing max_active_sessions should default to 3
+	if cfg.System.MaxActiveSessions != 3 {
+		t.Errorf("expected MaxActiveSessions default=3, got %d", cfg.System.MaxActiveSessions)
+	}
+}
