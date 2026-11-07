@@ -140,7 +140,12 @@ func handleChat(args []string) {
 			workspaceName = args[i]
 		} else if sessionID == "" {
 			var found bool
-			sessionID, found = resolveSessionID(args[i])
+			var err error
+			sessionID, found, err = resolveSessionID(args[i])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error resolving session '%s': %v\n", args[i], err)
+				os.Exit(1)
+			}
 			if !found {
 				fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", args[i])
 				os.Exit(1)
@@ -410,7 +415,11 @@ func showHistory(sessionID string, args []string) {
 	}
 
 	// Resolve session name to actual UUID if needed.
-	actualID, found := resolveSessionID(sessionID)
+	actualID, found, err := resolveSessionID(sessionID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error resolving session '%s': %v\n", sessionID, err)
+		return
+	}
 	if !found {
 		fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", sessionID)
 		return
@@ -463,20 +472,23 @@ func showHistory(sessionID string, args []string) {
 }
 
 // resolveSessionID resolves a session name/short ID to the actual UUID.
-func resolveSessionID(input string) (string, bool) {
+// Returns (resolvedID, found, error). If an error occurred (e.g., server down),
+// found=false and error is non-nil — caller should surface it instead of
+// treating it as "not found".
+func resolveSessionID(input string) (string, bool, error) {
 	client, err := getProtocolClient()
 	if err != nil {
-		return input, false // fall back to original
+		return input, false, fmt.Errorf("failed to create API client: %w", err)
 	}
 
 	rsp, err := client.ListSessions(context.Background())
 	if err != nil {
-		return input, false
+		return input, false, err
 	}
 
 	parsed, err := protocol.ParseListSessionsResponse(rsp)
 	if err != nil {
-		return input, false
+		return input, false, fmt.Errorf("error parsing sessions response: %w", err)
 	}
 
 	sessions := parsed.GetJSON200()
@@ -484,10 +496,10 @@ func resolveSessionID(input string) (string, bool) {
 		name := strVal(s.Name)
 		id := s.Id.String()
 		if name == input || strings.HasPrefix(id[:8], input[:8]) {
-			return id, true
+			return id, true, nil
 		}
 	}
-	return input, false
+	return input, false, nil
 }
 
 // displayResponseTyped formats and prints the agent's typed response.

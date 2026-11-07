@@ -95,7 +95,10 @@ func handleSessionList(args []string) error {
 
 // handleSessionArchive archives a session's transcript via POST /api/sessions/{id}.
 func handleSessionArchive(sessionID string) error {
-	actualID, found := resolveSessionID(sessionID)
+	actualID, found, err := resolveSessionID(sessionID)
+	if err != nil {
+		return fmt.Errorf("resolve session '%s': %w", sessionID, err)
+	}
 	if !found {
 		return fmt.Errorf("session '%s' not found, run 'norman sessions list' to see available sessions", sessionID)
 	}
