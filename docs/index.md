@@ -49,7 +49,7 @@ All design documents follow the [Design-Log Methodology](design-log/README.md), 
 | [LLM Tool Access Assessment](design-log/llm-tool-access-assessment.md) | `implemented` | Typed tool exposure model |
 | [Graphify Skill Install Assessment](design-log/graphify-skill-install-assessment.md) | `draft` | Python knowledge-graph skill install |
 | [CLI Library Assessment](design-log/cli-library-assessment.md) | `implemented` | urfave/v3 migration status |
-| [Agent Loop ↔ Workspace Interaction Principles](design-log/workspace-interaction-principles.md) | `draft` | Single Workspace abstraction, session-level activity tracking, Get() vs GetSession() semantics |
+| [Agent Loop ↔ Workspace Interaction Principles](design-log/workspace-interaction-principles.md) | `implemented` | Single Workspace abstraction, session-level activity tracking, Get() vs GetSession() semantics |
 
 ## Project Links
 

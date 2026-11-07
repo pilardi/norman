@@ -1,7 +1,7 @@
 ---
 title: "Agent Loop ↔ Workspace Interaction Principles"
 type: assessment
-status: draft
+status: implemented
 date: 2026-11-06
 author: Pablo (via goose)
 related: [openshell-interaction.md, session-workflow-proposal.md, workspace-lifecycle-proposal.md, workspace-definition-assessment.md]
@@ -9,7 +9,7 @@ related: [openshell-interaction.md, session-workflow-proposal.md, workspace-life
 
 # Agent Loop ↔ Workspace Interaction Principles — Assessment & Reorganization Plan
 
-> **Status:** 📝 Draft — Awaiting implementation approval  
+> **Status:** ✅ Implemented  
 > **Date:** 2026-11-06  
 > **Author:** Pablo (via goose)  
 > **Related:** `./openshell-interaction.md`, `./session-workflow-proposal.md`, `./workspace-lifecycle-proposal.md`
