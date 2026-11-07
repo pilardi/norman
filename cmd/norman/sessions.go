@@ -20,8 +20,7 @@ func shortID(id string) string {
 
 func handleSessions(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Args().Len() == 0 {
-		fmt.Println(sessionHelpText)
-		return nil
+		return nil // urfave/cli renders .Description automatically
 	}
 
 	subcommand := cmd.Args().First()
@@ -42,18 +41,9 @@ func handleSessions(ctx context.Context, cmd *cli.Command) error {
 		handleChat(subargs)
 		return nil
 	default:
-		return fmt.Errorf("unknown sessions subcommand: %s\n\n%s", subcommand, sessionHelpText)
+		return fmt.Errorf("unknown sessions subcommand: %s", subcommand)
 	}
 }
-
-const sessionHelpText = `sessions — Manage chat sessions
-
-Usage: norman sessions <subcommand> [args...]
-
-Subcommands:
-  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-  list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript`
 
 // handleSessionList lists active sessions using the generated protocol client.
 func handleSessionList(args []string) error {

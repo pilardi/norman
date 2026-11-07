@@ -598,3 +598,23 @@ Purpose can be provided inline (--purpose "text"), from a file (-f <path>), or p
 		os.Exit(1)
 	}
 }
+
+// Common help text constants (used by chat.go and skills.go for inline error messages).
+var sessionHelpText = `sessions — Manage chat sessions
+
+Usage: norman sessions <subcommand> [args...]
+
+Subcommands:
+  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
+  list                          List active chat sessions
+  archive <session_id>          Archive a session's transcript`
+
+var skillsHelpText = `skills — Manage installed skills
+
+Usage: norman skills <subcommand> [args...]
+
+Subcommands:
+  list       Show installed skills with provenance
+  install <path|repo>  Install a skill from a local path or git repo URL
+  remote <git-url>     Install a skill from a git repository (alias for install)
+  remove <name>   Remove an installed skill by name`
