@@ -200,55 +200,27 @@ func handleChat(args []string) {
 			os.Exit(1)
 		}
 
-		// Check if an active session already exists for this workspace.
-		sessionsRsp, err := client.ListSessions(context.Background())
+		// Always create a new session (reuse only via explicit --session flag).
+		fmt.Printf("Creating new session for workspace '%s'...\n", workspaceName)
+		ct := protocol.Cli
+		body := protocol.SessionCreateRequest{
+			WorkspaceId: foundID,
+			ClientType:  &ct,
+		}
+
+		sessRsp, err := client.CreateSession(context.Background(), body)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
 			os.Exit(1)
 		}
-		parsedSessions, err := protocol.ParseListSessionsResponse(sessionsRsp)
+		parsedSess, err := protocol.ParseCreateSessionResponse(sessRsp)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing sessions response: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
 			os.Exit(1)
 		}
-		sessions := parsedSessions.GetJSON200()
-
-		for _, s := range *sessions {
-			sid := s.Id.String()
-			status := ""
-			if s.SessionStatus != nil {
-				status = string(*s.SessionStatus)
-			}
-			if status == "active" {
-				sessionID = sid
-				fmt.Printf("Reusing existing active session '%s' for workspace '%s'\n", sid, workspaceName)
-				break
-			}
-		}
-
-		// No active session — create one.
-		if sessionID == "" {
-			fmt.Printf("Creating new session for workspace '%s'...\n", workspaceName)
-			ct := protocol.Cli
-			body := protocol.SessionCreateRequest{
-				WorkspaceId: foundID,
-				ClientType:  &ct,
-			}
-
-			sessRsp, err := client.CreateSession(context.Background(), body)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
-				os.Exit(1)
-			}
-			parsedSess, err := protocol.ParseCreateSessionResponse(sessRsp)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
-				os.Exit(1)
-			}
-			sess := parsedSess.GetJSON201()
-			sessionID = sess.Id.String()
-			fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
-		}
+		sess := parsedSess.GetJSON201()
+		sessionID = sess.Id.String()
+		fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
 	}
 
 	// Start real-time WebSocket event push loop (runs concurrently).
