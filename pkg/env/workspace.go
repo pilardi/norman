@@ -467,7 +467,7 @@ func (m *WorkspaceManager) Get(ctx context.Context, sessionId string) (*Session,
 	m.mu.Unlock()
 
 	if !ok {
-		return nil, fmt.Errorf("session %s not found: workspace must be created via Create()", sessionId)
+		return nil, fmt.Errorf("session %s not registered with OpenShell client", sessionId)
 	}
 
 	return session, nil

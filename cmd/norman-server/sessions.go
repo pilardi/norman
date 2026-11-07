@@ -57,14 +57,8 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found: " + req.WorkspaceId})
 	}
 
-	// Ensure the OpenShell sandbox exists for this workspace, carrying the session UUID.
+	// Mark the session as active (no sandbox knowledge needed).
 	sid := session.Id.String()
-	_, err = s.loop.Ws.Get(c.Request().Context(), sid)
-	if err != nil {
-		log.Printf("[sessions] failed to ensure sandbox for workspace '%s' (session %s): %v", req.WorkspaceId, sid[:8], err)
-	}
-
-	// Update last activity timestamp and signal "in use"
 	s.loop.Ws.UpdateActivity(c.Request().Context(), sid)
 	s.loop.MarkActive(req.WorkspaceId)
 
