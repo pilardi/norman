@@ -221,7 +221,11 @@ func handleChat(args []string) {
 		sess := parsedSess.GetJSON201()
 		if sess == nil {
 			// Server returned an error response (e.g., 409 max sessions reached).
-			fmt.Fprintln(os.Stderr, "Error: session creation failed: server returned non-201 response")
+			body := string(parsedSess.GetBody())
+			if body == "" {
+				body = parsedSess.Status()
+			}
+			fmt.Fprintf(os.Stderr, "Error: session creation failed (status %d): %s\n", parsedSess.StatusCode(), body)
 			os.Exit(1)
 		}
 		sessionID = sess.Id.String()
