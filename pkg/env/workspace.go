@@ -235,7 +235,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 // CloseAll shuts down all active sessions.
 func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 	for name, session := range m.sessions {
-		if err := session.Delete(ctx); err != nil {
+		if err := session.delete(ctx); err != nil {
 			log.Printf("[env] Error deleting session '%s': %v", name, err)
 		}
 	}
@@ -326,6 +326,17 @@ func (m *WorkspaceManager) UpdateLastActivity(workspace string) {
 	}
 }
 
+// UpdateActivity updates the last activity timestamp for a session by its ID.
+func (m *WorkspaceManager) UpdateActivity(ctx context.Context, sessionId string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if session, ok := m.sessions[sessionId]; ok {
+		now := time.Now()
+		session.lastActivity = &now
+	}
+}
+
 // StartIdleCleanupLoop starts a background goroutine that periodically checks
 // for idle workspaces and stops them after the given timeout. Returns a cancel func.
 func (m *WorkspaceManager) StartIdleCleanupLoop(timeout time.Duration, stopCh chan struct{}) {
@@ -385,4 +396,204 @@ func (w *WorkspaceDefinition) AsSystemPrompt() string {
 	parts = append(parts, "- Preserve workspace-specific decisions during compression; discard generic filler")
 
 	return strings.Join(parts, "\n")
+}
+
+// Exists checks whether a workspace has been created without side effects.
+func (m *WorkspaceManager) Exists(ctx context.Context, sessionId string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	_, ok := m.sessions[sessionId]
+	return ok
+}
+
+// Session returns the current session state as a read-only view.
+func (m *WorkspaceManager) Session() *Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.sessions) == 0 {
+		return nil
+	}
+	// Return the first (and typically only) session for this workspace manager instance.
+	for _, s := range m.sessions {
+		return s
+	}
+	return nil
+}
+
+// Compile-time interface satisfaction check.
+var _ Workspace = (*WorkspaceManager)(nil)
+
+// Create creates a new workspace-backed session. This is the ONLY path for creating
+// new workspaces (user-requested action). It creates a sandbox with context file,
+// waits for readiness, and returns the resulting session.
+func (m *WorkspaceManager) Create(ctx context.Context, sessionId string) (*Session, error) {
+	// Extract workspace ID from the session data or use a default.
+	// The caller is responsible for ensuring the workspace exists.
+	sandboxName := "ws-" + strings.ReplaceAll(sessionId, "-", "")[:15]
+
+	ctxFile := &ContextFile{
+		WorkspaceID:   sessionId,
+		WorkspaceName: sessionId,
+	}
+
+	sb, err := m.client.CreateSandbox(ctx, defaultProvider, sandboxName, ctxFile, sessionId)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace session %s: %w", sessionId, err)
+	}
+
+	// Wait for readiness with timeout
+	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	_, err = m.client.WaitReadyWithTimeout(waitCtx, defaultProvider, sb.Name, 2*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("wait ready workspace session %s: %w", sessionId, err)
+	}
+
+	log.Printf("[env] Created session '%s' → sandbox name='%s'", sessionId, sb.Name)
+
+	session := NewSession(m.client, defaultProvider, sb.Name, sessionId)
+	m.sessions[sessionId] = session
+	return session, nil
+}
+
+// Get retrieves an existing session by ID. Returns NotFound error if non-existent.
+// Does NOT auto-create — caller must explicitly request creation via Create().
+func (m *WorkspaceManager) Get(ctx context.Context, sessionId string) (*Session, error) {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+
+	if !ok {
+		return nil, fmt.Errorf("session %s not found: workspace must be created via Create()", sessionId)
+	}
+
+	return session, nil
+}
+
+// Delete removes a workspace and its associated sandbox.
+func (m *WorkspaceManager) Delete(ctx context.Context, sessionId string) error {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	delete(m.sessions, sessionId)
+	m.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("session %s not found for deletion", sessionId)
+	}
+
+	return session.delete(ctx)
+}
+
+// RunCommand executes a command string in the active sandbox.
+// Returns combined stdout+stderr output, exit code, and any error.
+func (m *WorkspaceManager) RunCommand(ctx context.Context, sessionId string, command string) (string, int, error) {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+
+	if !ok {
+		return "", 1, fmt.Errorf("session %s not found", sessionId)
+	}
+
+	cmd := strings.Fields(command)
+	result, err := session.client.RunCommand(ctx, defaultProvider, session.sandbox, cmd)
+	if err != nil {
+		return "", 1, fmt.Errorf("run command in sandbox %s: %w", session.sandbox, err)
+	}
+
+	var output strings.Builder
+	output.WriteString(string(result.Stdout))
+	if len(result.Stderr) > 0 {
+		output.WriteString("\n")
+		output.WriteString(string(result.Stderr))
+	}
+	return output.String(), result.ExitCode, nil
+}
+
+// GetLogs returns log lines for the session's sandbox.
+func (m *WorkspaceManager) GetLogs(ctx context.Context, sessionId string) ([]string, error) {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", sessionId)
+	}
+
+	sb, err := session.client.GetSandbox(ctx, defaultProvider, session.sandbox)
+	if err != nil {
+		return nil, fmt.Errorf("get sandbox logs: %w", err)
+	}
+	if sb == nil {
+		return []string{}, nil
+	}
+
+	var lines []string
+	for _, cond := range sb.Status.Conditions {
+		lines = append(lines, fmt.Sprintf("[%s] %s: %s", cond.Type, cond.Reason, cond.Message))
+	}
+	return lines, nil
+}
+
+// RunCommandBySandbox executes a command directly on a named sandbox.
+// Used for ephemeral task sandboxes not tied to a session.
+func (m *WorkspaceManager) RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error) {
+	cmd := strings.Fields(command)
+	result, err := m.client.RunCommand(ctx, defaultProvider, sandboxName, cmd)
+	if err != nil {
+		return "", 1, fmt.Errorf("run command in sandbox %s: %w", sandboxName, err)
+	}
+
+	var output strings.Builder
+	output.WriteString(string(result.Stdout))
+	if len(result.Stderr) > 0 {
+		output.WriteString("\n")
+		output.WriteString(string(result.Stderr))
+	}
+	return output.String(), result.ExitCode, nil
+}
+
+// CreateSandbox creates a new ephemeral sandbox by name. Returns its state.
+func (m *WorkspaceManager) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionId string) (*v1.Sandbox, error) {
+	return m.client.CreateSandbox(ctx, defaultProvider, name, ctxFile, sessionId)
+}
+
+// WaitReady waits for a named sandbox to become ready within the timeout.
+func (m *WorkspaceManager) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error) {
+	return m.client.WaitReadyWithTimeout(ctx, defaultProvider, name, timeout)
+}
+
+// GetSandbox retrieves the current state of a named sandbox.
+func (m *WorkspaceManager) GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error) {
+	return m.client.GetSandbox(ctx, provider, name)
+}
+
+// DeleteSandbox removes a named sandbox.
+func (m *WorkspaceManager) DeleteSandbox(ctx context.Context, workspace, name string) error {
+	return m.client.DeleteSandbox(ctx, defaultProvider, name)
+}
+
+// KeepAlive verifies a named sandbox is still alive (heartbeat).
+func (m *WorkspaceManager) KeepAlive(ctx context.Context, sandboxName string) error {
+	_, err := m.client.GetSandbox(ctx, defaultProvider, sandboxName)
+	if err != nil {
+		return fmt.Errorf("keepalive: %w", err)
+	}
+	return nil
+}
+
+// GetSandboxName returns the OpenShell sandbox name for a given session ID.
+func (m *WorkspaceManager) GetSandboxName(ctx context.Context, sessionId string) (string, error) {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+
+	if !ok {
+		return "", fmt.Errorf("session %s not found", sessionId)
+	}
+
+	return session.sandbox, nil
 }

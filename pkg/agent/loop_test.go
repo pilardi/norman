@@ -511,7 +511,8 @@ func TestRawSourcesContextInjection(t *testing.T) {
 	}
 
 	fakeOpenShell := NewFakeOpenShellClient()
-	loop := New(nil, store, rs, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, rs, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
 
 	// Execute a task — raw sources should be injected into LLM messages.
 	task := &Task{
@@ -558,7 +559,8 @@ func TestRawSourcesNilInLoop(t *testing.T) {
 	}
 
 	fakeOpenShell := NewFakeOpenShellClient()
-	loop := New(nil, store, nil, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, nil, fakeWSHub, fakeOpenShell).WithLLMClient(mockClient)
 
 	task := &Task{
 		ID:        "test-task-002",
@@ -680,7 +682,13 @@ func TestSendMessageMultiTurnWithToolCall(t *testing.T) {
 		},
 	}
 
-	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+
+	// Create session with workspace_id so SendMessage can resolve it.
+	if err := store.SaveSession("session-1", map[string]interface{}{"workspace_id": "default"}); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
 
 	resp, err := loop.SendMessage(context.Background(), "session-1", "List files in /tmp", "")
 	if err != nil {
@@ -723,7 +731,13 @@ func TestSendMessageMultiTurnMaxTurnsReached(t *testing.T) {
 		}
 	}
 
-	loop := New(nil, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+	cfg := config.DefaultConfig()
+	loop := New(cfg, store, nil, act, fakeWSHub, fakeClient).WithLLMClient(mockClient)
+
+	// Create session with workspace_id so SendMessage can resolve it.
+	if err := store.SaveSession("session-1", map[string]interface{}{"workspace_id": "default"}); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
 
 	resp, err := loop.SendMessage(context.Background(), "session-1", "Keep calling tools", "")
 	if err != nil {
@@ -916,4 +930,86 @@ func (f *FakeOpenShellClient) KeepAlive(ctx context.Context, sandboxName string)
 func (f *FakeOpenShellClient) GetMTLSPaths() (certPath, keyPath string) {
 	// Fake client has no mTLS config
 	return "", ""
+}
+
+// --- env.Workspace interface methods ---
+
+func (f *FakeOpenShellClient) Exists(ctx context.Context, sessionId string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.sandboxes[sessionId]
+	return ok
+}
+
+func (f *FakeOpenShellClient) Session() *env.Session {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.sandboxes) == 0 {
+		return nil
+	}
+	for range f.sandboxes {
+		return &env.Session{} // minimal mock session for read-only view
+	}
+	return nil
+}
+
+func (f *FakeOpenShellClient) RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.commands = append(f.commands, "sandbox:"+command)
+	f.capturedPrompt = "sandbox:" + command
+	output := fmt.Sprintf("Executed in sandbox %s: %s", sandboxName, command)
+	return output, 0, nil
+}
+
+func (f *FakeOpenShellClient) Create(ctx context.Context, sessionId string) (*env.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(sessionId, "-", ""))
+	f.sandboxes[sessionId] = sid
+	return &env.Session{}, nil
+}
+
+func (f *FakeOpenShellClient) Get(ctx context.Context, sessionId string) (*env.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.sandboxes[sessionId]; !ok {
+		return nil, fmt.Errorf("session %s not found", sessionId)
+	}
+	return &env.Session{}, nil
+}
+
+func (f *FakeOpenShellClient) Delete(ctx context.Context, sessionId string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.sandboxes, sessionId)
+	return nil
+}
+
+func (f *FakeOpenShellClient) GetSandboxName(ctx context.Context, sessionId string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if name, ok := f.sandboxes[sessionId]; ok {
+		return name, nil
+	}
+	return "", fmt.Errorf("session %s not found", sessionId)
+}
+
+func (f *FakeOpenShellClient) UpdateActivity(ctx context.Context, sessionId string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.sandboxes[sessionId]; ok {
+		// Simulate activity update (no-op in fake)
+		_ = ok // suppress SA4006 warning
+	}
+}
+
+func (f *FakeOpenShellClient) Sessions() map[string]*env.Session {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	result := make(map[string]*env.Session, len(f.sandboxes))
+	for id := range f.sandboxes {
+		result[id] = &env.Session{}
+	}
+	return result
 }

@@ -59,10 +59,10 @@ rebuild:
 
 test:
 	@echo "Running all tests with coverage..."
-	go test -count=1 -coverprofile=coverage.out ./...
+	go test -count=1 -coverpkg=./... ./... -coverprofile=/tmp/_coverage.out
 	@echo ""
-	@go tool cover -func=coverage.out | tail -n +2 | awk '{printf "  %-40s %s\n", $$1, $$3}'
-	@rm -f coverage.out
+	@go tool cover -func=/tmp/_coverage.out | tail -n +2 | awk '{printf "  %-40s %s\n", $$1, $$3}'
+	@rm -f /tmp/_coverage.out
 
 test-race:
 	@echo "Running all tests with race detector..."

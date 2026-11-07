@@ -1029,7 +1029,10 @@ type SystemConfig struct {
 	} `json:"logging,omitempty"`
 
 	// MaxTokens Global default max tokens (0 = use system default)
-	MaxTokens *int             `json:"max_tokens,omitempty"`
+	MaxTokens *int `json:"max_tokens,omitempty"`
+
+	// MaxTurns Maximum number of LLM turns allowed per task execution
+	MaxTurns  *int             `json:"max_turns,omitempty"`
 	Notify    *NotifyConfig    `json:"notify,omitempty"`
 	Openshell *OpenShellConfig `json:"openshell,omitempty"`
 

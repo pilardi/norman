@@ -11,7 +11,8 @@ import (
 // handleSkills handles skills subcommands.
 func handleSkills(ctx context.Context, cmd *cli.Command) error {
 	if len(cmd.Args().Slice()) == 0 {
-		return printSkillsHelp()
+		printSkillsHelp()
+		return nil
 	}
 
 	sub := cmd.Args().First()
@@ -48,9 +49,8 @@ func handleSkills(ctx context.Context, cmd *cli.Command) error {
 }
 
 // printSkillsHelp displays help for the skills subcommand.
-func printSkillsHelp() error {
+func printSkillsHelp() {
 	fmt.Println(skillsHelpText)
-	return nil
 }
 
 const skillsHelpText = `skills — Manage installed skills

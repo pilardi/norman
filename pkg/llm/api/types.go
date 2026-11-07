@@ -88,6 +88,7 @@ type Chunk struct {
 	Delta        string
 	FinishReason string
 	Usage        *Usage
+	ToolCalls    []ToolCall // Captured tool calls from delta.tool_calls field
 }
 
 // ResponseChoice is kept for backward compatibility with existing code that accesses resp.Choices[0].Message.
@@ -191,6 +192,13 @@ func ParseToolCalls(msg Message) []ToolCall {
 	}
 
 	return calls
+}
+
+// ToolCallAccum accumulates streamed arguments for a single tool call.
+// Used during SSE streaming to concatenate partial argument chunks across multiple deltas.
+type ToolCallAccum struct {
+	Name string
+	Args []byte
 }
 
 // ParseResponseText extracts the text content from a completion response.

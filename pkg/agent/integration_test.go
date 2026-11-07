@@ -292,11 +292,10 @@ func TestIntegrationKeepAlive(t *testing.T) {
 
 	fakeWSHub := &FakeWSHub{}
 	cfg := config.DefaultConfig()
-	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
-
 	// Create a FakeOpenShellClient with a known sandbox
 	fakeClient := NewFakeOpenShellClient()
-	loop.openShell = fakeClient
+
+	_ = New(cfg, store, nil, nil, fakeWSHub, fakeClient) // constructor exercise only
 
 	ctx := context.Background()
 
@@ -345,7 +344,7 @@ func TestIntegrationExecuteWithLLMPersistsTurns(t *testing.T) {
 	ctx := context.Background()
 
 	// Submit a task (LLM path since llmClient is set)
-	task, err := loop.Submit(ctx, "List files", "", "session-1")
+	task, err := loop.Submit(ctx, "List files", "default", "session-1")
 	if err != nil {
 		t.Fatalf("submit task: %v", err)
 	}
@@ -414,7 +413,7 @@ func TestIntegrationWSBroadcastIncludesToolDetail(t *testing.T) {
 
 	ctx := context.Background()
 
-	task, err := loop.Submit(ctx, "Run ls -la /tmp", "", "session-2")
+	task, err := loop.Submit(ctx, "Run ls -la /tmp", "default", "session-2")
 	if err != nil {
 		t.Fatalf("submit task: %v", err)
 	}
@@ -492,7 +491,7 @@ func TestIntegrationFullLoopWithLLM(t *testing.T) {
 	ctx := context.Background()
 
 	// Submit a task and wait for completion
-	task, err := loop.Submit(ctx, "Show me the contents of /etc/hostname", "", "session-3")
+	task, err := loop.Submit(ctx, "Show me the contents of /etc/hostname", "default", "session-3")
 	if err != nil {
 		t.Fatalf("submit task: %v", err)
 	}

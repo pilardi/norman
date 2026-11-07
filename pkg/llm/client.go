@@ -226,7 +226,11 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 
 		var delta map[string]interface{}
 		if err := json.Unmarshal(data, &delta); err != nil {
-			return Chunk{}, fmt.Errorf("unmarshal SSE data: %w", err)
+			// Do not silently skip — log the full raw data for debugging.
+			// A malformed line often indicates a request schema issue (e.g., invalid tool_calls format)
+			// rather than a provider-side quirk.
+			log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, string(data))
+			return Chunk{}, fmt.Errorf("SSE parse error: %w", err)
 		}
 
 		// Debug: show actual JSON keys to diagnose parser mismatch.
@@ -238,12 +242,37 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 
 		chunk := Chunk{}
 
-		// OpenAI SSE format: {"choices":[{"delta":{"content":"..."},"finish_reason":null}]}
+		// OpenAI SSE format: {"choices":[{"delta":{"content":"...","tool_calls":[...]},"finish_reason":null}]}
 		if choices, ok := delta["choices"].([]interface{}); ok && len(choices) > 0 {
 			if choice, ok := choices[0].(map[string]interface{}); ok {
 				if deltaMap, ok := choice["delta"].(map[string]interface{}); ok {
 					if content, ok := deltaMap["content"].(string); ok {
 						chunk.Delta = content
+					}
+					// Extract tool calls from delta.tool_calls array.
+					if tcArr, ok := deltaMap["tool_calls"].([]interface{}); ok && len(tcArr) > 0 {
+						for _, tcRaw := range tcArr {
+							tcMap, ok := tcRaw.(map[string]interface{})
+							if !ok {
+								continue
+							}
+							id, _ := tcMap["id"].(string)
+							fnRaw, _ := tcMap["function"].(map[string]interface{})
+							name, _ := fnRaw["name"].(string)
+							// Arguments are normally a JSON string; handle map if provider returns parsed object.
+							argsRaw, ok := fnRaw["arguments"].(string)
+							if !ok {
+								if m, ok := fnRaw["arguments"].(map[string]interface{}); ok {
+									b, _ := json.Marshal(m)
+									argsRaw = string(b)
+								}
+							}
+							chunk.ToolCalls = append(chunk.ToolCalls, ToolCall{
+								ID:        id,
+								Name:      name,
+								Arguments: json.RawMessage(argsRaw),
+							})
+						}
 					}
 				}
 				if fr, ok := choice["finish_reason"].(string); ok {
@@ -252,7 +281,7 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 			}
 		}
 
-		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q", s.providerName, chunk.Delta, chunk.FinishReason)
+		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls))
 
 		return chunk, nil
 	}
@@ -271,8 +300,17 @@ func readSSELine(r io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Trim trailing newline(s) that separate SSE events
-	return string(bytes.TrimSpace(buf[:n])), nil
+	data := buf[:n]
+	// Split on newlines and return the last non-empty segment.
+	// This handles cases where [DONE] is concatenated with the preceding data chunk.
+	parts := bytes.Split(data, []byte("\n"))
+	for i := len(parts) - 1; i >= 0; i-- {
+		line := string(bytes.TrimSpace(parts[i]))
+		if line != "" {
+			return line, nil
+		}
+	}
+	return "", nil
 }
 
 // --- Helpers ---

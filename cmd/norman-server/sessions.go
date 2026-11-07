@@ -31,6 +31,11 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	// A session must have a non-empty workspace_id — no derivation from index.
+	if req.WorkspaceId == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "workspace_id is required"})
+	}
+
 	clientType := "custom"
 	if req.ClientType != nil {
 		clientType = string(*req.ClientType)
@@ -54,13 +59,13 @@ func (s *server) CreateSession(c echo.Context) error {
 
 	// Ensure the OpenShell sandbox exists for this workspace, carrying the session UUID.
 	sid := session.Id.String()
-	_, err = s.workspaceManager.GetSession(c.Request().Context(), req.WorkspaceId, sid)
+	_, err = s.loop.Ws.Get(c.Request().Context(), sid)
 	if err != nil {
 		log.Printf("[sessions] failed to ensure sandbox for workspace '%s' (session %s): %v", req.WorkspaceId, sid[:8], err)
 	}
 
 	// Update last activity timestamp and signal "in use"
-	s.workspaceManager.UpdateLastActivity(req.WorkspaceId)
+	s.loop.Ws.UpdateActivity(c.Request().Context(), sid)
 	s.loop.MarkActive(req.WorkspaceId)
 
 	s.wsHub.BroadcastSession(session.Id.String(), protocol.WebSocketEvent{
