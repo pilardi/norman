@@ -1028,6 +1028,9 @@ type SystemConfig struct {
 		Level *string `json:"level,omitempty"`
 	} `json:"logging,omitempty"`
 
+	// MaxActiveSessions Maximum number of concurrent active sessions per workspace (0 = unlimited)
+	MaxActiveSessions *int `json:"max_active_sessions,omitempty"`
+
 	// MaxTokens Global default max tokens (0 = use system default)
 	MaxTokens *int `json:"max_tokens,omitempty"`
 

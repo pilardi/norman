@@ -35,6 +35,10 @@ type SystemConfig struct {
 	// MaxTurns is the maximum number of LLM turns allowed per task execution.
 	// Default is 8 if unset.
 	MaxTurns int `yaml:"max_turns,omitempty"`
+
+	// MaxActiveSessions is the maximum number of concurrent active sessions per workspace.
+	// Default is 3 if unset.
+	MaxActiveSessions int `yaml:"max_active_sessions,omitempty"`
 }
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.
@@ -73,6 +77,9 @@ func (sc *SystemConfig) Validate() error {
 	}
 	if sc.MaxTurns < 1 {
 		return fmt.Errorf("system.max_turns must be >= 1, got %d", sc.MaxTurns)
+	}
+	if sc.MaxActiveSessions < 0 {
+		return fmt.Errorf("system.max_active_sessions must be >= 0, got %d", sc.MaxActiveSessions)
 	}
 
 	for i, p := range sc.LlmProviders {

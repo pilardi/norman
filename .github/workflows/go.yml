@@ -24,25 +24,8 @@ jobs:
     - name: Install oapi-codegen
       run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
-    - name: Generate protocol types and handlers from api-spec.yaml
-      run: make generate
+    - name: Install golangci-lint
+      run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
-    - name: Lint
-      uses: golangci/golangci-lint-action@v7
-      with:
-        version: v2.15.0
-
-    - name: Build
-      run: make build
-
-    - name: Unit Tests (short)
-      run: make test-short
-
-    - name: Unit Tests (full)
-      run: make test
-
-    - name: Race Detector
-      run: make test-race
-
-    - name: Integration Tests
-      run: make test-integration
+    - name: Verify (generate + lint + build + tests)
+      run: make verify

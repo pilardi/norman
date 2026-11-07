@@ -300,7 +300,11 @@ Commands:
 						Aliases: []string{"ls"},
 						Usage:   "List active chat sessions",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							return handleSessionList(cmd.Args().Slice())
+							err := handleSessionList(cmd.Args().Slice())
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+							}
+							return err
 						},
 					},
 					{

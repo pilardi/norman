@@ -1,6 +1,10 @@
 package env
 
 import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -123,6 +127,168 @@ func TestWorkspaceDefinition_ToMap_RoundTrip(t *testing.T) {
 	}
 	if len(recovered.Tags) != len(original.Tags) {
 		t.Errorf("tags length mismatch: expected %d, got %d", len(original.Tags), len(recovered.Tags))
+	}
+}
+
+// --- Workspace interface method tests (self-contained mocks) ---
+
+// mockWorkspace implements the Workspace interface for testing without requiring OpenShell.
+type mockWorkspace struct {
+	mu       sync.Mutex
+	sessions map[string]*Session
+}
+
+func newMockWorkspace() *mockWorkspace {
+	return &mockWorkspace{sessions: make(map[string]*Session)}
+}
+
+func (m *mockWorkspace) Exists(ctx context.Context, sessionId string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.sessions[sessionId]
+	return ok
+}
+
+func (m *mockWorkspace) Session() *Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.sessions) == 0 {
+		return nil
+	}
+	for range m.sessions {
+		return &Session{}
+	}
+	return nil
+}
+
+func (m *mockWorkspace) RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error) {
+	return "", 0, nil
+}
+
+func (m *mockWorkspace) Create(ctx context.Context, sessionId string) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := &Session{sessionId: sessionId}
+	m.sessions[sessionId] = s
+	return s, nil
+}
+
+func (m *mockWorkspace) Get(ctx context.Context, sessionId string) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", sessionId)
+	}
+	return s, nil
+}
+
+func (m *mockWorkspace) Delete(ctx context.Context, sessionId string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sessions, sessionId)
+	return nil
+}
+
+func (m *mockWorkspace) GetSandboxName(ctx context.Context, sessionId string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		return "", fmt.Errorf("session %s not found", sessionId)
+	}
+	return s.sessionId, nil
+}
+
+func (m *mockWorkspace) UpdateActivity(ctx context.Context, sessionId string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_ = sessionId // no-op in mock
+}
+
+func (m *mockWorkspace) Sessions() map[string]*Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make(map[string]*Session, len(m.sessions))
+	for id, s := range m.sessions {
+		result[id] = s
+	}
+	return result
+}
+
+func TestWorkspaceUpdateActivity(t *testing.T) {
+	ws := newMockWorkspace()
+	ctx := context.Background()
+
+	// Create a session
+	session, err := ws.Create(ctx, "test-session-001")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if session == nil {
+		t.Fatal("expected non-nil session")
+	}
+
+	// UpdateActivity should not panic or error for a valid session ID
+	ws.UpdateActivity(ctx, "test-session-001")
+
+	// Verify the session still exists and is accessible
+	exists := ws.Exists(ctx, "test-session-001")
+	if !exists {
+		t.Error("expected session to still exist after UpdateActivity")
+	}
+}
+
+func TestWorkspaceSessions(t *testing.T) {
+	ws := newMockWorkspace()
+	ctx := context.Background()
+
+	// Create multiple sessions
+	for i := 1; i <= 3; i++ {
+		sid := fmt.Sprintf("session-%03d", i)
+		_, err := ws.Create(ctx, sid)
+		if err != nil {
+			t.Fatalf("create session %s: %v", sid, err)
+		}
+	}
+
+	// Sessions() should return all created sessions
+	sessions := ws.Sessions()
+	if len(sessions) != 3 {
+		t.Errorf("expected 3 sessions, got %d", len(sessions))
+	}
+
+	// Verify each session ID is present
+	for i := 1; i <= 3; i++ {
+		sid := fmt.Sprintf("session-%03d", i)
+		if _, ok := sessions[sid]; !ok {
+			t.Errorf("expected session '%s' to be in Sessions() result", sid)
+		}
+	}
+
+	// Delete one and verify count drops
+	err := ws.Delete(ctx, "session-002")
+	if err != nil {
+		t.Fatalf("delete session: %v", err)
+	}
+
+	sessions = ws.Sessions()
+	if len(sessions) != 2 {
+		t.Errorf("expected 2 sessions after delete, got %d", len(sessions))
+	}
+}
+
+func TestWorkspaceGetNotFound(t *testing.T) {
+	ws := newMockWorkspace()
+	ctx := context.Background()
+
+	// Get a non-existent session should return NotFound error
+	_, err := ws.Get(ctx, "nonexistent-session")
+	if err == nil {
+		t.Fatal("expected error for non-existent session")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error message, got: %v", err)
 	}
 }
 

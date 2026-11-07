@@ -10,7 +10,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build lint rebuild test test-race test-short test-integration clean generate-docs generate-docs-html completion
+.PHONY: help generate build lint rebuild test test-race test-short test-integration clean generate-docs generate-docs-html completion verify
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -26,8 +26,10 @@ help:
 	@echo "Targets:"
 	@echo "  help        - Show this help message"
 	@echo "  generate    - Generate protocol types + server handlers and client library from api-spec.yaml"
+	@echo "  lint        - Run golangci-lint on all packages (includes generated .gen.go)"
 	@echo "  build       - Run generate + lint + compile all packages (binaries in $(DIST)/)"
 	@echo "  rebuild     - Clean + regenerate + build (safe sequential rebuild)"
+	@echo "  verify      - Run full CI pipeline: generate → lint → build → unit tests + integration tests"
 	@echo "  test        - Run all unit tests with coverage report"
 	@echo "  test-race   - Run all unit tests with race detector"
 	@echo "  test-short    - Run short tests only (skip slow/integration)"
@@ -120,3 +122,20 @@ completion:
 	@echo "Install Bash:  source $(DIST)/_norman.bash"
 	@echo "Install Zsh:   source $(DIST)/_norman.zsh"
 	@echo "Install Fish:  source $(DIST)/_norman.fish"
+
+# Verify runs all CI steps in a single command.
+verify:
+	@echo "Running full CI pipeline: generate → lint → build → unit tests + integration tests"
+	@$(MAKE) generate
+	@echo ""
+	@golangci-lint run ./...
+	@echo ""
+	@$(MAKE) build
+	@echo ""
+	@$(MAKE) test-short
+	@echo ""
+	@$(MAKE) test
+	@echo ""
+	@$(MAKE) test-race
+	@echo ""
+	@$(MAKE) test-integration
