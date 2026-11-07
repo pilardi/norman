@@ -386,3 +386,92 @@ func (w *WorkspaceDefinition) AsSystemPrompt() string {
 
 	return strings.Join(parts, "\n")
 }
+
+// Exists checks whether a workspace has been created without side effects.
+func (m *WorkspaceManager) Exists(ctx context.Context, sessionId string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	_, ok := m.sessions[sessionId]
+	return ok
+}
+
+// Session returns the current session state as a read-only view.
+func (m *WorkspaceManager) Session() *Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.sessions) == 0 {
+		return nil
+	}
+	// Return the first (and typically only) session for this workspace manager instance.
+	for _, s := range m.sessions {
+		return s
+	}
+	return nil
+}
+
+// Compile-time interface satisfaction check.
+var _ Workspace = (*WorkspaceManager)(nil)
+
+// Create creates a new workspace-backed session. This is the ONLY path for creating
+// new workspaces (user-requested action). It creates a sandbox with context file,
+// waits for readiness, and returns the resulting session.
+func (m *WorkspaceManager) Create(ctx context.Context, sessionId string) (*Session, error) {
+	// Extract workspace ID from the session data or use a default.
+	// The caller is responsible for ensuring the workspace exists.
+	sandboxName := "ws-" + strings.ReplaceAll(sessionId, "-", "")[:15]
+
+	ctxFile := &ContextFile{
+		WorkspaceID:   sessionId,
+		WorkspaceName: sessionId,
+	}
+
+	sb, err := m.client.CreateSandbox(ctx, defaultProvider, sandboxName, ctxFile, sessionId)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace session %s: %w", sessionId, err)
+	}
+
+	// Wait for readiness with timeout
+	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	_, err = m.client.WaitReadyWithTimeout(waitCtx, defaultProvider, sb.Name, 2*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("wait ready workspace session %s: %w", sessionId, err)
+	}
+
+	log.Printf("[env] Created session '%s' → sandbox name='%s'", sessionId, sb.Name)
+
+	session := NewSession(m.client, defaultProvider, sb.Name, sessionId)
+	m.sessions[sessionId] = session
+	return session, nil
+}
+
+// Get retrieves an existing session by ID. Returns NotFound error if non-existent.
+// Does NOT auto-create — caller must explicitly request creation via Create().
+func (m *WorkspaceManager) Get(ctx context.Context, sessionId string) (*Session, error) {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+
+	if !ok {
+		return nil, fmt.Errorf("session %s not found: workspace must be created via Create()", sessionId)
+	}
+
+	return session, nil
+}
+
+// Delete removes a workspace and its associated sandbox.
+func (m *WorkspaceManager) Delete(ctx context.Context, sessionId string) error {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	delete(m.sessions, sessionId)
+	m.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("session %s not found for deletion", sessionId)
+	}
+
+	return session.Delete(ctx)
+}
