@@ -11,7 +11,8 @@ import (
 // handleSkills handles skills subcommands.
 func handleSkills(ctx context.Context, cmd *cli.Command) error {
 	if len(cmd.Args().Slice()) == 0 {
-		return nil // urfave/cli renders .Description automatically
+		printSkillsHelp()
+		return nil
 	}
 
 	sub := cmd.Args().First()
@@ -48,6 +49,20 @@ func handleSkills(ctx context.Context, cmd *cli.Command) error {
 }
 
 // printSkillsHelp displays help for the skills subcommand.
+func printSkillsHelp() {
+	fmt.Println(skillsHelpText)
+}
+
+const skillsHelpText = `skills — Manage installed skills
+
+Usage: norman skills <subcommand> [args...]
+
+Subcommands:
+  list       Show installed skills with provenance
+  install <path|repo>  Install a skill from a local path or git repo URL
+  remote <git-url>     Install a skill from a git repository (alias for install)
+  remove <name>   Remove an installed skill by name`
+
 // listSkills fetches installed skills from the server and displays provenance.
 func listSkills(ctx context.Context, cmd *cli.Command) error {
 	client, err := getProtocolClient()
