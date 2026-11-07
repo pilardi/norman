@@ -235,7 +235,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 // CloseAll shuts down all active sessions.
 func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 	for name, session := range m.sessions {
-		if err := session.Delete(ctx); err != nil {
+		if err := session.delete(ctx); err != nil {
 			log.Printf("[env] Error deleting session '%s': %v", name, err)
 		}
 	}
@@ -473,7 +473,7 @@ func (m *WorkspaceManager) Delete(ctx context.Context, sessionId string) error {
 		return fmt.Errorf("session %s not found for deletion", sessionId)
 	}
 
-	return session.Delete(ctx)
+	return session.delete(ctx)
 }
 
 // RunCommand executes a command string in the active sandbox.
@@ -572,4 +572,17 @@ func (m *WorkspaceManager) KeepAlive(ctx context.Context, sandboxName string) er
 		return fmt.Errorf("keepalive: %w", err)
 	}
 	return nil
+}
+
+// GetSandboxName returns the OpenShell sandbox name for a given session ID.
+func (m *WorkspaceManager) GetSandboxName(ctx context.Context, sessionId string) (string, error) {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+
+	if !ok {
+		return "", fmt.Errorf("session %s not found", sessionId)
+	}
+
+	return session.sandbox, nil
 }

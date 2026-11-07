@@ -40,6 +40,9 @@ type Workspace interface {
 	// Delete removes a workspace and its associated sandbox.
 	Delete(ctx context.Context, sessionId string) error
 
+	// GetSandboxName returns the OpenShell sandbox name for a given session ID.
+	GetSandboxName(ctx context.Context, sessionId string) (string, error)
+
 	// Session returns the current session state (read-only view).
 	Session() *Session
 

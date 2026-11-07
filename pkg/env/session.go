@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	v1types "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
 
@@ -40,11 +39,6 @@ func (s *Session) SessionID() string {
 	return s.sessionId
 }
 
-// Sandbox returns the OpenShell sandbox name for this session.
-func (s *Session) Sandbox() string {
-	return s.sandbox
-}
-
 // LastActivity returns the timestamp of the last activity, or nil if never set.
 func (s *Session) LastActivity() *time.Time {
 	return s.lastActivity
@@ -70,27 +64,8 @@ func (s *Session) Exec(ctx context.Context, cmd []string) (string, error) {
 	return output.String(), nil
 }
 
-// Status returns the current status of the sandbox.
-func (s *Session) Status(ctx context.Context) (*v1.Sandbox, error) {
-	return s.client.GetSandbox(ctx, s.provider, s.sandbox)
-}
-
-// IsReady checks if the sandbox is currently running or ready.
-func (s *Session) IsReady(ctx context.Context) bool {
-	sb, err := s.Status(ctx)
-	if err != nil {
-		return false
-	}
-	return sb.Status.Phase == v1.SandboxReady || sb.Status.Phase == v1.SandboxStarting
-}
-
-// WaitReady waits for the session to become ready.
-func (s *Session) WaitReady(ctx context.Context) (*v1.Sandbox, error) {
-	return s.client.WaitReady(ctx, s.provider, s.sandbox)
-}
-
-// Delete removes the sandbox session.
-func (s *Session) Delete(ctx context.Context) error {
+// delete removes the sandbox session (internal use only).
+func (s *Session) delete(ctx context.Context) error {
 	return s.client.DeleteSandbox(ctx, s.provider, s.sandbox)
 }
 

@@ -985,3 +985,12 @@ func (f *FakeOpenShellClient) Delete(ctx context.Context, sessionId string) erro
 	delete(f.sandboxes, sessionId)
 	return nil
 }
+
+func (f *FakeOpenShellClient) GetSandboxName(ctx context.Context, sessionId string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if name, ok := f.sandboxes[sessionId]; ok {
+		return name, nil
+	}
+	return "", fmt.Errorf("session %s not found", sessionId)
+}

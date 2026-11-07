@@ -392,10 +392,15 @@ func (s *server) closeWorkspaceSessions(workspaceName string) {
 	}
 	pattern := "ws-" + cleanName
 
-	for id, session := range s.workspaceManager.Sessions() {
-		if strings.HasPrefix(session.Sandbox(), pattern) {
+	for id := range s.workspaceManager.Sessions() {
+		sandboxName, err := s.loop.Ws.GetSandboxName(context.Background(), id)
+		if err != nil {
+			log.Printf("[server] get sandbox name for session %s: %v", id, err)
+			continue
+		}
+		if strings.HasPrefix(sandboxName, pattern) {
 			log.Printf("[server] Closing session %s for workspace %s", id, workspaceName)
-			if err := session.Delete(context.Background()); err != nil {
+			if err := s.loop.Ws.Delete(context.Background(), id); err != nil {
 				log.Printf("[server] Error closing session %s: %v", id, err)
 			}
 		}
