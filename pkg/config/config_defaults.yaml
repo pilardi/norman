@@ -8,6 +8,7 @@ system:
   host: "127.0.0.1"
   base_dir: "~/.norman/workspaces"
   max_turns: 8
+  max_active_sessions: 3
   open_shell:
     address: ""
   skills:

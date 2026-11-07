@@ -40,6 +40,23 @@ func (s *server) CreateSession(c echo.Context) error {
 	if req.ClientType != nil {
 		clientType = string(*req.ClientType)
 	}
+
+	// Enforce max_active_sessions limit per workspace.
+	maxActive := s.cfg.System.MaxActiveSessions
+	if maxActive > 0 {
+		activeCount := 0
+		for _, sessMap := range s.store.ListSessions() {
+			if status, ok := sessMap["status"].(string); ok && status == "active" {
+				activeCount++
+			}
+		}
+		if activeCount >= maxActive {
+			return c.JSON(http.StatusConflict, map[string]string{
+				"error": fmt.Sprintf("max_active_sessions (%d) reached for workspace %s", maxActive, req.WorkspaceId),
+			})
+		}
+	}
+
 	session, err := s.createSessionInternal(req.WorkspaceId, clientType)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

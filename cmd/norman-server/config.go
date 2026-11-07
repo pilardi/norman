@@ -159,6 +159,20 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 			default:
 				return fmt.Errorf("max_turns must be an integer")
 			}
+		case "max_active_sessions":
+			switch val := v.(type) {
+			case int:
+				cfg.MaxActiveSessions = val
+			case int64:
+				cfg.MaxActiveSessions = int(val)
+			case float64:
+				if val != float64(int(val)) {
+					return fmt.Errorf("max_active_sessions must be an integer, got %v", val)
+				}
+				cfg.MaxActiveSessions = int(val)
+			default:
+				return fmt.Errorf("max_active_sessions must be an integer")
+			}
 		default:
 			// Handle provider dot-path keys (e.g., "providers.0.name", "providers.1.temperature")
 			if strings.HasPrefix(k, "providers.") {

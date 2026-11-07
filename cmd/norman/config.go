@@ -82,6 +82,15 @@ func handleConfigSet(ctx context.Context, args []string) error {
 			return fmt.Errorf("max_turns must be >= 1, got %d", t)
 		}
 		update["max_turns"] = float64(t)
+	case "max_active_sessions":
+		t, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("invalid max_active_sessions value: %s", val)
+		}
+		if t < 0 {
+			return fmt.Errorf("max_active_sessions must be >= 0, got %d", t)
+		}
+		update["max_active_sessions"] = float64(t)
 	case "temperature":
 		t, err := strconv.ParseFloat(val, 64)
 		if err != nil {
