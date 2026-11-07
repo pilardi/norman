@@ -414,7 +414,10 @@ Commands:
   install <path|repo>  Install a skill from a local path or git repo URL
   remote <git-url>     Install a skill from a git repository (alias for install)
   remove <name>   Remove an installed skill by name`,
-				Action: handleSkills,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
+					return nil
+				},
 				Commands: []*cli.Command{
 					{
 						Name:    "list",
