@@ -40,6 +40,23 @@ func (s *server) CreateSession(c echo.Context) error {
 	if req.ClientType != nil {
 		clientType = string(*req.ClientType)
 	}
+
+	// Enforce max_active_sessions limit per workspace.
+	maxActive := s.cfg.System.MaxActiveSessions
+	if maxActive > 0 {
+		activeCount := 0
+		for _, sessMap := range s.store.ListSessions() {
+			if status, ok := sessMap["status"].(string); ok && status == "active" {
+				activeCount++
+			}
+		}
+		if activeCount >= maxActive {
+			return c.JSON(http.StatusConflict, map[string]string{
+				"error": fmt.Sprintf("max_active_sessions (%d) reached for workspace %s", maxActive, req.WorkspaceId),
+			})
+		}
+	}
+
 	session, err := s.createSessionInternal(req.WorkspaceId, clientType)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -57,14 +74,8 @@ func (s *server) CreateSession(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found: " + req.WorkspaceId})
 	}
 
-	// Ensure the OpenShell sandbox exists for this workspace, carrying the session UUID.
+	// Mark the session as active (no sandbox knowledge needed).
 	sid := session.Id.String()
-	_, err = s.loop.Ws.Get(c.Request().Context(), sid)
-	if err != nil {
-		log.Printf("[sessions] failed to ensure sandbox for workspace '%s' (session %s): %v", req.WorkspaceId, sid[:8], err)
-	}
-
-	// Update last activity timestamp and signal "in use"
 	s.loop.Ws.UpdateActivity(c.Request().Context(), sid)
 	s.loop.MarkActive(req.WorkspaceId)
 

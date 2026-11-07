@@ -24,8 +24,8 @@ func TestStoreArchiveSession(t *testing.T) {
 		t.Fatalf("archive session: %v", err)
 	}
 
-	// Verify file was created and is valid JSON
-	path := filepath.Join(base, "sessions", "task-001.json")
+	// Verify archive file was created and is valid JSON (.archive.json extension)
+	path := filepath.Join(base, "sessions", "task-001.archive.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read archive: %v", err)
@@ -56,7 +56,8 @@ func TestStoreArchiveSessionMultiple(t *testing.T) {
 	turns2 := []interface{}{map[string]interface{}{"role": "assistant", "content": "Second"}}
 	_ = store.ArchiveSession("task-002", turns2)
 
-	path := filepath.Join(base, "sessions", "task-002.json")
+	// Verify archive file was created (.archive.json extension)
+	path := filepath.Join(base, "sessions", "task-002.archive.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read archive: %v", err)
@@ -87,7 +88,8 @@ func TestStoreArchiveSessionEmpty(t *testing.T) {
 		t.Fatalf("archive empty: %v", err)
 	}
 
-	path := filepath.Join(base, "sessions", "task-empty.json")
+	// Verify archive file was created (.archive.json extension)
+	path := filepath.Join(base, "sessions", "task-empty.archive.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read archive: %v", err)
