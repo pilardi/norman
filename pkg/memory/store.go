@@ -58,7 +58,7 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 		return fmt.Errorf("create sessions dir: %w", err)
 	}
 
-	path := filepath.Join(dir, taskID+".json")
+	path := filepath.Join(dir, taskID+".archive.json")
 
 	// Collect turns into a single JSON array with metadata
 	var entries []map[string]interface{}
@@ -271,7 +271,7 @@ func (s *Store) ListSessions() []map[string]interface{} {
 
 	var sessions []map[string]interface{}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") || strings.HasSuffix(entry.Name(), ".archive.json") {
 			continue
 		}
 
