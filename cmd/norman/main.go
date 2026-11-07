@@ -286,9 +286,8 @@ Examples:
 			},
 			// --- sessions subcommand ---
 			{
-				Name:        "sessions",
-				Usage:       "Manage chat sessions",
-				Description: `sessions — Manage chat sessions`,
+				Name:  "sessions",
+				Usage: "Manage chat sessions",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
 					return nil
@@ -403,9 +402,8 @@ Examples:
 			},
 			// --- skills subcommand ---
 			{
-				Name:        "skills",
-				Usage:       "Manage installed skills",
-				Description: `skills — Manage installed skills`,
+				Name:  "skills",
+				Usage: "Manage installed skills",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
 					return nil
