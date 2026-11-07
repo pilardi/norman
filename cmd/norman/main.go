@@ -86,7 +86,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 					if setVal := cmd.String("set"); setVal != "" {
 						err := handleConfigSet(ctx, []string{setVal})
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 							return err
 						}
 						return nil
@@ -149,12 +148,10 @@ Examples:
 						Usage: "Add a new LLM provider",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman providers add <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]\n")
 								return fmt.Errorf("usage: norman providers add <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]")
 							}
 							err := handleProvidersAdd(ctx, cmd)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
 							}
 							return nil
@@ -175,7 +172,6 @@ Examples:
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							err := handleProvidersList(ctx, cmd)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
 							}
 							return nil
@@ -186,12 +182,10 @@ Examples:
 						Usage: "Show full details for a specific provider by name",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman providers get <name>\n")
 								return fmt.Errorf("usage: norman providers get <name>")
 							}
 							err := handleProvidersGet(ctx, cmd)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
 							}
 							return nil
@@ -205,18 +199,15 @@ Examples:
 								!cmd.IsSet("temp") && !cmd.IsSet("max-tokens") && !cmd.IsSet("api-key") {
 								name := cmd.Args().First()
 								if err := handleProvidersUpdateInteractive(ctx, name); err != nil {
-									fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 									return err
 								}
 								return nil
 							}
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman providers update <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]\n")
 								return fmt.Errorf("usage: norman providers update <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]")
 							}
 							err := handleProvidersUpdate(ctx, cmd)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
 							}
 							return nil
@@ -236,12 +227,10 @@ Examples:
 						Usage:   "Remove a provider. Fails if it's the last remaining one",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman providers delete <name>\n")
 								return fmt.Errorf("usage: norman providers delete <name>")
 							}
 							err := handleProvidersDelete(ctx, cmd)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
 							}
 							return nil
@@ -253,12 +242,10 @@ Examples:
 						Usage:   "Set the default provider for sessions and CLI operations",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman providers set-default <name>\n")
 								return fmt.Errorf("usage: norman providers set-default <name>")
 							}
 							err := handleProvidersSetDefault(ctx, cmd)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
 							}
 							return nil
@@ -270,12 +257,10 @@ Examples:
 						Usage:   "List available models for a configured provider by querying its API endpoint",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman providers list-models <name>\n")
 								return fmt.Errorf("usage: norman providers list-models <name>")
 							}
 							err := handleProvidersListModels(ctx, cmd)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err
 							}
 							return nil
@@ -308,12 +293,10 @@ Commands:
 						Usage: "Archive a session's transcript via POST /api/sessions/{id}",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman sessions archive <session_id>\n")
 								return fmt.Errorf("usage: norman sessions archive <session_id>")
 							}
 							err := handleSessionArchive(cmd.Args().First())
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: archive failed: %v\n", err)
 								return fmt.Errorf("archive failed: %v", err)
 							}
 							return nil
@@ -371,12 +354,10 @@ Commands:
 						Usage: "Install a skill from a local path or git repo URL",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman skills install <path|repo>\n")
 								return fmt.Errorf("usage: norman skills install <path|repo>")
 							}
 							err := installSkill(ctx, cmd.Args().First())
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: install failed: %v\n", err)
 								return fmt.Errorf("install failed: %v", err)
 							}
 							return nil
@@ -388,12 +369,10 @@ Commands:
 						Usage:   "Install a skill from a git repository URL",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remote <git-url> [version]\n")
 								return fmt.Errorf("usage: norman skills remote <git-url> [version]")
 							}
 							err := installRemote(ctx, cmd.Args().First())
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: remote install failed: %v\n", err)
 								return fmt.Errorf("remote install failed: %v", err)
 							}
 							return nil
@@ -404,12 +383,10 @@ Commands:
 						Usage: "Remove an installed skill by name",
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							if cmd.Args().Len() < 1 {
-								fmt.Fprintf(os.Stderr, "Error: usage: norman skills remove <name>\n")
 								return fmt.Errorf("usage: norman skills remove <name>")
 							}
 							err := removeSkill(ctx, cmd.Args().First())
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: remove failed: %v\n", err)
 								return fmt.Errorf("remove failed: %v", err)
 							}
 							return nil
@@ -474,9 +451,9 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 
 							err := handleWorkspacesCreate(ctx, cmd.Args().Slice(), purpose, tags)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
-							return err
+							return nil
 						},
 					},
 					{
@@ -492,9 +469,9 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							err := handleWorkspaceStop(ctx, cmd.Args().Slice())
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
-							return err
+							return nil
 						},
 						Flags: []cli.Flag{
 							&cli.StringFlag{
@@ -509,9 +486,9 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							err := handleWorkspaceRestore(ctx, cmd.Args().Slice())
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
-							return err
+							return nil
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
@@ -526,9 +503,9 @@ Tags can be set with --tags "tag1,tag2" or repeated: --tags tag1 --tags tag2.`,
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							err := handleWorkspacePurge(ctx, cmd.Args().Slice(), cmd.Bool("confirm"))
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
-							return err
+							return nil
 						},
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
@@ -584,9 +561,9 @@ Purpose can be provided inline (--purpose "text"), from a file (-f <path>), or p
 							}
 							err := handleWorkspaceUpdate(ctx, cmd.Args().Slice(), purpose, tags)
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
 							}
-							return err
+							return nil
 						},
 					},
 				},
