@@ -20,7 +20,7 @@ func shortID(id string) string {
 
 func handleSessions(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Args().Len() == 0 {
-		cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
+		fmt.Println(sessionHelpText)
 		return nil
 	}
 
