@@ -344,7 +344,7 @@ func handleChat(args []string) {
 
 		msgRsp, err := client.SendMessage(context.Background(), sessionID, body)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "POST /api/sessions/%s/messages failed: %v\n", sessionID, err)
+			fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", sessionID, err)
 			continue
 		}
 

@@ -194,7 +194,7 @@ func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, st
 
 	resp, err := client.GetConfig(ctx, nil)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("GET /api/config: %w", err)
+		return nil, nil, "", fmt.Errorf("fetch config: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -377,12 +377,12 @@ func putConfig(ctx context.Context, updates map[string]interface{}) error {
 
 	resp, err := client.PutConfig(ctx, updates)
 	if err != nil {
-		return fmt.Errorf("PUT /api/config: %w", err)
+		return fmt.Errorf("update config: %w", err)
 	}
 
 	parsed, err := protocol.ParsePutConfigResponse(resp)
 	if err != nil {
-		return fmt.Errorf("PUT /api/config: parse response: %w", err)
+		return fmt.Errorf("parse update response: %w", err)
 	}
 
 	if parsed.StatusCode() >= 400 {
