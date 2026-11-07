@@ -225,6 +225,13 @@ func handleChat(args []string) {
 			if body == "" {
 				body = parsedSess.Status()
 			}
+			// Try to extract the "error" field from JSON body for a clean message.
+			var errResp map[string]any
+			if json.Unmarshal([]byte(body), &errResp) == nil {
+				if e, ok := errResp["error"].(string); ok {
+					body = e
+				}
+			}
 			fmt.Fprintf(os.Stderr, "Error: session creation failed (status %d): %s\n", parsedSess.StatusCode(), body)
 			os.Exit(1)
 		}
