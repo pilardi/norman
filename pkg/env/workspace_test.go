@@ -136,7 +136,6 @@ func TestWorkspaceDefinition_ToMap_RoundTrip(t *testing.T) {
 type mockWorkspace struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
-	exists   bool
 }
 
 func newMockWorkspace() *mockWorkspace {
@@ -204,9 +203,7 @@ func (m *mockWorkspace) GetSandboxName(ctx context.Context, sessionId string) (s
 func (m *mockWorkspace) UpdateActivity(ctx context.Context, sessionId string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.sessions[sessionId]; ok {
-		// Simulate activity update (no-op in mock)
-	}
+	_ = sessionId // no-op in mock
 }
 
 func (m *mockWorkspace) Sessions() map[string]*Session {

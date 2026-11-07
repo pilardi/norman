@@ -10,7 +10,7 @@
 #   test-short Run short tests only (skip slow/integration)
 #   clean     Remove generated files and binaries in dist/
 
-.PHONY: help generate build lint rebuild test test-race test-short test-integration clean generate-docs generate-docs-html completion
+.PHONY: help generate build lint rebuild test test-race test-short test-integration clean generate-docs generate-docs-html completion verify
 
 CODEGEN := ~/go/bin/oapi-codegen
 DIST    := dist
@@ -120,3 +120,20 @@ completion:
 	@echo "Install Bash:  source $(DIST)/_norman.bash"
 	@echo "Install Zsh:   source $(DIST)/_norman.zsh"
 	@echo "Install Fish:  source $(DIST)/_norman.fish"
+
+# Verify runs all CI steps in a single command.
+verify:
+	@echo "Running full CI verification (generate + lint + build + tests)..."
+	@$(MAKE) generate
+	@echo ""
+	@golangci-lint run ./...
+	@echo ""
+	@$(MAKE) build
+	@echo ""
+	@$(MAKE) test-short
+	@echo ""
+	@$(MAKE) test
+	@echo ""
+	@$(MAKE) test-race
+	@echo ""
+	@$(MAKE) test-integration
