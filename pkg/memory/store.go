@@ -258,8 +258,7 @@ func (s *Store) DeleteSession(sessionID string) error {
 	return nil
 }
 
-// ListSessions returns all active sessions. Handles both map and array formats
-// for backward compatibility with legacy session files.
+// ListSessions returns all active sessions.
 func (s *Store) ListSessions() []map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -284,12 +283,6 @@ func (s *Store) ListSessions() []map[string]interface{} {
 
 		var session map[string]interface{}
 		if err := json.Unmarshal(data, &session); err != nil {
-			// Try parsing as an array (legacy format).
-			var arr []map[string]interface{}
-			if err2 := json.Unmarshal(data, &arr); err2 == nil {
-				sessions = append(sessions, arr...)
-				continue
-			}
 			log.Printf("memory: failed to parse session file %s: %v", entry.Name(), err)
 			continue
 		}
