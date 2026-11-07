@@ -104,7 +104,6 @@ func handleConfigSet(ctx context.Context, args []string) error {
 	}
 
 	if err := putConfig(ctx, update); err != nil {
-		fmt.Fprintf(os.Stderr, "Error updating config: %v\n", err)
 		return err
 	}
 	fmt.Printf("Updated %s → %s\n", key, val)
