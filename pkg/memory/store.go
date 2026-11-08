@@ -14,6 +14,24 @@ import (
 	"time"
 )
 
+// ArchiveStatus indicates the archival state of a session.
+type ArchiveStatus string
+
+const (
+	ArchiveNone     ArchiveStatus = "none"     // Session is active, not archived
+	ArchiveArchived ArchiveStatus = "archived" // Session has been archived
+)
+
+// Valid returns true if s is a known ArchiveStatus value.
+func (s ArchiveStatus) Valid() bool {
+	switch s {
+	case ArchiveNone, ArchiveArchived:
+		return true
+	default:
+		return false
+	}
+}
+
 // Store manages persistent task and session state on disk.
 type Store struct {
 	mu   sync.RWMutex
@@ -68,6 +86,7 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 			continue
 		}
 		data["archived_at"] = time.Now().Format(time.RFC3339)
+		data["archive_status"] = string(ArchiveArchived)
 		entries = append(entries, data)
 	}
 
@@ -397,6 +416,22 @@ func (s *Store) ListSessions() []map[string]interface{} {
 	}
 
 	return sessions
+}
+
+// IsSessionArchived checks whether a session map has archive_status set to "archived".
+func IsSessionArchived(session map[string]interface{}) bool {
+	if status, ok := session["archive_status"].(string); ok {
+		return ArchiveStatus(status) == ArchiveArchived
+	}
+	return false
+}
+
+// SessionArchiveStatus returns the archive_status field from a session map.
+func SessionArchiveStatus(session map[string]interface{}) ArchiveStatus {
+	if status, ok := session["archive_status"].(string); ok {
+		return ArchiveStatus(status)
+	}
+	return ArchiveNone
 }
 
 // SaveTranscript writes a conversation transcript as markdown to the sessions directory.

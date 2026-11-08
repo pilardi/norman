@@ -514,3 +514,87 @@ func TestStorePersistSessionTurnTimestamp(t *testing.T) {
 		t.Error("timestamp should not be empty")
 	}
 }
+
+func TestStoreArchiveSessionHasArchiveStatus(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	turns := []interface{}{
+		map[string]interface{}{"role": "user", "content": "Hello"},
+		map[string]interface{}{"role": "assistant", "content": "Hi there!"},
+	}
+
+	err = store.ArchiveSession("task-archived", turns)
+	if err != nil {
+		t.Fatalf("archive session: %v", err)
+	}
+
+	// Verify archive file contains archive_status field
+	path := filepath.Join(base, "sessions", "task-archived.archive.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read archive: %v", err)
+	}
+
+	var entries []map[string]interface{}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		t.Fatalf("unmarshal archive: %v", err)
+	}
+
+	for i, entry := range entries {
+		status, ok := entry["archive_status"].(string)
+		if !ok {
+			t.Errorf("entry %d missing archive_status field", i)
+		} else if status != "archived" {
+			t.Errorf("entry %d archive_status = %q, want 'archived'", i, status)
+		}
+
+		_, hasArchivedAt := entry["archived_at"]
+		if !hasArchivedAt {
+			t.Errorf("entry %d missing archived_at field", i)
+		}
+	}
+}
+
+func TestIsSessionArchived(t *testing.T) {
+	session := map[string]interface{}{
+		"id":             "sess-001",
+		"status":         "active",
+		"archive_status": "archived",
+	}
+
+	if !IsSessionArchived(session) {
+		t.Error("expected session with archive_status='archived' to be archived")
+	}
+
+	session2 := map[string]interface{}{
+		"id":     "sess-002",
+		"status": "active",
+	}
+	if IsSessionArchived(session2) {
+		t.Error("expected session without archive_status to not be archived")
+	}
+}
+
+func TestSessionArchiveStatus(t *testing.T) {
+	session := map[string]interface{}{
+		"id":             "sess-001",
+		"archive_status": "archived",
+	}
+
+	status := SessionArchiveStatus(session)
+	if status != ArchiveArchived {
+		t.Errorf("expected ArchiveArchived, got %q", status)
+	}
+
+	session2 := map[string]interface{}{
+		"id": "sess-002",
+	}
+	status = SessionArchiveStatus(session2)
+	if status != ArchiveNone {
+		t.Errorf("expected ArchiveNone, got %q", status)
+	}
+}
