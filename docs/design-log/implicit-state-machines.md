@@ -1,7 +1,7 @@
 ---
 title: "Implicit State Machines in Norman"
-type: assessment
-status: draft
+type: implementation
+status: implemented
 date: 2026-11-08
 author: goose (via tool)
 related: [task-session-cleanup-plan.md, workspace-lifecycle-proposal.md]
@@ -11,33 +11,33 @@ related: [task-session-cleanup-plan.md, workspace-lifecycle-proposal.md]
 
 ## TL;DR
 
-Norman has **7 implicit state machines** scattered across the application logic layer. None are formally defined with enums or transition guards — they rely on booleans, slices, bitmasks, or filesystem layout. The formal protocol layer (`api-spec.yaml`) defines `TaskStatus`, `SessionStatus`, `ScheduledTaskStatus`, and `HealthStatusStatus`, but the agent loop, skills, budget, scheduler, wiki, notifications, and store each track their own ad-hoc states independently. **No cross-cutting state machine registry exists.**
+Norman had **7 implicit state machines** scattered across the application logic layer. None were formally defined with enums or transition guards — they relied on booleans, slices, bitmasks, or filesystem layout. The formal protocol layer (`api-spec.yaml`) defines `TaskStatus`, `SessionStatus`, `ScheduledTaskStatus`, and `HealthStatusStatus`, but the agent loop, skills, budget, scheduler, wiki, notifications, and store each tracked their own ad-hoc states independently. **No cross-cutting state machine registry exists.** All 7 have now been formalized with enums, transition guards, and `Valid()` methods across P0–P6.
 
 ---
 
 ## Background
 
-Norman's architecture separates a **formal API contract** (generated from `api-spec.yaml` into `pkg/protocol/server.gen.go`) from the **application logic layer** (agent loop, skills, budget, scheduler, notifications, memory/store). The protocol layer uses Go enums with `Valid()` methods; the application layer uses idiomatic Go patterns — a slice for "active" skills, a bitmask for thresholds, a boolean for scheduler tasks.
+Norman's architecture separates a **formal API contract** (generated from `api-spec.yaml` into `pkg/protocol/server.gen.go`) from the **application logic layer** (agent loop, skills, budget, scheduler, notifications, memory/store). The protocol layer uses Go enums with `Valid()` methods; the application layer used idiomatic Go patterns — a slice for "active" skills, a bitmask for thresholds, a boolean for scheduler tasks.
 
-This split was intentional: API contracts must be stable across versions, while implementation details evolve freely. However, it creates an inconsistency where "official" states (e.g., `protocol.TaskStatus`) and "real" states (e.g., `Active bool` in scheduler) can diverge without coordination.
+This split was intentional: API contracts must be stable across versions, while implementation details evolve freely. However, it created an inconsistency where "official" states (e.g., `protocol.TaskStatus`) and "real" states (e.g., `Active bool` in scheduler) could diverge without coordination.
 
 ---
 
 ## Problem
 
-There is no single source of truth for the agent's operational state. Key implications:
+There was no single source of truth for the agent's operational state. Key implications:
 
-- **No graceful shutdown guarantee**: `MarkIdle()` is fire-and-forget — nothing reads it back to confirm the loop is truly idle before exiting.
-- **No transition guards**: A skill can be "deactivated" even if never activated (returns error but no validation). Budget thresholds are a bitmask that semantically should be mutually exclusive.
-- **No state history**: Deactivation reason, staleness age, or archive status are not persisted — only inferred from current data.
-- **Inconsistent naming**: `TaskStatus` uses `pending/running/completed/failed/cancelled/scheduled`; scheduler tasks would use `scheduled/running/completed/failed`. No shared enum.
+- **No graceful shutdown guarantee**: `MarkIdle()` was fire-and-forget — nothing read it back to confirm the loop is truly idle before exiting.
+- **No transition guards**: A skill could be "deactivated" even if never activated (returned error but no validation). Budget thresholds were a bitmask that semantically should be mutually exclusive.
+- **No state history**: Deactivation reason, staleness age, or archive status were not persisted — only inferred from current data.
+- **Inconsistent naming**: `TaskStatus` used `pending/running/completed/failed/cancelled/scheduled`; scheduler tasks would use `scheduled/running/completed/failed`. No shared enum.
 
 ---
 
 ## Prior Art / Adjacent Mechanisms
 
-| Subsystem | Formal State | Implicit State | File:Line |
-|-----------|-------------|----------------|-----------|
+| Subsystem | Formal State | Implicit State (before) | File:Line |
+|-----------|-------------|------------------------|-----------|
 | Agent Loop | — | `MarkActive`/`MarkIdle` (log-only) | `pkg/agent/loop.go:2045-2049` |
 | Skills | — | `active []string` slice membership | `pkg/skills/activate.go:16` |
 | Budget | `ThresholdFlags` bitmask | `BudgetState` enum (proposed) | `pkg/budget/budget.go:73-82` |
@@ -64,7 +64,7 @@ There is no single source of truth for the agent's operational state. Key implic
 
 ## Design
 
-### Proposed State Machine Definitions
+### Implemented State Machine Definitions
 
 ```go
 // 1. Agent Loop Processing State (pkg/agent/loop.go)
@@ -73,7 +73,7 @@ const (
     LoopIdle     LoopState = "idle"
     LoopProcessing LoopState = "processing"
 )
-// Add: processing bool field to Loop struct; IsProcessing() method
+// Added: processing bool field to Loop struct; IsProcessing() method
 
 // 2. Skill Activation State (pkg/skills/activate.go)
 type SkillState string
@@ -82,7 +82,7 @@ const (
     SkillActive    SkillState = "active"
     SkillDeactivated SkillState = "deactivated"
 )
-// Replace: active []string → map[string]SkillState{name: {ActivatedAt, Reason}}
+// Replaced: active []string → map[string]SkillState{name: {ActivatedAt, Reason}}
 
 // 3. Budget State (pkg/budget/budget.go)
 type BudgetState string
@@ -91,7 +91,7 @@ const (
     BudgetWarn     BudgetState = "warn"
     BudgetCritical BudgetState = "critical"
 )
-// Replace: ThresholdFlags bitmask → CurrentState() method returning enum
+// Replaced: ThresholdFlags bitmask → CurrentState() method returning enum
 
 // 4. Scheduler Task State (pkg/scheduler/scheduler.go)
 type SchedulerTaskState string
@@ -101,7 +101,7 @@ const (
     Completed    SchedulerTaskState = "completed"
     Failed       SchedulerTaskState = "failed"
 )
-// Replace: Active bool → State field + transition methods
+// Replaced: Active bool → State field + transition methods
 
 // 5. Wiki Entry State (pkg/wiki/entry.go)
 type EntryState string
@@ -110,7 +110,7 @@ const (
     EntryStale    EntryState = "stale"
     EntryArchived EntryState = "archived"
 )
-// Add: State field to WikiEntry; IsStale() becomes transition trigger
+// Added: State field to WikiEntry; IsStale() becomes transition trigger
 
 // 6. Notification Severity (pkg/notify/notifier.go)
 type NotificationSeverity string
@@ -119,7 +119,7 @@ const (
     NotifyWarn   NotificationSeverity = "warn"
     NotifyError  NotificationSeverity = "error"
 )
-// Replace: free-form string → validated enum; add Escalate() method
+// Replaced: free-form string → validated enum; added Escalate() method
 
 // 7. Archive Status (pkg/memory/store.go)
 type ArchiveStatus string
@@ -128,7 +128,7 @@ const (
     ArchiveComplete ArchiveStatus = "complete"
     ArchiveFailed   ArchiveStatus = "failed"
 )
-// Add: ArchiveStatus field to session data; file layout becomes secondary signal
+// Added: ArchiveStatus field to session data; file layout becomes secondary signal
 ```
 
 ### Transition Rules
@@ -147,15 +147,15 @@ const (
 
 ## Implementation Plan
 
-| Phase | Scope | Effort |
-|-------|-------|--------|
-| P0 — Agent Loop | Add `processing bool` field, `IsProcessing()` method | 15 min |
-| P1 — Budget | Replace bitmask with `BudgetState` enum + `CurrentState()` | 20 min |
-| P2 — Scheduler | Replace `Active bool` with `SchedulerTaskState` enum | 30 min |
-| P3 — Wiki | Add `EntryState` field, update `IsStale()` to transition | 25 min |
-| P4 — Archive | Add `ArchiveStatus` field to session JSON schema | 20 min |
-| P5 — Skills | Replace slice with `map[string]SkillState` | 45 min |
-| P6 — Notifications | Validate severity string, add `Escalate()` | 15 min |
+| Phase | Scope | Status | Effort |
+|-------|-------|--------|--------|
+| P0 — Agent Loop | Add `processing bool` field, `IsProcessing()` method | ✅ Done | 15 min |
+| P1 — Budget | Replace bitmask with `BudgetState` enum + `CurrentState()` | ✅ Done | 20 min |
+| P2 — Scheduler | Replace `Active bool` with `SchedulerTaskState` enum | ✅ Done | 30 min |
+| P3 — Wiki | Add `EntryState` field, update `IsStale()` to transition | ✅ Done | 25 min |
+| P4 — Archive | Add `ArchiveStatus` field to session JSON schema | ✅ Done | 20 min |
+| P5 — Skills | Replace slice with `map[string]SkillState` | ✅ Done | 45 min |
+| P6 — Notifications | Validate severity string, add `Escalate()` | ✅ Done | 15 min |
 
 Total estimated effort: ~2h. No breaking API changes for external consumers (all implicit states are internal).
 
@@ -186,7 +186,7 @@ func (a *Activator) Activate(name string) error {
 ### ❌ Bad: Current slice-based approach (no history, no reason)
 
 ```go
-// Current: active []string — "deactivated" is indistinguishable from "never activated"
+// Before: active []string — "deactivated" is indistinguishable from "never activated"
 a.active = append(a.active, name) // no reason stored
 // Later: a.active = remove(a.active, name) // why? auto-evict? manual? error? lost forever.
 ```
@@ -215,4 +215,22 @@ state := BudgetCritical  // no ambiguity; single source of truth
 
 ---
 
-*This document is read-only analysis. Proposed changes are not yet implemented.*
+## No Pending Work
+
+All 7 implicit state machines have been formalized and implemented across P0–P6. The following are complete:
+
+| # | Subsystem | What Changed |
+|---|-----------|-------------|
+| P0 | `pkg/agent/loop.go` | Added `processing bool` field + `IsProcessing()` method for shutdown gracefulness |
+| P1 | `pkg/budget/budget.go` | Replaced `ThresholdFlags` bitmask with `BudgetState` enum; `CurrentState()` replaces `CheckThresholds()` |
+| P2 | `pkg/scheduler/scheduler.go` | Replaced `Active bool` with `SchedulerTaskState` enum + `MarkRunning()`, `MarkCompleted()`, `MarkFailed()` guards |
+| P3 | `pkg/wiki/entry.go` | Added `EntryState` field; `IsStale()` now mutates state (transition trigger) |
+| P4 | `pkg/memory/store.go` | Added `ArchiveStatus` to session JSON schema; `IsSessionArchived()` and `SessionArchiveStatus()` accessors |
+| P5 | `pkg/skills/activate.go` | Replaced `active []string` with `map[string]SkillState`; added `GetState()` helper |
+| P6 | `pkg/notify/notifier.go` | Added `NotificationSeverity` enum + `Valid()` + `Escalate()`; `Notifier.Escalate()` helper; API spec updated |
+
+No additional state machines were identified beyond these 7. The initiative is closed.
+
+---
+
+*All proposed changes have been implemented and merged via PR #75 (docs/implicit-state-machines → master).*
