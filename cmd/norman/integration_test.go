@@ -307,8 +307,8 @@ func getBaseDir(t *testing.T) string {
 }
 
 // createTestWorkspace creates a test workspace and returns its ID.
-// Tries POST /api/workspaces first (preferred, updates server's in-memory cache).
-// Falls back to writing JSON directly to disk if the API requires OpenShell sandbox creation.
+// Uses POST /api/workspaces (updates in-memory cache). Falls back to disk-write + server restart
+// if the API requires OpenShell sandbox creation which may be unimplemented in CI mock.
 func createTestWorkspace(t *testing.T, baseDir string) string {
 	t.Helper()
 
@@ -349,15 +349,15 @@ func createTestWorkspace(t *testing.T, baseDir string) string {
 		id, ok := created["id"].(string)
 		if !ok || id == "" {
 			// API returned success HTTP status but body contains an error (e.g. CreateSandbox unimplemented).
-			// Fall through to disk-write fallback below.
-			t.Logf("workspace creation API returned empty ID, falling back to disk write: %v", created)
+			t.Logf("workspace creation API returned empty ID: %v", created)
 		} else {
 			return id
 		}
 	}
 
 	// REST API unavailable or failed (e.g. CreateSandbox not implemented in CI mock).
-	// Fall back to writing workspace JSON directly to disk.
+	// Fall back to writing workspace JSON directly to disk, then restart the server
+	// so it re-scans workspaces from disk and picks up the new file.
 	wsPath := filepath.Join(baseDir, "workspaces")
 	if err := os.MkdirAll(wsPath, 0755); err != nil {
 		t.Fatalf("create workspaces dir: %v", err)
@@ -381,6 +381,20 @@ func createTestWorkspace(t *testing.T, baseDir string) string {
 
 	if err := os.WriteFile(wsFile, contentBytes, 0644); err != nil {
 		t.Fatalf("write workspace file: %v", err)
+	}
+
+	// Restart the server so it re-scans workspaces from disk.
+	if serverProcess != nil {
+		_ = serverProcess.Signal(syscall.SIGTERM)
+		time.Sleep(1 * time.Second)
+		bin := filepath.Join("..", "..", "dist", "norman-server")
+		cmd := exec.Command(bin)
+		cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
+		if err := cmd.Start(); err != nil {
+			t.Fatalf("restart server: %v", err)
+		}
+		serverProcess = cmd.Process
+		waitForServer(t)
 	}
 
 	return wsID
