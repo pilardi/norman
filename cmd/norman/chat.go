@@ -174,7 +174,7 @@ func handleChat(args []string) {
 			if err == nil {
 				parsed, _ := protocol.ParseGetVersionResponse(rsp)
 				v := parsed.GetJSON200()
-				u := serverURL()
+				u := client.Server
 				fmt.Printf("Connected to %s (%s %s)\n", u, v.Version, v.BuildDate)
 			}
 		}
