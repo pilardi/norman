@@ -259,7 +259,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 				Name:     name,
 				Schedule: schedule,
 				Command:  command,
-				Active:   active,
+				State:    stateToSchedulerState(active),
 			}
 			if err := sched.Add(schedEntry); err != nil {
 				log.Printf("scheduler: failed to add task %s: %v", entryID[:8], err)
@@ -269,4 +269,12 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 	}
 
 	return srv
+}
+
+// stateToSchedulerState converts a legacy bool active flag to SchedulerTaskState.
+func stateToSchedulerState(active bool) scheduler.SchedulerTaskState {
+	if active {
+		return scheduler.TaskScheduled
+	}
+	return scheduler.TaskCompleted
 }

@@ -76,8 +76,15 @@ func (s *server) ListScheduledTasks(c echo.Context) error {
 	result := make([]protocol.ScheduledTask, 0, len(entries))
 	for _, entry := range entries {
 		status := protocol.ScheduledTaskStatusActive
-		if !entry.Active {
+		switch entry.State {
+		case scheduler.TaskRunning:
+			status = protocol.ScheduledTaskStatusActive
+		case scheduler.TaskFailed:
+			status = protocol.ScheduledTaskStatusFailed
+		case scheduler.TaskCompleted:
 			status = protocol.ScheduledTaskStatusPaused
+		default:
+			status = protocol.ScheduledTaskStatusActive
 		}
 		id, err := uuid.Parse(entry.ID)
 		if err != nil {

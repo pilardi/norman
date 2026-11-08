@@ -14,6 +14,16 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+// SchedulerTaskState represents the lifecycle state of a scheduled task.
+type SchedulerTaskState string
+
+const (
+	TaskScheduled SchedulerTaskState = "scheduled"
+	TaskRunning   SchedulerTaskState = "running"
+	TaskCompleted SchedulerTaskState = "completed"
+	TaskFailed    SchedulerTaskState = "failed"
+)
+
 // TaskEntry represents a scheduled task to be executed.
 type TaskEntry struct {
 	ID                string                         `json:"id"`
@@ -24,7 +34,7 @@ type TaskEntry struct {
 	OutputHandler     func(result string, err error) `json:"-"`                            // callback for results
 	NextRun           time.Time                      `json:"next_run"`
 	LastRun           time.Time                      `json:"last_run,omitempty"`
-	Active            bool                           `json:"active"`
+	State             SchedulerTaskState             `json:"state"`
 	// DeferUntil is an absolute time at which the task should run (overrides Schedule).
 	// If non-zero, NextRun is set to this value and the task runs once.
 	DeferUntil time.Time `json:"defer_until,omitempty"`
@@ -32,6 +42,33 @@ type TaskEntry struct {
 	Skill string `json:"skill,omitempty"`
 	// ActivationCallback is called before task execution to activate associated skills.
 	ActivationCallback func() error `json:"-"`
+}
+
+// MarkRunning transitions the task state to running. Returns true if transition succeeded.
+func (e *TaskEntry) MarkRunning() bool {
+	if e.State == TaskScheduled || e.State == TaskCompleted || e.State == TaskFailed {
+		e.State = TaskRunning
+		return true
+	}
+	return false
+}
+
+// MarkCompleted transitions the task state to completed. Returns true if transition succeeded.
+func (e *TaskEntry) MarkCompleted() bool {
+	if e.State == TaskRunning || e.State == TaskScheduled {
+		e.State = TaskCompleted
+		return true
+	}
+	return false
+}
+
+// MarkFailed transitions the task state to failed. Returns true if transition succeeded.
+func (e *TaskEntry) MarkFailed() bool {
+	if e.State == TaskRunning || e.State == TaskScheduled {
+		e.State = TaskFailed
+		return true
+	}
+	return false
 }
 
 // TaskResult holds the outcome of a task execution.
@@ -92,7 +129,7 @@ func (s *Scheduler) Defer(entry TaskEntry, deferUntil time.Time) error {
 		return fmt.Errorf("task %q already registered", entry.ID)
 	}
 
-	entry.Active = true
+	entry.State = TaskScheduled
 	entry.NextRun = deferUntil
 	entry.DeferUntil = deferUntil
 
@@ -127,7 +164,7 @@ func (s *Scheduler) ToInterfaceSlice() []interface{} {
 			"name":               entry.Name,
 			"schedule":           entry.Schedule,
 			"command":            entry.Command,
-			"active":             entry.Active,
+			"state":              string(entry.State),
 			"activation_command": entry.ActivationCommand,
 			"skill":              entry.Skill,
 		}
@@ -148,7 +185,7 @@ func (s *Scheduler) Add(entry TaskEntry) error {
 		return fmt.Errorf("task %q already registered", entry.ID)
 	}
 
-	entry.Active = true
+	entry.State = TaskScheduled
 	entry.NextRun = time.Now().Add(1 * time.Minute) // initial next-run estimate
 
 	s.tasks[entry.ID] = &entry
@@ -165,7 +202,7 @@ func (s *Scheduler) Remove(id string) error {
 		return fmt.Errorf("task %q not found", id)
 	}
 
-	entry.Active = false
+	entry.State = TaskCompleted
 	delete(s.tasks, id)
 	return nil
 }
@@ -218,7 +255,7 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 		case <-ticker.C:
 			s.mu.RLock()
 			for _, entry := range s.tasks {
-				if !entry.Active {
+				if entry.State != TaskScheduled && entry.State != TaskRunning {
 					continue
 				}
 				now := time.Now()
@@ -233,13 +270,18 @@ func (s *Scheduler) tickLoop(ctx context.Context) {
 
 				s.mu.RUnlock()
 
+				// Mark as running before execution
+				entry.MarkRunning()
+
 				result := s.executeTask(entry)
 				s.results <- result
 
 				s.mu.Lock()
 
-				if isDeferred {
-					entry.Active = false // run once, then deactivate
+				if result.Err != nil {
+					entry.MarkFailed()
+				} else if isDeferred {
+					entry.MarkCompleted()
 				} else {
 					entry.NextRun = now.Add(1 * time.Minute) // approximate; cron handles precise scheduling
 				}
