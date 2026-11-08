@@ -302,8 +302,12 @@ func getBaseDir(t *testing.T) string {
 		}
 	}
 
-	// Fallback: derive from the server's working directory via env.
-	return os.ExpandEnv("$HOME/.norman/store")
+	// Fallback: derive from NORMAN_HOME or default to $HOME/.norman/store.
+	normanHome := os.Getenv("NORMAN_HOME")
+	if normanHome == "" {
+		normanHome = "$HOME/.norman"
+	}
+	return filepath.Join(os.ExpandEnv(normanHome), "store")
 }
 
 // createTestWorkspace creates a test workspace and returns its ID.

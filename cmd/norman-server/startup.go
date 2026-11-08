@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/norman/norman/pkg/config"
@@ -20,7 +21,7 @@ func printStartupInfo(srv *server, startTime time.Time) {
 	log.Println("──────────────────────────────────────────────")
 
 	// Config source
-	cfgPath := config.ConfigPath()
+	cfgPath := config.DefaultConfigPath()
 	configExists := fileExists(cfgPath)
 	if configExists {
 		info, err := os.Stat(cfgPath)
@@ -72,14 +73,14 @@ func printStartupInfo(srv *server, startTime time.Time) {
 	// Memory store
 	storeDir := os.Getenv("NORMAN_STORE_DIR")
 	if storeDir == "" {
-		storeDir = os.ExpandEnv("$HOME/.norman/store")
+		storeDir = filepath.Join(srv.cfg.System.NormanHomePath(), "store")
 	}
 	log.Printf("  [memory] Store directory: %s", storeDir)
 
 	// Raw sources
 	rawSourcesDir := os.Getenv("NORMAN_RAW_SOURCES_DIR")
 	if rawSourcesDir == "" {
-		rawSourcesDir = os.ExpandEnv("$HOME/.norman/raw_sources")
+		rawSourcesDir = filepath.Join(srv.cfg.System.NormanHomePath(), "raw_sources")
 	}
 	log.Printf("  [raw-sources] Directory: %s", rawSourcesDir)
 

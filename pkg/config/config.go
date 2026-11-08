@@ -16,6 +16,7 @@ type SystemConfig struct {
 	ServerPort int             `yaml:"server_port"`
 	Host       string          `yaml:"host"` // bind address for server (default 127.0.0.1)
 	BaseDir    string          `yaml:"base_dir"`
+	NormanHome string          `yaml:"norman_home"` // base directory for all Norman data (default: ~/.norman)
 	Skills     SkillsConfig    `yaml:"skills"`
 	Notify     NotifyConfig    `yaml:"notify"`
 	Logging    LoggingConfig   `yaml:"logging"`
@@ -204,8 +205,22 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
+// NormanHomePath returns the configured base directory for all Norman data.
+// It reads from SystemConfig.NormanHome, falling back to "$HOME/.norman".
+func (sc *SystemConfig) NormanHomePath() string {
+	if sc.NormanHome != "" {
+		return os.ExpandEnv(sc.NormanHome)
+	}
+	return os.ExpandEnv("$HOME/.norman")
+}
+
 // ConfigPath returns the canonical path used for loading the YAML config file.
-func ConfigPath() string {
+func (sc *SystemConfig) ConfigPath() string {
+	return filepath.Join(sc.NormanHomePath(), "config.yaml")
+}
+
+// DefaultConfigPath returns the default config path without a SystemConfig instance.
+func DefaultConfigPath() string {
 	return os.ExpandEnv("$HOME/.norman/config.yaml")
 }
 
@@ -215,7 +230,7 @@ func ConfigPath() string {
 //
 // Priority order (highest to lowest):
 //  1. NORMAN_* environment variables (read directly from os.Environ)
-//  2. .env files (current dir, then $HOME/.norman/.env)
+//  2. .env files (current dir, then $NORMAN_HOME/.env)
 //  3. config.yaml
 //  4. Embedded defaults
 func LoadDefault() (*Config, error) {
@@ -225,7 +240,9 @@ func LoadDefault() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "[config] WARNING: failed to load .env files: %v\n", err)
 	}
 
-	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
+	// Create config dir under NormanHome (uses default fallback if not set).
+	normanHome := os.ExpandEnv("$HOME/.norman")
+	configPath := filepath.Join(normanHome, "config.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return nil, fmt.Errorf("create config dir: %w", err)
 	}

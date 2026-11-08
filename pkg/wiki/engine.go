@@ -14,7 +14,7 @@ import (
 // Engine manages wiki entries stored as markdown files in a base directory.
 type Engine struct {
 	mu   sync.RWMutex
-	base string // e.g., ~/.norman/memory/
+	base string // e.g., $NORMAN_HOME/memory/
 }
 
 // NewEngine creates a new wiki engine backed by the given base directory.

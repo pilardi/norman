@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -64,7 +65,7 @@ func (s *server) PutConfig(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to apply config update"})
 	}
 
-	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
+	configPath := filepath.Join(s.cfg.System.NormanHomePath(), "config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save config"})
 	}

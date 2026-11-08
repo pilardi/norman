@@ -425,9 +425,9 @@ func TestClientEnvVarsSubset(t *testing.T) {
 		names[i] = v.Name
 	}
 
-	expected := []string{"NORMAN_SERVER_URL", "NORMAN_HOST", "NORMAN_PORT", "NORMAN_VERBOSE"}
-	if len(clientVars) != 4 {
-		t.Errorf("expected 4 client env vars, got %d", len(clientVars))
+	expected := []string{"NORMAN_SERVER_URL", "NORMAN_HOST", "NORMAN_PORT", "NORMAN_HOME", "NORMAN_VERBOSE"}
+	if len(clientVars) != 5 {
+		t.Errorf("expected 5 client env vars, got %d", len(clientVars))
 	}
 	for i, exp := range expected {
 		if names[i] != exp {
@@ -435,10 +435,10 @@ func TestClientEnvVarsSubset(t *testing.T) {
 		}
 	}
 
-	// Verify server vars include all 7
+	// Verify server vars include all 8 (now includes NORMAN_HOME)
 	serverVars := ServerEnvVars()
-	if len(serverVars) != 7 {
-		t.Errorf("expected 7 server env vars, got %d", len(serverVars))
+	if len(serverVars) != 8 {
+		t.Errorf("expected 8 server env vars, got %d", len(serverVars))
 	}
 }
 
@@ -468,7 +468,7 @@ func TestServerEnvVarsAll(t *testing.T) {
 
 	expected := []string{
 		"NORMAN_HOST", "NORMAN_PORT", "NORMAN_SERVER_URL",
-		"NORMAN_BASE_DIR", "NORMAN_VERBOSE", "NORMAN_STORE_DIR", "NORMAN_RAW_SOURCES_DIR",
+		"NORMAN_BASE_DIR", "NORMAN_HOME", "NORMAN_VERBOSE", "NORMAN_STORE_DIR", "NORMAN_RAW_SOURCES_DIR",
 	}
 	for i, exp := range expected {
 		if names[i] != exp {
