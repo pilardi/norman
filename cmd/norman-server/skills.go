@@ -24,7 +24,7 @@ func (s *server) UploadSkill(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "files array must not be empty"})
 	}
 
-	destDir := filepath.Join(s.cfg.System.Skills.Path, req.Name)
+	destDir := filepath.Join(s.cfg.System.SkillsPath(), req.Name)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": fmt.Sprintf("failed to create skill dir: %v", err),
@@ -86,7 +86,7 @@ func (s *server) InstallSkill(c echo.Context) error {
 		skillName = filepath.Base(req.Repo)
 	}
 
-	destDir := filepath.Join(s.cfg.System.Skills.Path, skillName)
+	destDir := filepath.Join(s.cfg.System.SkillsPath(), skillName)
 
 	// Step 1: Clone the git repo into the skills directory
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
@@ -149,7 +149,7 @@ func (s *server) RemoveSkill(c echo.Context, name string) error {
 		Message: strPtr("Removing skill: " + name),
 	})
 
-	if err := skills.Uninstall(name, s.cfg.System.Skills.Path); err != nil {
+	if err := skills.Uninstall(name, s.cfg.System.SkillsPath()); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
@@ -173,7 +173,7 @@ func (s *server) UpdateSkill(c echo.Context, name string) error {
 		version = *req.Version
 	}
 
-	entry, err := skills.Update(req.Repo, version, s.cfg.System.Skills.Path)
+	entry, err := skills.Update(req.Repo, version, s.cfg.System.SkillsPath())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
@@ -200,7 +200,7 @@ func (s *server) CheckSkillVersion(c echo.Context, name string) error {
 		Message: strPtr("Checking update availability for skill: " + name),
 	})
 
-	entry, err := skills.GetEntry(name, s.cfg.System.Skills.Path)
+	entry, err := skills.GetEntry(name, s.cfg.System.SkillsPath())
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}

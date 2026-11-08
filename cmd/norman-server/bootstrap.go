@@ -58,8 +58,13 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 		log.Fatalf("failed to init memory store: %v", err)
 	}
 
-	// Discover skills
-	skillsResult, err := skills.Discover(cfg.System.Skills.DiscoveryPaths)
+	// Discover skills: built-in + external discovery paths.
+	var allPaths []string
+	for _, name := range cfg.System.Skills.BuiltInSkills {
+		allPaths = append(allPaths, "builtin://"+name)
+	}
+	allPaths = append(allPaths, cfg.System.Skills.DiscoveryPaths...)
+	skillsResult, err := skills.Discover(allPaths)
 	if err != nil {
 		log.Printf("warning: skill discovery failed: %v (continuing without skills)", err)
 	}

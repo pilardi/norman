@@ -394,10 +394,10 @@ func TestAddDiscoveryPaths(t *testing.T) {
 	cfg := config.DefaultConfig()
 	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
 
-	// Initial paths should be the defaults
+	// Initial paths should be empty (builtin skills are handled via BuiltInSkills)
 	initialCount := len(loop.config.System.Skills.DiscoveryPaths)
-	if initialCount == 0 {
-		t.Fatalf("expected at least one default discovery path")
+	if initialCount != 0 {
+		t.Fatalf("expected zero default discovery paths, got %d", initialCount)
 	}
 
 	// Add new paths

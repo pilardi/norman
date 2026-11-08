@@ -167,6 +167,9 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 	}
 	if cfg.Skills != nil {
 		fmt.Printf("  max_active_skills:  %d\n", derefInt(cfg.Skills.MaxActive))
+		if cfg.Skills.BuiltinSkills != nil && len(*cfg.Skills.BuiltinSkills) > 0 {
+			fmt.Printf("  builtin_skills:     %v\n", *cfg.Skills.BuiltinSkills)
+		}
 	}
 	if cfg.Notify != nil {
 		fmt.Printf("  bell_enabled:       %v\n", derefBool(cfg.Notify.BellEnabled))
@@ -353,6 +356,16 @@ func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, st
 					for _, p := range arr {
 						if s, ok := p.(string); ok {
 							*cfg.Skills.DiscoveryPaths = append(*cfg.Skills.DiscoveryPaths, s)
+						}
+					}
+				}
+			}
+			if builtin, ok := m["BuiltinSkills"]; ok {
+				if arr, ok := builtin.([]any); ok {
+					cfg.Skills.BuiltinSkills = &[]string{}
+					for _, p := range arr {
+						if s, ok := p.(string); ok {
+							*cfg.Skills.BuiltinSkills = append(*cfg.Skills.BuiltinSkills, s)
 						}
 					}
 				}

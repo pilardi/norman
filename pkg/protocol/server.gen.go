@@ -1000,7 +1000,10 @@ type SkillVersionCheck struct {
 
 // SkillsConfig defines model for SkillsConfig.
 type SkillsConfig struct {
-	// DiscoveryPaths Paths to scan for SKILL.md files
+	// BuiltinSkills Names of built-in skills to include in discovery
+	BuiltinSkills *[]string `json:"builtin_skills,omitempty"`
+
+	// DiscoveryPaths External paths to scan for SKILL.md files (user-added folders only)
 	DiscoveryPaths *[]string `json:"discovery_paths,omitempty"`
 
 	// MaxActive Max concurrent active skills (0 = unlimited)

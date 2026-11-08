@@ -1691,10 +1691,15 @@ components:
           type: array
           items:
             type: string
-          description: Paths to scan for SKILL.md files
+          description: External paths to scan for SKILL.md files (user-added folders only)
         max_active:
           type: integer
           description: Max concurrent active skills (0 = unlimited)
+        builtin_skills:
+          type: array
+          items:
+            type: string
+          description: Names of built-in skills to include in discovery
 
     NotifyConfig:
       type: object

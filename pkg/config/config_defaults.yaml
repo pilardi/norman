@@ -13,12 +13,10 @@ system:
   open_shell:
     address: ""
   skills:
-    discovery_paths:
-      - "builtin://task-management"
-      - "~/.norman/skills/"
-      - "/usr/share/norman/skills/"
+    builtin_skills:
+      - "task-management"
+      - "roger"
     max_active: 3
-    path: "~/.norman/skills/"
   notify:
     bell_enabled: true
     slack_webhook: ""

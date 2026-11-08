@@ -32,6 +32,7 @@ func (s SkillState) Valid() bool {
 type Activator struct {
 	registry  map[string]SkillEntry // name → entry, loaded at startup
 	active    map[string]SkillState // currently active skill names → their state
+	order     []string              // insertion-ordered list of active skill names (FIFO)
 	maxActive int                   // max concurrent active skills
 }
 
@@ -69,19 +70,15 @@ func (a *Activator) Activate(name string, session *env.Session) (string, error) 
 		return "", nil // already active, nothing to inject
 	}
 
-	// If at capacity, deactivate the least-recently-used skill
+	// If at capacity, deactivate the oldest (first inserted) skill
 	activeCount := len(a.active)
 	if activeCount >= a.maxActive && activeCount > 0 {
-		// Find first active key (oldest insertion order via map iteration)
-		for k := range a.active {
-			if a.active[k] == SkillActive {
-				_ = a.Deactivate(k)
-				break
-			}
-		}
+		oldest := a.order[0] // FIFO: first inserted is evicted first
+		_ = a.Deactivate(oldest)
 	}
 
 	a.active[name] = SkillActive
+	a.order = append(a.order, name)
 	return formatToolInjection(entry), nil
 }
 
@@ -184,12 +181,19 @@ func (a *Activator) Deactivate(name string) error {
 		return fmt.Errorf("skill '%s' is not currently active", name)
 	}
 	delete(a.active, name)
+	for i, n := range a.order {
+		if n == name {
+			a.order = append(a.order[:i], a.order[i+1:]...)
+			break
+		}
+	}
 	return nil
 }
 
 // DeactivateAll removes all active skills, reclaiming token budget.
 func (a *Activator) DeactivateAll() {
 	a.active = make(map[string]SkillState)
+	a.order = nil
 }
 
 // Active returns the list of currently active skill names.
