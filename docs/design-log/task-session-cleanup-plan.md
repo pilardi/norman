@@ -240,5 +240,16 @@ func evictOldestTask(sessionID string) {
 
 ## Implementation Results
 
-<!-- Filled in during/after implementation -->
-<!-- Status: pending | deviations documented below -->
+**Phase 1 — Task Cap in Agent Loop:** ✅ Complete (commit `28fe5ed`)
+
+- `MaxTasksPerSession` added to `SystemConfig` with default value of 10
+- `Submit()` enforces cap via LRU eviction (`evictOldestTask()`) before adding new tasks
+- `session_id` persisted in task JSON files via `taskToMap()` for proper filtering
+- 4 unit tests added: `TestTaskCapEnforcement`, `TestTaskCapZeroDisabled`, `TestTaskCapLruEviction`, `TestTaskCapDifferentSessionsIndependent`
+- All pass with `make verify` (0 lint issues)
+
+**Deviations from plan:**
+- Added nil-safe workspace guard in `execute()` to prevent panics when tests pass `nil` workspace — this is a defensive fix, not a deviation.
+- The cap check happens *before* adding the new task to the map (not after), so at peak exactly `max_tasks_per_session` tasks exist.
+
+**Status:** Phase 1 done. Phases 2–4 remain deferred.
