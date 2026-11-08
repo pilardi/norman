@@ -30,21 +30,36 @@ func (t EntryType) Valid() bool {
 	}
 }
 
+// EntryState represents the lifecycle state of a wiki entry.
+type EntryState string
+
+const (
+	EntryActive   EntryState = "active"
+	EntryStale    EntryState = "stale"
+	EntryArchived EntryState = "archived"
+)
+
 // WikiEntry represents a single wiki entry with frontmatter metadata and markdown body.
 type WikiEntry struct {
-	Title     string    `yaml:"title"`
-	Type      EntryType `yaml:"type"`
-	Tags      []string  `yaml:"tags,omitempty"`
-	Pinned    bool      `yaml:"pinned,omitempty"`
-	Workspace string    `yaml:"workspace,omitempty"`
-	Updated   time.Time `yaml:"updated"`
-	CreatedAt time.Time `yaml:"created_at"`
-	Content   string    // markdown body (after frontmatter)
+	Title     string     `yaml:"title"`
+	Type      EntryType  `yaml:"type"`
+	Tags      []string   `yaml:"tags,omitempty"`
+	Pinned    bool       `yaml:"pinned,omitempty"`
+	Workspace string     `yaml:"workspace,omitempty"`
+	State     EntryState `yaml:"state,omitempty"`
+	Updated   time.Time  `yaml:"updated"`
+	CreatedAt time.Time  `yaml:"created_at"`
+	Content   string     // markdown body (after frontmatter)
 }
 
-// IsStale returns true if the entry is a "trend" type that hasn't been updated in >30 days.
+// IsStale checks staleness and transitions state to EntryStale if needed.
+// Returns true if the entry was stale (and is now marked as such).
 func (e *WikiEntry) IsStale() bool {
-	return e.Type == EntryTypeTrend && time.Since(e.Updated) > 30*24*time.Hour
+	if e.Type == EntryTypeTrend && time.Since(e.Updated) > 30*24*time.Hour {
+		e.State = EntryStale
+		return true
+	}
+	return false
 }
 
 // HasTag returns true if the entry has the given tag.
@@ -135,6 +150,7 @@ func (e *WikiEntry) ToMarkdown() string {
 		"type":       string(e.Type),
 		"tags":       e.Tags,
 		"pinned":     e.Pinned,
+		"state":      string(e.State),
 		"updated":    e.Updated.Format(time.RFC3339),
 		"created_at": e.CreatedAt.Format(time.RFC3339),
 	}
