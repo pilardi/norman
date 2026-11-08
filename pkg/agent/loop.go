@@ -1357,24 +1357,16 @@ func (l *Loop) buildMessages(task *Task) ([]llm.Message, int, int) {
 
 	// 3. Session history (conversation turns)
 	if task.SessionId != "" {
-		sessMap, err := l.store.LoadSession(task.SessionId)
+		turns, err := l.store.LoadSessionTurns(task.SessionId)
 		if err == nil {
-			timestamps := sessMap["turns"]
-			turns, ok := timestamps.([]interface{})
-			if ok {
-				for _, t := range turns {
-					turnMap, ok := t.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					role, _ := turnMap["role"].(string)
-					content, _ := turnMap["content"].(string)
-					if role != "" && content != "" {
-						messages = append(messages, llm.Message{
-							Role:    role,
-							Content: content,
-						})
-					}
+			for _, t := range turns {
+				role, _ := t["role"].(string)
+				content, _ := t["content"].(string)
+				if role != "" && content != "" {
+					messages = append(messages, llm.Message{
+						Role:    role,
+						Content: content,
+					})
 				}
 			}
 		}
