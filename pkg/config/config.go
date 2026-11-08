@@ -233,7 +233,7 @@ func DefaultConfigPath() string {
 //
 // Priority order (highest to lowest):
 //  1. NORMAN_* environment variables (read directly from os.Environ)
-//  2. .env files (current dir, then $NORMAN_HOME/.env)
+//  2. .env files (current dir, then $NORMAN_BASE_DIR/.env)
 //  3. config.yaml
 //  4. Embedded defaults
 func LoadDefault() (*Config, error) {
