@@ -252,4 +252,13 @@ func evictOldestTask(sessionID string) {
 - Added nil-safe workspace guard in `execute()` to prevent panics when tests pass `nil` workspace — this is a defensive fix, not a deviation.
 - The cap check happens *before* adding the new task to the map (not after), so at peak exactly `max_tasks_per_session` tasks exist.
 
-**Status:** Phase 1 done. Phases 2–4 remain deferred.
+**Phase 2 — DeleteSession Cleanup:** ✅ Complete (commit `9abebe0`)
+
+- `DeleteSession()` handler extended to remove `.jsonl` turns file on disk
+- Iterates over all stored tasks and calls `store.DeleteTask()` for each task with matching `SessionId`
+- Idempotent: gracefully handles missing turns files (legacy sessions)
+- Correctly scoped: only tasks belonging to the deleted session are removed; other sessions' tasks are preserved
+- 4 unit tests added: `TestDeleteSessionRemovesTurnsFile`, `TestDeleteSessionRemovesAssociatedTasks`, `TestDeleteSessionIdempotentTurnsFile`, `TestDeleteSessionNoTasksForSession`
+- All pass with `make verify` (0 lint issues, race detector clean)
+
+**Status:** Phase 2 done. Phases 3–4 remain deferred.
