@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1012,4 +1014,190 @@ func (f *FakeOpenShellClient) Sessions() map[string]*env.Session {
 		result[id] = &env.Session{}
 	}
 	return result
+}
+
+// --- Task Cap Tests (Phase 1) ---
+
+func TestTaskCapEnforcement(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+
+	cfg := config.DefaultConfig()
+	cfg.System.MaxTasksPerSession = 3 // set cap to 3 for testing
+
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
+
+	sessionID := "test-session-001"
+
+	// Submit 5 tasks — cap is 3, so only 3 should remain in map
+	for i := 0; i < 5; i++ {
+		ctx := context.Background()
+		task, err := loop.Submit(ctx, fmt.Sprintf("Task %d", i+1), "test-workspace", sessionID)
+		if err != nil {
+			t.Fatalf("submit task %d: %v", i+1, err)
+		}
+		_ = task // we track via in-memory map for this test
+
+		// Give the execute goroutine time to complete (it's non-blocking)
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Verify only 3 tasks remain (oldest was evicted)
+	loop.mu.Lock()
+	taskCount := len(loop.tasks)
+	loop.mu.Unlock()
+
+	if taskCount != 3 {
+		t.Errorf("expected 3 tasks in map, got %d", taskCount)
+	}
+
+	// Verify the oldest task file was deleted from disk
+	files, err := os.ReadDir(filepath.Join(store.Base(), "tasks"))
+	if err != nil {
+		t.Fatalf("read tasks dir: %v", err)
+	}
+
+	if len(files) != 3 {
+		t.Errorf("expected 3 task files on disk, got %d", len(files))
+	}
+}
+
+func TestTaskCapZeroDisabled(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+
+	cfg := config.DefaultConfig()
+	cfg.System.MaxTasksPerSession = 0 // zero = disabled (no cap)
+
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
+
+	sessionID := "test-session-002"
+
+	// Submit 5 tasks — with cap=0, all should remain
+	for i := 0; i < 5; i++ {
+		ctx := context.Background()
+		task, err := loop.Submit(ctx, fmt.Sprintf("Task %d", i+1), "test-workspace", sessionID)
+		if err != nil {
+			t.Fatalf("submit task %d: %v", i+1, err)
+		}
+		_ = task
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	loop.mu.Lock()
+	taskCount := len(loop.tasks)
+	loop.mu.Unlock()
+
+	if taskCount != 5 {
+		t.Errorf("expected 5 tasks in map (cap disabled), got %d", taskCount)
+	}
+}
+
+func TestTaskCapLruEviction(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+
+	cfg := config.DefaultConfig()
+	cfg.System.MaxTasksPerSession = 2 // cap of 2
+
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
+
+	sessionID := "test-session-003"
+
+	// Submit task 1 (will be evicted when task 3 arrives)
+	ctx := context.Background()
+	task1, err := loop.Submit(ctx, "First task", "test-workspace", sessionID)
+	if err != nil {
+		t.Fatalf("submit task 1: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// Submit task 2 (should be kept)
+	task2, err := loop.Submit(ctx, "Second task", "test-workspace", sessionID)
+	if err != nil {
+		t.Fatalf("submit task 2: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// Submit task 3 — should evict task 1 (oldest)
+	task3, err := loop.Submit(ctx, "Third task", "test-workspace", sessionID)
+	if err != nil {
+		t.Fatalf("submit task 3: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify task1 file is gone from disk
+	task1Path := filepath.Join(store.Base(), "tasks", task1.ID+".json")
+	if _, err := os.Stat(task1Path); !os.IsNotExist(err) {
+		t.Errorf("expected task1 file to be evicted, still exists at %s", task1Path)
+	}
+
+	// Verify task2 and task3 files exist
+	task2Path := filepath.Join(store.Base(), "tasks", task2.ID+".json")
+	if _, err := os.Stat(task2Path); os.IsNotExist(err) {
+		t.Errorf("expected task2 file to exist")
+	}
+	task3Path := filepath.Join(store.Base(), "tasks", task3.ID+".json")
+	if _, err := os.Stat(task3Path); os.IsNotExist(err) {
+		t.Errorf("expected task3 file to exist")
+	}
+
+	// Verify only 2 tasks in map
+	loop.mu.Lock()
+	taskCount := len(loop.tasks)
+	loop.mu.Unlock()
+	if taskCount != 2 {
+		t.Errorf("expected 2 tasks in map, got %d", taskCount)
+	}
+}
+
+func TestTaskCapDifferentSessionsIndependent(t *testing.T) {
+	store, err := memory.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	fakeWSHub := &FakeWSHub{}
+
+	cfg := config.DefaultConfig()
+	cfg.System.MaxTasksPerSession = 2 // cap of 2 per session
+
+	loop := New(cfg, store, nil, nil, fakeWSHub, nil)
+
+	ctx := context.Background()
+
+	// Session A: submit 3 tasks (should keep 2)
+	for i := 0; i < 3; i++ {
+		_, err := loop.Submit(ctx, fmt.Sprintf("Session A task %d", i+1), "test-workspace", "session-a")
+		if err != nil {
+			t.Fatalf("submit session a task %d: %v", i+1, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Session B: submit 3 tasks (should keep 2)
+	for i := 0; i < 3; i++ {
+		_, err := loop.Submit(ctx, fmt.Sprintf("Session B task %d", i+1), "test-workspace", "session-b")
+		if err != nil {
+			t.Fatalf("submit session b task %d: %v", i+1, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Both sessions should have exactly 2 tasks each (total 4)
+	loop.mu.Lock()
+	totalTasks := len(loop.tasks)
+	loop.mu.Unlock()
+
+	if totalTasks != 4 {
+		t.Errorf("expected 4 tasks total (2 per session), got %d", totalTasks)
+	}
 }

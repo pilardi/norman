@@ -39,6 +39,10 @@ type SystemConfig struct {
 	// MaxActiveSessions is the maximum number of concurrent active sessions per workspace.
 	// Default is 3 if unset.
 	MaxActiveSessions int `yaml:"max_active_sessions,omitempty"`
+
+	// MaxTasksPerSession is the maximum number of tasks persisted per session.
+	// When exceeded, the oldest task is evicted (LRU). Default is 10 if unset.
+	MaxTasksPerSession int `yaml:"max_tasks_per_session,omitempty"`
 }
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.
@@ -80,6 +84,9 @@ func (sc *SystemConfig) Validate() error {
 	}
 	if sc.MaxActiveSessions < 0 {
 		return fmt.Errorf("system.max_active_sessions must be >= 0, got %d", sc.MaxActiveSessions)
+	}
+	if sc.MaxTasksPerSession < 0 {
+		return fmt.Errorf("system.max_tasks_per_session must be >= 0, got %d", sc.MaxTasksPerSession)
 	}
 
 	for i, p := range sc.LlmProviders {

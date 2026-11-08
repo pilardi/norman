@@ -129,14 +129,15 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 
 	if asJSON {
 		output := map[string]interface{}{
-			"server_port":        derefInt(cfg.ServerPort),
-			"host":               strPtrVal(cfg.Host),
-			"default_provider":   strPtrVal(cfg.DefaultProvider),
-			"max_active_skills":  derefInt(cfg.Skills.MaxActive),
-			"bell_enabled":       derefBool(cfg.Notify.BellEnabled),
-			"rate_limit_per_min": derefInt(cfg.Notify.RateLimitPerMin),
-			"openshell_address":  resolvedGateway,
-			"max_turns":          derefInt(cfg.MaxTurns),
+			"server_port":           derefInt(cfg.ServerPort),
+			"host":                  strPtrVal(cfg.Host),
+			"default_provider":      strPtrVal(cfg.DefaultProvider),
+			"max_active_skills":     derefInt(cfg.Skills.MaxActive),
+			"bell_enabled":          derefBool(cfg.Notify.BellEnabled),
+			"rate_limit_per_min":    derefInt(cfg.Notify.RateLimitPerMin),
+			"openshell_address":     resolvedGateway,
+			"max_turns":             derefInt(cfg.MaxTurns),
+			"max_tasks_per_session": derefInt(cfg.MaxTasksPerSession),
 		}
 		if len(llmProviders) > 0 {
 			providers := make([]map[string]interface{}, len(llmProviders))
@@ -171,7 +172,13 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 		fmt.Printf("  bell_enabled:       %v\n", derefBool(cfg.Notify.BellEnabled))
 		fmt.Printf("  rate_limit_per_min: %d\n", derefInt(cfg.Notify.RateLimitPerMin))
 	}
-	fmt.Printf("  max_turns:          %d\n", derefInt(cfg.MaxTurns))
+	fmt.Printf("  max_turns:            %d\n", derefInt(cfg.MaxTurns))
+	if cfg.MaxActiveSessions != nil {
+		fmt.Printf("  max_active_sessions:  %d\n", *cfg.MaxActiveSessions)
+	}
+	if cfg.MaxTasksPerSession != nil && *cfg.MaxTasksPerSession > 0 {
+		fmt.Printf("  max_tasks_per_session: %d\n", *cfg.MaxTasksPerSession)
+	}
 	if resolvedGateway != "" {
 		fmt.Printf("  openshell_address:  %s\n", resolvedGateway)
 	} else if cfg.Openshell != nil && cfg.Openshell.Address != nil {
@@ -259,6 +266,18 @@ func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, st
 		if n, ok := v.(float64); ok {
 			val := int(n)
 			cfg.MaxTurns = &val
+		}
+	}
+	if v, ok := result.System["MaxActiveSessions"]; ok && v != nil {
+		if n, ok := v.(float64); ok {
+			val := int(n)
+			cfg.MaxActiveSessions = &val
+		}
+	}
+	if v, ok := result.System["MaxTasksPerSession"]; ok && v != nil {
+		if n, ok := v.(float64); ok {
+			val := int(n)
+			cfg.MaxTasksPerSession = &val
 		}
 	}
 	if v, ok := result.System["Temperature"]; ok && v != nil {

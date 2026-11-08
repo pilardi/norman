@@ -90,6 +90,37 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 	activePath := filepath.Join(dir, taskID+".json")
 	_ = os.Remove(activePath)
 
+	// Remove the session's .jsonl turns file.
+	turnsPath := filepath.Join(s.base, "turns", taskID+".jsonl")
+	if err := os.Remove(turnsPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("warn: failed to remove turns file for session %s: %v", taskID, err)
+	}
+
+	// Delete all task files associated with this session (inline to avoid deadlock).
+	tasksDir := filepath.Join(s.base, "tasks")
+	if entries, err := os.ReadDir(tasksDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+			if err != nil {
+				continue // skip unreadable files
+			}
+			var task map[string]interface{}
+			if err := json.Unmarshal(data, &task); err != nil {
+				continue // skip corrupt files
+			}
+			sid, _ := task["session_id"].(string)
+			taskIDInner, _ := task["id"].(string)
+			if sid == taskID && taskIDInner != "" {
+				if delErr := os.Remove(filepath.Join(tasksDir, entry.Name())); delErr != nil {
+					log.Printf("warn: failed to delete task %s for session %s: %v", taskIDInner, taskID, delErr)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -174,6 +205,76 @@ func (s *Store) ListTasks() ([]map[string]interface{}, error) {
 	}
 
 	return tasks, nil
+}
+
+// DeleteOldestTaskBySession removes the oldest task (by CreatedAt) for a given session
+// from disk. Returns an error if no tasks exist for the session or if deletion fails.
+func (s *Store) DeleteOldestTaskBySession(sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "tasks")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("no tasks directory: %w", err)
+		}
+		return fmt.Errorf("read tasks dir: %w", err)
+	}
+
+	var oldestID string
+	var oldestTime time.Time
+	found := false
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue // skip unreadable files
+		}
+
+		var task map[string]interface{}
+		if err := json.Unmarshal(data, &task); err != nil {
+			continue // skip corrupt files
+		}
+
+		sid, _ := task["session_id"].(string)
+		if sid != sessionID {
+			continue
+		}
+
+		createdAtStr, _ := task["created_at"].(string)
+		createdAt, err := time.Parse(time.RFC3339Nano, createdAtStr)
+		if err != nil {
+			continue
+		}
+
+		taskID, _ := task["id"].(string)
+		// Use ID as tiebreaker for equal timestamps (deterministic eviction order).
+		if !found || createdAt.Before(oldestTime) || (createdAt.Equal(oldestTime) && taskID < oldestID) {
+			oldestID = taskID
+			oldestTime = createdAt
+			found = true
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("no tasks found for session %s", sessionID)
+	}
+
+	path := filepath.Join(dir, oldestID+".json")
+	log.Printf("[store] evicting task %s (oldest at %v)", oldestID, oldestTime)
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil // already gone
+		}
+		return fmt.Errorf("delete task file: %w", err)
+	}
+
+	return nil
 }
 
 // DeleteTask removes a task's persisted state.

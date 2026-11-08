@@ -9,6 +9,7 @@ system:
   base_dir: "~/.norman/workspaces"
   max_turns: 8
   max_active_sessions: 3
+  max_tasks_per_session: 10
   open_shell:
     address: ""
   skills:

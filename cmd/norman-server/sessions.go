@@ -297,6 +297,26 @@ func (s *server) DeleteSession(c echo.Context, id string) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Remove the session's .jsonl turns file.
+	turnsPath := filepath.Join(s.store.Base(), "turns", id+".jsonl")
+	if err := os.Remove(turnsPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("warn: failed to remove turns file for session %s: %v", id, err)
+	}
+
+	// Delete all task files associated with this session.
+	tasks, err := s.store.ListTasks()
+	if err == nil {
+		for _, taskMap := range tasks {
+			sid, _ := taskMap["session_id"].(string)
+			taskID, _ := taskMap["id"].(string)
+			if sid == id && taskID != "" {
+				if delErr := s.store.DeleteTask(taskID); delErr != nil {
+					log.Printf("warn: failed to delete task %s for session %s: %v", taskID, id, delErr)
+				}
+			}
+		}
+	}
+
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
 		Message: strPtr("Session " + id[:8] + " closed"),
