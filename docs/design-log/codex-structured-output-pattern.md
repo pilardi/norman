@@ -166,22 +166,15 @@ TaskCompletion.rich_output.render_hint
   └── "file_ref" → resolve `artifact_url` to workspace file path
 ```
 
-### API Endpoint Additions (Optional, Phase 2)
+### API Endpoint Additions (Optional, Phase 3)
 
-```yaml
-/api/tasks/{id}/events:
-  get:
-    summary: Get task execution events as JSONL stream
-    responses:
-      "200":
-        description: Newline-delimited JSON event stream
-        content:
-          text/event-stream:
-            schema:
-              type: string
-```
+> **⚠️ Questioned in review:** We already have `/ws` (WebSocket) and `/api/tasks/{id}/log` (plain-text tail). Why add another events endpoint?
 
-This mirrors Codex's `--json` flag but serves the same events over HTTP for real-time monitoring clients.
+**Answer:** The existing WebSocket carries *coarse notifications* (`task_progress`, `task_complete`, `notification`) — not granular execution events. The `/log` endpoint is a file tail of opaque text. Neither provides the structured event stream (`item.started` → `item.completed` for each tool call/file change) that Codex's `--json` produces.
+
+However, if the WebSocket is extended to carry these granular events (e.g., via a `?scope=task` subscription parameter), a separate REST endpoint may be unnecessary. A REST `/api/tasks/{id}/events` would only be needed for **polling clients** that don't maintain a persistent WebSocket connection.
+
+**Decision:** Keep as optional Phase 3. If the WebSocket is enhanced to carry task-level granular events, this endpoint becomes redundant for push-based clients but still useful for pull-based polling scenarios.
 
 ### Implementation Plan
 
