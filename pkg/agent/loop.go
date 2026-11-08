@@ -452,25 +452,20 @@ func (l *Loop) evictOldestTask(sessionID string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Find the oldest task belonging to this session (by CreatedAt).
-	var oldestID string
-	var oldestTime time.Time
-	found := false
+	// Delegate disk deletion to the store; remove from in-memory map after.
+	if err := l.store.DeleteOldestTaskBySession(sessionID); err != nil {
+		return err
+	}
 
+	// Remove matching task from in-memory state (agent owns this cache).
 	for id, task := range l.tasks {
-		if task.SessionId == sessionID && (!found || task.CreatedAt.Before(oldestTime)) {
-			oldestID = id
-			oldestTime = task.CreatedAt
-			found = true
+		if task.SessionId == sessionID {
+			delete(l.tasks, id)
+			break
 		}
 	}
 
-	if !found {
-		return nil // no tasks for this session — nothing to evict
-	}
-
-	delete(l.tasks, oldestID)
-	return l.store.DeleteTask(oldestID)
+	return nil
 }
 
 // DeleteTask permanently removes a task from memory and persists the deletion.
@@ -1649,7 +1644,7 @@ func taskToMap(t *Task) map[string]interface{} {
 		"output":      string(t.Output),
 		"error":       t.Error,
 		"retry_count": t.RetryCount,
-		"created_at":  t.CreatedAt.Format(time.RFC3339),
+		"created_at":  t.CreatedAt.Format(time.RFC3339Nano),
 	}
 	if t.Status == protocol.TaskStatusCompleted {
 		m["completed_at"] = time.Now().Format(time.RFC3339)
