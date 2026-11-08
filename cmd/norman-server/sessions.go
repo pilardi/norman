@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,49 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/version"
 )
+
+// resolveSessionID resolves a session name or short UUID prefix to its full ID.
+// Matches by full name match or first-8-char UUID prefix; also checks archived sessions.
+func (s *server) resolveSessionID(input string) (string, error) {
+	// Check active sessions
+	sessions := s.store.ListSessions()
+	for _, sess := range sessions {
+		name, _ := sess["name"].(string)
+		idStr, _ := sess["id"].(string)
+		if name == input || strings.HasPrefix(idStr[:8], input[:8]) {
+			return idStr, nil
+		}
+	}
+
+	// Also check archived sessions (single objects or arrays)
+	dir := filepath.Join(s.store.Base(), "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("session %s not found", input)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".archive.json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var items []map[string]interface{}
+		if err := json.Unmarshal(data, &items); err != nil {
+			continue
+		}
+		for _, sess := range items {
+			name, _ := sess["name"].(string)
+			idStr, _ := sess["id"].(string)
+			if name == input || strings.HasPrefix(idStr[:8], input[:8]) {
+				return idStr, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("session %s not found", input)
+}
 
 // ListSessions returns all sessions.
 func (s *server) ListSessions(c echo.Context) error {
@@ -166,6 +210,22 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Persist conversation turns to disk (user + assistant).
+	if err := s.store.PersistSessionTurn(id, map[string]interface{}{
+		"role":    "user",
+		"content": req.Message,
+	}); err != nil {
+		log.Printf("warn: failed to persist user turn for session %s: %v", id, err)
+	}
+	if resp.Response != "" {
+		if err := s.store.PersistSessionTurn(id, map[string]interface{}{
+			"role":    "assistant",
+			"content": resp.Response,
+		}); err != nil {
+			log.Printf("warn: failed to persist assistant turn for session %s: %v", id, err)
+		}
+	}
+
 	// Update last activity timestamp for the session's workspace
 	s.updateWorkspaceActivity(id)
 
@@ -295,22 +355,22 @@ func (s *server) checkWorkspaceIdle(sessionID string) {
 	}
 }
 
-// SessionHistory returns the last N conversation turns for a session.
 func (s *server) SessionHistory(c echo.Context, id string, params protocol.SessionHistoryParams) error {
 	limit := 10 // default
 	if q := c.QueryParam("limit"); q != "" {
 		_, _ = fmt.Sscanf(q, "%d", &limit)
 	}
 
-	sessMap, err := s.store.LoadSession(id)
+	// Resolve alias (short UUID prefix or full name) to actual session ID
+	resolvedID, err := s.resolveSessionID(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
-	timestamps := sessMap["turns"]
-	turns, ok := timestamps.([]interface{})
-	if !ok {
-		turns = []interface{}{}
+	// Load turns from JSONL file on disk
+	turns, err := s.store.LoadSessionTurns(resolvedID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
 	start := 0

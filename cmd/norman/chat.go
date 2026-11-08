@@ -15,6 +15,8 @@ import (
 
 // runWebSocketLoop connects to the WebSocket endpoint and displays incoming events.
 // It runs concurrently with the REPL input loop.
+const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)"
+
 func runWebSocketLoop(sessionID string) {
 	client, err := getProtocolClient()
 	if err != nil {
@@ -127,14 +129,14 @@ func handleChat(args []string) {
 	}
 
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, sessionHelpText)
+		fmt.Fprintln(os.Stderr, chatHelpText)
 		os.Exit(1)
 	}
 
 	// Parse args: first is workspace name, second optional is session ID.
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-h" || args[i] == "--help" {
-			fmt.Fprintln(os.Stderr, sessionHelpText)
+			fmt.Fprintln(os.Stderr, chatHelpText)
 			return
 		} else if workspaceName == "" {
 			workspaceName = args[i]
@@ -152,14 +154,14 @@ func handleChat(args []string) {
 			}
 		} else {
 			fmt.Fprintf(os.Stderr, "Too many arguments. Usage: norman sessions open <workspace_name> [<session_id>]\n")
-			fmt.Fprintln(os.Stderr, sessionHelpText)
+			fmt.Fprintln(os.Stderr, chatHelpText)
 			os.Exit(1)
 		}
 	}
 
 	if workspaceName == "" {
 		fmt.Fprintln(os.Stderr, "Error: workspace name is required")
-		fmt.Fprintln(os.Stderr, sessionHelpText)
+		fmt.Fprintln(os.Stderr, chatHelpText)
 		os.Exit(1)
 	}
 
@@ -263,7 +265,7 @@ func handleChat(args []string) {
 		if isSlash {
 			switch cmd {
 			case "help":
-				fmt.Fprintln(os.Stderr, sessionHelpText)
+				fmt.Fprintln(os.Stderr, chatHelpText)
 			case "list", "tasks":
 				listEmergentTasks(sessionID)
 			case "close":
@@ -402,73 +404,6 @@ func listEmergentTasks(sessionID string) {
 	for _, t := range *tasks {
 		fmt.Printf("  Task %s\n", t.Id.String())
 	}
-}
-
-// showHistory displays the last N messages of a session.
-func showHistory(sessionID string, args []string) {
-	n := 10 // default
-	if len(args) > 0 {
-		if num, err := fmt.Sscanf(args[0], "%d", &n); err != nil || num == 0 {
-			fmt.Fprintf(os.Stderr, "Invalid number: %s\n", args[0])
-			return
-		}
-	}
-
-	// Resolve session name to actual UUID if needed.
-	actualID, found, err := resolveSessionID(sessionID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error resolving session '%s': %v\n", sessionID, err)
-		return
-	}
-	if !found {
-		fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", sessionID)
-		return
-	}
-
-	client, err := getProtocolClient()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
-		return
-	}
-
-	params := &protocol.SessionHistoryParams{
-		Limit: intPtr(n),
-	}
-
-	rsp, err := client.SessionHistory(context.Background(), actualID, params)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching history: %v\n", err)
-		return
-	}
-
-	parsed, err := protocol.ParseSessionHistoryResponse(rsp)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing history response: %v\n", err)
-		return
-	}
-
-	turns := parsed.GetJSON200()
-	fmt.Printf("\n--- Last %d messages ---\n", n)
-	for i, t := range *turns {
-		role := ""
-		if t.Role != nil {
-			role = string(*t.Role)
-		}
-		content := strVal(t.Content)
-		ts := ""
-		if t.Timestamp != nil {
-			ts = t.Timestamp.Format(time.RFC3339)
-		}
-		if ts != "" {
-			fmt.Printf("[%s] %s: %s\n", ts, role, content)
-		} else {
-			fmt.Printf("%s: %s\n", role, content)
-		}
-		if i < len(*turns)-1 {
-			fmt.Println("---")
-		}
-	}
-	fmt.Printf("---\n")
 }
 
 // resolveSessionID resolves a session name/short ID to the actual UUID.

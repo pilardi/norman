@@ -2,14 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/norman/norman/pkg/protocol"
-	"github.com/urfave/cli/v3"
 )
 
-// handleSessions manages sessions via CLI.
 // shortID returns a truncated UUID representation (first 8 chars).
 func shortID(id string) string {
 	if len(id) > 8 {
@@ -17,43 +17,6 @@ func shortID(id string) string {
 	}
 	return id
 }
-
-func handleSessions(ctx context.Context, cmd *cli.Command) error {
-	if cmd.Args().Len() == 0 {
-		fmt.Println(sessionHelpText)
-		return nil
-	}
-
-	subcommand := cmd.Args().First()
-	subargs := cmd.Args().Tail()
-
-	switch subcommand {
-	case "list":
-		return handleSessionList(subargs)
-	case "archive":
-		if len(subargs) < 1 {
-			return fmt.Errorf("usage: norman sessions archive <session_id>")
-		}
-		if err := handleSessionArchive(subargs[0]); err != nil {
-			return fmt.Errorf("archive failed: %v", err)
-		}
-		return nil
-	case "open", "chat":
-		handleChat(subargs)
-		return nil
-	default:
-		return fmt.Errorf("unknown sessions subcommand: %s\n\n%s", subcommand, sessionHelpText)
-	}
-}
-
-const sessionHelpText = `sessions — Manage chat sessions
-
-Usage: norman sessions <subcommand> [args...]
-
-Subcommands:
-  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-  list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript`
 
 // handleSessionList lists active sessions using the generated protocol client.
 func handleSessionList(args []string) error {
@@ -161,4 +124,85 @@ func listSessions() {
 		fmt.Printf("  %-20s status=%s\n", name, status)
 	}
 	fmt.Println("---")
+}
+
+// showHistory displays the last N messages of a session.
+func showHistory(sessionID string, args []string) {
+	n := 10 // default
+	jsonFlag := false
+
+	// Parse args: first arg is limit (N), remaining can include --json flag.
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonFlag = true
+			continue
+		}
+		if num, err := fmt.Sscanf(arg, "%d", &n); err != nil || num == 0 {
+			fmt.Fprintf(os.Stderr, "Invalid number: %s\n", arg)
+			return
+		}
+	}
+
+	// Resolve session name to actual UUID if needed.
+	actualID, found, err := resolveSessionID(sessionID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error resolving session '%s': %v\n", sessionID, err)
+		return
+	}
+	if !found {
+		fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", sessionID)
+		return
+	}
+
+	client, err := getProtocolClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
+		return
+	}
+
+	params := &protocol.SessionHistoryParams{
+		Limit: intPtr(n),
+	}
+
+	rsp, err := client.SessionHistory(context.Background(), actualID, params)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching history: %v\n", err)
+		return
+	}
+
+	parsed, err := protocol.ParseSessionHistoryResponse(rsp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing history response: %v\n", err)
+		return
+	}
+
+	turns := parsed.GetJSON200()
+
+	if jsonFlag {
+		data, _ := json.MarshalIndent(*turns, "", "  ")
+		fmt.Printf("%s\n", string(data))
+		return
+	}
+
+	fmt.Printf("\n--- Last %d messages ---\n", n)
+	for i, t := range *turns {
+		role := ""
+		if t.Role != nil {
+			role = string(*t.Role)
+		}
+		content := strVal(t.Content)
+		ts := ""
+		if t.Timestamp != nil {
+			ts = t.Timestamp.Format(time.RFC3339)
+		}
+		if ts != "" {
+			fmt.Printf("[%s] %s: %s\n", ts, role, content)
+		} else {
+			fmt.Printf("%s: %s\n", role, content)
+		}
+		if i < len(*turns)-1 {
+			fmt.Println("---")
+		}
+	}
+	fmt.Printf("---\n")
 }

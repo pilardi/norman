@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -320,4 +321,196 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestStorePersistSessionTurn(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	// Persist a user turn
+	err = store.PersistSessionTurn("sess-001", map[string]interface{}{
+		"role":    "user",
+		"content": "Hello, how are you?",
+	})
+	if err != nil {
+		t.Fatalf("persist session turn: %v", err)
+	}
+
+	// Persist an assistant turn
+	err = store.PersistSessionTurn("sess-001", map[string]interface{}{
+		"role":    "assistant",
+		"content": "I'm doing well, thanks!",
+	})
+	if err != nil {
+		t.Fatalf("persist session turn: %v", err)
+	}
+
+	// Verify the turns file exists and is valid JSONL
+	path := filepath.Join(base, "turns", "sess-001.jsonl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read session turns file: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+
+	var entries []map[string]interface{}
+	for _, line := range lines {
+		var entry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("unmarshal turn: %v", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	if entries[0]["role"] != "user" {
+		t.Errorf("first entry role expected 'user', got '%s'", entries[0]["role"])
+	}
+	if entries[1]["role"] != "assistant" {
+		t.Errorf("second entry role expected 'assistant', got '%s'", entries[1]["role"])
+	}
+}
+
+func TestStoreLoadSessionTurns(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	// Persist multiple turns
+	turns := []map[string]interface{}{
+		{"role": "user", "content": "First question"},
+		{"role": "assistant", "content": "Answer 1"},
+		{"role": "user", "content": "Follow-up"},
+	}
+	for _, turn := range turns {
+		if err := store.PersistSessionTurn("sess-002", turn); err != nil {
+			t.Fatalf("persist turn: %v", err)
+		}
+	}
+
+	// Load them back
+	loaded, err := store.LoadSessionTurns("sess-002")
+	if err != nil {
+		t.Fatalf("load session turns: %v", err)
+	}
+
+	if len(loaded) != 3 {
+		t.Fatalf("expected 3 turns, got %d", len(loaded))
+	}
+
+	if loaded[0]["role"] != "user" || loaded[2]["role"] != "user" {
+		t.Errorf("unexpected role sequence")
+	}
+}
+
+func TestStoreLoadSessionTurnsEmpty(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	// Load turns for a session that has none
+	result, err := store.LoadSessionTurns("sess-nonexistent")
+	if err != nil {
+		t.Fatalf("load nonexistent session turns: %v", err)
+	}
+	if result != nil {
+		t.Errorf("expected nil for empty session, got %d entries", len(result))
+	}
+}
+
+func TestStorePersistSessionTurnMultipleSessions(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	// Persist turns for two different sessions independently
+	err = store.PersistSessionTurn("sess-a", map[string]interface{}{"role": "user", "content": "A msg"})
+	if err != nil {
+		t.Fatalf("persist sess-a turn: %v", err)
+	}
+	err = store.PersistSessionTurn("sess-b", map[string]interface{}{"role": "assistant", "content": "B reply"})
+	if err != nil {
+		t.Fatalf("persist sess-b turn: %v", err)
+	}
+
+	// Verify each session has its own file
+	dataA, _ := os.ReadFile(filepath.Join(base, "turns", "sess-a.jsonl"))
+	dataB, _ := os.ReadFile(filepath.Join(base, "turns", "sess-b.jsonl"))
+
+	if !strings.Contains(string(dataA), "A msg") {
+		t.Errorf("sess-a should contain 'A msg'")
+	}
+	if !strings.Contains(string(dataB), "B reply") {
+		t.Errorf("sess-b should contain 'B reply'")
+	}
+}
+
+func TestStorePersistSessionTurnWithID(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	// Persist a turn with an explicit ID field
+	err = store.PersistSessionTurn("sess-003", map[string]interface{}{
+		"id":      "turn-abc123",
+		"role":    "user",
+		"content": "Message with ID",
+	})
+	if err != nil {
+		t.Fatalf("persist session turn: %v", err)
+	}
+
+	loaded, err := store.LoadSessionTurns("sess-003")
+	if err != nil {
+		t.Fatalf("load session turns: %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("expected 1 turn, got %d", len(loaded))
+	}
+	if loaded[0]["id"] != "turn-abc123" {
+		t.Errorf("expected id 'turn-abc123', got '%v'", loaded[0]["id"])
+	}
+}
+
+func TestStorePersistSessionTurnTimestamp(t *testing.T) {
+	base := t.TempDir()
+	store, err := NewStore(base)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+
+	err = store.PersistSessionTurn("sess-ts", map[string]interface{}{
+		"role":    "user",
+		"content": "Timestamp test",
+	})
+	if err != nil {
+		t.Fatalf("persist session turn: %v", err)
+	}
+
+	loaded, err := store.LoadSessionTurns("sess-ts")
+	if err != nil {
+		t.Fatalf("load session turns: %v", err)
+	}
+
+	ts, ok := loaded[0]["timestamp"].(string)
+	if !ok {
+		t.Fatal("expected timestamp field as string")
+	}
+	if ts == "" {
+		t.Error("timestamp should not be empty")
+	}
 }

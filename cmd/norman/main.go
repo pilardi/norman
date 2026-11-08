@@ -94,6 +94,7 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 					return handleConfig(ctx, cmd)
 				},
 			},
+
 			// --- version subcommand ---
 			{
 				Name:        "version",
@@ -110,29 +111,6 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 				Name:  "providers",
 				Usage: "Manage LLM providers (add, list, get, update, delete)",
 				Description: `provider — Manage LLM providers (add, list, get, update, delete)
-
-Commands:
-  add [name] [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
-      Add a new LLM provider. If no flags are provided, interactive prompts will be used (auto-fetches available models).
-      Type must be one of: openai, anthropic, ollama, gemini, llamacpp.
-
-  list (ls)
-      List all configured providers with their settings.
-
-  get <name>
-      Show full details for a specific provider by name.
-
-  update <name> [--type <type>] [--endpoint <url>] [--model <model>] [--temp <float>] [--max-tokens <int>] [--api-key <key>] [--extra key=val]
-      Update an existing provider's fields (partial update).
-
-  delete <name> (del)
-      Remove a provider. Fails if it's the last remaining one.
-
-  set-default <name> (sd)
-      Set the default provider for sessions and CLI operations.
-
-  list-models <name> (lm)
-      List available models for a configured provider by querying its API endpoint.
 
 Examples:
   norman providers add local --type ollama --endpoint http://localhost:11434 --model llama3
@@ -287,13 +265,10 @@ Examples:
 			{
 				Name:  "sessions",
 				Usage: "Manage chat sessions",
-				Description: `sessions — Manage chat sessions
-
-Commands:
-  open <workspace_name> [<session_id>]   Open an interactive REPL chat session
-  list                          List active chat sessions
-  archive <session_id>          Archive a session's transcript via POST /api/sessions/{id}`,
-				Action: handleSessions,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
+					return nil
+				},
 				Commands: []*cli.Command{
 					{
 						Name:    "list",
@@ -349,20 +324,67 @@ Examples:
 							return nil
 						},
 					},
+					{
+						Name:  "history",
+						Usage: "Show conversation history for a session",
+						Description: `sessions history — Show the last N messages of a session
+
+Usage: norman sessions history <session_id_or_alias> [N] [--json]
+
+Options:
+  --json    Output as machine-readable JSON instead of human-readable format
+
+Examples:
+  norman sessions history ab953ff5          # Last 10 messages (default)
+  norman sessions history ab953ff5 20      # Last 20 messages
+  norman sessions history my-session --json  # Raw JSON output`,
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "json",
+								Usage: "Output as machine-readable JSON instead of human-readable format",
+							},
+						},
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							args := cmd.Args().Slice()
+							if len(args) == 0 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman sessions history <session_id_or_alias> [N] [--json]\n")
+								return fmt.Errorf("usage: norman sessions history <session_id_or_alias> [N] [--json]")
+							}
+
+							var sessionID string
+							n := 10
+							for _, arg := range args {
+								if sessionID == "" && !strings.HasPrefix(arg, "-") {
+									sessionID = arg
+								} else if num, _ := fmt.Sscanf(arg, "%d", &n); num > 0 {
+									n = num
+								}
+							}
+
+							if sessionID == "" {
+								fmt.Fprintf(os.Stderr, "Error: session ID or alias is required\n")
+								return fmt.Errorf("usage: norman sessions history <session_id_or_alias> [N] [--json]")
+							}
+
+							var extraArgs []string
+							extraArgs = append(extraArgs, fmt.Sprintf("%d", n))
+							if cmd.Bool("json") {
+								extraArgs = append(extraArgs, "--json")
+							}
+							showHistory(sessionID, extraArgs)
+							return nil
+						},
+					},
 				},
 			},
 			// --- skills subcommand ---
 			{
 				Name:  "skills",
 				Usage: "Manage installed skills",
-				Description: `skills — Manage installed skills
-
-Commands:
-  list       Show installed skills with provenance
-  install <path|repo>  Install a skill from a local path or git repo URL
-  remote <git-url>     Install a skill from a git repository (alias for install)
-  remove <name>   Remove an installed skill by name`,
-				Action: handleSkills,
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					cli.HelpPrinter(os.Stdout, cli.SubcommandHelpTemplate, cmd)
+					return nil
+				},
 				Commands: []*cli.Command{
 					{
 						Name:    "list",

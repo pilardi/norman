@@ -737,6 +737,92 @@ func (s *Store) DeleteTurns(taskID string) error {
 	return nil
 }
 
+// PersistSessionTurn appends a single conversation turn to a session's turns file.
+// This enables incremental persistence so a crashed process can resume from the last turn.
+func (s *Store) PersistSessionTurn(sessionID string, turn map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.base, "turns")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create turns dir: %w", err)
+	}
+
+	path := filepath.Join(dir, sessionID+".jsonl")
+
+	// Append JSON line (newline-delimited JSON for incremental writes)
+	entry := map[string]interface{}{
+		"role":      turn["role"],
+		"content":   turn["content"],
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+	if id, ok := turn["id"].(string); ok {
+		entry["id"] = id
+	}
+
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal session turn entry: %w", err)
+	}
+
+	// Append directly to the path file (O_APPEND ensures correct positioning)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open session turns file: %w", err)
+	}
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write session turn entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close session turns file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadSessionTurns reads all persisted turns for a session from its JSONL file.
+func (s *Store) LoadSessionTurns(sessionID string) ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Try full UUID first, then 8-char prefix fallback (for legacy files)
+	data, err := os.ReadFile(filepath.Join(s.base, "turns", sessionID+".jsonl"))
+	if err == nil {
+		// Full UUID matched
+	} else if len(sessionID) >= 8 {
+		prefix := sessionID[:8]
+		data, err = os.ReadFile(filepath.Join(s.base, "turns", prefix+".jsonl"))
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil // no turns persisted yet
+			}
+			return nil, fmt.Errorf("read session turns file: %w", err)
+		}
+	} else {
+		if os.IsNotExist(err) {
+			return nil, nil // no turns persisted yet
+		}
+		return nil, fmt.Errorf("read session turns file: %w", err)
+	}
+
+	var entries []map[string]interface{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var entry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("parse session turn entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
 // PersistToolCallResult appends a tool call result (name, arguments, output) to the task's results file.
 // This preserves raw tool call data for replay and debugging alongside text responses.
 func (s *Store) PersistToolCallResult(taskID string, name string, args string, output string, exitCode int) error {
