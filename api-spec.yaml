@@ -1677,6 +1677,10 @@ components:
           type: integer
           minimum: 0
           description: Maximum number of concurrent active sessions per workspace (0 = unlimited)
+        max_tasks_per_session:
+          type: integer
+          minimum: 0
+          description: Maximum number of tasks persisted per session before LRU eviction (0 = unlimited)
         openshell:
           $ref: "#/components/schemas/OpenShellConfig"
 
