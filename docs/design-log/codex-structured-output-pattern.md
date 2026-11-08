@@ -17,7 +17,7 @@ Codex CLI's `--output-schema` + `--json` flags provide a proven two-tier output 
 
 Norman's current `Task.output_path` is a single opaque file with no type discrimination. The proposal adds:
 1. A `rich_output` field to `TaskCompletion` (and optionally `Task`) carrying structured metadata: `content_type`, `mime_type`, `render_hint`, and an optional `artifact_url`.
-2. An optional `/api/tasks/{id}/events` endpoint returning a JSONL stream mirroring Codex's event lifecycle (`thread.started` → `turn.started` → `item.*` → `turn.completed`).
+2. Enhance existing `/api/tasks/{id}/log` with a `?type=` query parameter (`raw` | `events`) — no new endpoint surface area, just one extra code path in the handler.
 3. A `render_hint` enum (`text`, `markdown`, `html`, `json`, `pdf`, `chart`, `diagram`, `file_ref`) guiding client-side rendering without requiring the server to know every possible output format.
 
 No single industry standard protocol exists yet. Codex is the closest working reference for an agent-native structured output model.
@@ -166,15 +166,44 @@ TaskCompletion.rich_output.render_hint
   └── "file_ref" → resolve `artifact_url` to workspace file path
 ```
 
-### API Endpoint Additions (Optional, Phase 3)
+### API Enhancement (replaces standalone events endpoint)
 
-> **⚠️ Questioned in review:** We already have `/ws` (WebSocket) and `/api/tasks/{id}/log` (plain-text tail). Why add another events endpoint?
+Instead of adding a new `/api/tasks/{id}/events` REST endpoint, enhance the existing `/api/tasks/{id}/log` with a `?type=` query parameter:
 
-**Answer:** The existing WebSocket carries *coarse notifications* (`task_progress`, `task_complete`, `notification`) — not granular execution events. The `/log` endpoint is a file tail of opaque text. Neither provides the structured event stream (`item.started` → `item.completed` for each tool call/file change) that Codex's `--json` produces.
+```yaml
+/api/tasks/{id}/log:
+  get:
+    parameters:
+      - name: lines
+        in: query
+        schema:
+          type: integer
+          default: 50
+      - name: type
+        in: query
+        description: Output format selector — "raw" (default, plain text tail) or "events" (structured JSONL event stream mirroring Codex's --json lifecycle)
+        schema:
+          type: string
+          enum: [raw, events]
+    responses:
+      "200":
+        description: Task log output in requested format
+        content:
+          text/plain:
+            schema:
+              type: string
+          application/json:
+            schema:
+              type: string  # newline-delimited JSONL
+```
 
-However, if the WebSocket is extended to carry these granular events (e.g., via a `?scope=task` subscription parameter), a separate REST endpoint may be unnecessary. A REST `/api/tasks/{id}/events` would only be needed for **polling clients** that don't maintain a persistent WebSocket connection.
+**Why this is better than a new endpoint:**
+- No new surface area to maintain; one endpoint, two modes.
+- Clients that already call `/log` continue working unchanged (default `raw`).
+- Smart clients can opt into structured events via `?type=events`.
+- No WebSocket subscription needed for polling-based access.
 
-**Decision:** Keep as optional Phase 3. If the WebSocket is enhanced to carry task-level granular events, this endpoint becomes redundant for push-based clients but still useful for pull-based polling scenarios.
+**Trade-off:** The response content-type switches based on `type` — clients must check the header or query param to know how to parse the body. This is a minor UX cost compared to maintaining a second endpoint with its own routing, auth, and test coverage.
 
 ### Implementation Plan
 
@@ -188,9 +217,10 @@ However, if the WebSocket is extended to carry these granular events (e.g., via 
 - In `pkg/agent/loop.go`, instead of accumulating raw text into `task.Output []byte`, track structured metadata: content type, render hint, and optional inline JSON data.
 - On task completion, populate `TaskCompletion.rich_output` from the accumulated metadata.
 
-**Phase 3 — Event Stream Endpoint (optional)**
-- Add `/api/tasks/{id}/events` returning newline-delimited JSON events mirroring the internal agent loop state transitions.
-- WebSocket subscribers can subscribe to this stream for real-time monitoring.
+**Phase 3 — Enhance `/api/tasks/{id}/log` with `?type=` filter (optional)**
+- Add `type` query parameter (`raw` | `events`) to existing log endpoint.
+- When `type=events`, return newline-delimited JSONL mirroring Codex's event lifecycle instead of plain text tail.
+- No new endpoint surface area; just one extra code path in the handler.
 
 ### Examples
 
