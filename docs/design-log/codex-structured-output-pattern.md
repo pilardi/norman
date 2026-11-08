@@ -205,7 +205,33 @@ Instead of adding a new `/api/tasks/{id}/events` REST endpoint, enhance the exis
 
 **Trade-off:** The response content-type switches based on `type` — clients must check the header or query param to know how to parse the body. This is a minor UX cost compared to maintaining a second endpoint with its own routing, auth, and test coverage.
 
-### Implementation Plan
+### WebSocket Enhancement (companion to REST)
+
+The existing `/ws?session_id=...` carries coarse notifications (`task_progress`, `task_complete`, `notification`). Enhance it with a `?scope=` parameter:
+
+```yaml
+/ws:
+  get:
+    parameters:
+      - name: session_id
+        in: query
+        required: true
+      - name: scope
+        in: query
+        description: Event granularity — "session" (default, coarse notifications) or "events" (granular task-level events)
+        schema:
+          type: string
+          enum: [session, events]
+```
+
+| Scope | Events emitted |
+|-------|---------------|
+| `session` (default) | `task_progress`, `task_complete`, `notification`, `context_budget_warning` |
+| `events` | Granular lifecycle: `item.started`, `item.updated`, `item.completed`, `turn.completed`, `turn.failed` |
+
+**Why this matters:** Smart clients that build real-time dashboards (charts, terminal panels, diff viewers) need granular per-item events — not just "the task progressed." The coarse `task_progress` notification doesn't tell you *what changed* (which file, which tool call).
+
+**Trade-off:** Existing WebSocket subscribers get the current behavior unchanged (default `session`). New clients opt into granular events. No breaking change for existing consumers.
 
 **Phase 1 — Schema Enrichment (no server loop changes)**
 - Add `RichOutput` component to `api-spec.yaml`.
@@ -217,10 +243,11 @@ Instead of adding a new `/api/tasks/{id}/events` REST endpoint, enhance the exis
 - In `pkg/agent/loop.go`, instead of accumulating raw text into `task.Output []byte`, track structured metadata: content type, render hint, and optional inline JSON data.
 - On task completion, populate `TaskCompletion.rich_output` from the accumulated metadata.
 
-**Phase 3 — Enhance `/api/tasks/{id}/log` with `?type=` filter (optional)**
-- Add `type` query parameter (`raw` | `events`) to existing log endpoint.
-- When `type=events`, return newline-delimited JSONL mirroring Codex's event lifecycle instead of plain text tail.
-- No new endpoint surface area; just one extra code path in the handler.
+**Phase 3 — Enhance both REST and WebSocket with structured events**
+- Add `?type=events` to `/api/tasks/{id}/log` (pull-based access).
+- Add `?scope=events` to `/ws?session_id=...` (push-based real-time access).
+- Both expose the same granular event stream (`item.started`, `item.completed`, `turn.completed`) — just different transports.
+- Existing subscribers keep default behavior (`raw` / `session`). No breaking change.
 
 ### Examples
 
