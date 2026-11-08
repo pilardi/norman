@@ -1,2 +1,0 @@
-{"arguments":"{\"properties\":{}}","exit_code":127,"name":"list_tasks","output":"\n/bin/bash: line 1: {\"properties\":{}}: command not found\n","timestamp":"2026-11-08T13:07:06-05:00","type":"tool_call_result"}
-{"arguments":"{\"path\":\"/\"}","exit_code":2,"name":"list_dir","output":"\nls: cannot open directory '/': Permission denied\n","timestamp":"2026-11-08T13:07:09-05:00","type":"tool_call_result"}
