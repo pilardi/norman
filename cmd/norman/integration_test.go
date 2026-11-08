@@ -21,6 +21,7 @@ import (
 	"github.com/norman/norman/pkg/config"
 
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	"github.com/norman/norman/pkg/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
