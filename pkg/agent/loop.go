@@ -58,6 +58,7 @@ type Loop struct {
 	mcpClient     *mcp.Client               // MCP client for remote tool discovery/invocation (optional)
 	systemPrompt  string                    // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
 	debug         bool                      // if true, log detailed message contents before sending to LLM
+	processing    bool                      // whether the loop is currently processing (for graceful shutdown)
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -2037,6 +2038,9 @@ func (l *Loop) handleMCPCall(sandboxName string, argsRaw string) (string, int, e
 
 // MarkActive signals that a workspace is currently in use (updates last activity).
 func (l *Loop) MarkActive(workspace string) {
+	l.mu.Lock()
+	l.processing = true
+	l.mu.Unlock()
 	if l.workspaceDef != nil && l.workspaceDef.Name == workspace {
 		log.Printf("[loop] Workspace '%s' marked active", workspace)
 	}
@@ -2044,9 +2048,20 @@ func (l *Loop) MarkActive(workspace string) {
 
 // MarkIdle signals that a workspace has no active sessions (start idle timer).
 func (l *Loop) MarkIdle(workspace string) {
+	l.mu.Lock()
+	l.processing = false
+	l.mu.Unlock()
 	if l.workspaceDef != nil && l.workspaceDef.Name == workspace {
 		log.Printf("[loop] Workspace '%s' marked idle", workspace)
 	}
+}
+
+// IsProcessing returns whether the loop is currently processing a task or session.
+// Useful for graceful shutdown: callers can check this before blocking on long operations.
+func (l *Loop) IsProcessing() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.processing
 }
 
 // shellEscape wraps a string for safe inclusion in a single-quoted shell argument.
