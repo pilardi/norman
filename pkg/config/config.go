@@ -7,15 +7,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+// ExpandUserPath expands both $VAR and ~ prefixes in a path string.
+// Unlike os.ExpandEnv, this also handles shell-style tilde expansion.
+func ExpandUserPath(path string) string {
+	return os.ExpandEnv(strings.ReplaceAll(path, "~", "$HOME"))
+}
+
 // SystemConfig holds global defaults shared across all workspaces.
 type SystemConfig struct {
 	ServerPort int             `yaml:"server_port"`
-	Host       string          `yaml:"host"` // bind address for server (default 127.0.0.1)
-	BaseDir    string          `yaml:"base_dir"`
+	Host       string          `yaml:"host"`     // bind address for server (default 127.0.0.1)
+	BaseDir    string          `yaml:"base_dir"` // base directory for all Norman data (default: ~/.norman)
 	Skills     SkillsConfig    `yaml:"skills"`
 	Notify     NotifyConfig    `yaml:"notify"`
 	Logging    LoggingConfig   `yaml:"logging"`
@@ -204,9 +211,20 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
+// BaseDirPath returns the configured base directory for all Norman data,
+// expanding any ~ prefix or $VAR references via os.ExpandEnv.
+func (sc *SystemConfig) BaseDirPath() string {
+	return ExpandUserPath(sc.BaseDir)
+}
+
 // ConfigPath returns the canonical path used for loading the YAML config file.
-func ConfigPath() string {
-	return os.ExpandEnv("$HOME/.norman/config.yaml")
+func (sc *SystemConfig) ConfigPath() string {
+	return filepath.Join(sc.BaseDirPath(), "config.yaml")
+}
+
+// DefaultConfigPath returns the default config path without a SystemConfig instance.
+func DefaultConfigPath() string {
+	return ExpandUserPath("~/.norman/config.yaml")
 }
 
 // LoadDefault reads from the standard config path (~/.norman/config.yaml).
@@ -215,7 +233,7 @@ func ConfigPath() string {
 //
 // Priority order (highest to lowest):
 //  1. NORMAN_* environment variables (read directly from os.Environ)
-//  2. .env files (current dir, then $HOME/.norman/.env)
+//  2. .env files (current dir, then $NORMAN_BASE_DIR/.env)
 //  3. config.yaml
 //  4. Embedded defaults
 func LoadDefault() (*Config, error) {
@@ -225,7 +243,9 @@ func LoadDefault() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "[config] WARNING: failed to load .env files: %v\n", err)
 	}
 
-	configPath := os.ExpandEnv("$HOME/.norman/config.yaml")
+	// Create config dir under BaseDir (uses default fallback if not set).
+	normanHome := ExpandUserPath("~/.norman")
+	configPath := filepath.Join(normanHome, "config.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return nil, fmt.Errorf("create config dir: %w", err)
 	}

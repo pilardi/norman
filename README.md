@@ -96,6 +96,9 @@ Norman supports three layers of configuration (priority: env vars > `.env` files
 - `NORMAN_SERVER_URL` — external-facing URL; overrides auto-derived `http://host:port`
 - `OPENSHELL_GATEWAY_ADDRESS` — explicit OpenShell gateway endpoint (overrides metadata.json discovery)
 
+**Data directory:**
+- `NORMAN_BASE_DIR` — base directory for all Norman data (default: `~/.norman`). All subdirectories (`store/`, `raw_sources/`, `memory/`, `.env`, `config.yaml`) are rooted here.
+
 The server auto-discovers the OpenShell gateway from `~/.config/openshell/gateways/openshell/metadata.json` when no explicit address is set.
 
 ### Build & test

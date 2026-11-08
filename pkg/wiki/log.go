@@ -23,7 +23,7 @@ const (
 // Journal manages an append-only event log file.
 type Journal struct {
 	mu   sync.Mutex
-	path string // e.g., ~/.norman/memory/log.md
+	path string // e.g., $NORMAN_BASE_DIR/memory/log.md
 }
 
 // NewJournal creates a new journal writing to the given path.

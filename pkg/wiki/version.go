@@ -21,7 +21,7 @@ const (
 // GitVersioner wraps wiki operations with git versioning.
 type GitVersioner struct {
 	mu       sync.Mutex
-	base     string // e.g., ~/.norman/memory/
+	base     string // e.g., $NORMAN_BASE_DIR/memory/
 	batch    BatchMode
 	buf      []string // batched log messages
 	interval time.Duration

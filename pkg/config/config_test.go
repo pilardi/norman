@@ -435,7 +435,7 @@ func TestClientEnvVarsSubset(t *testing.T) {
 		}
 	}
 
-	// Verify server vars include all 7
+	// Verify server vars include all 7 (NORMAN_HOME removed in favor of NORMAN_BASE_DIR)
 	serverVars := ServerEnvVars()
 	if len(serverVars) != 7 {
 		t.Errorf("expected 7 server env vars, got %d", len(serverVars))

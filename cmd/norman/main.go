@@ -35,7 +35,7 @@ func main() {
 Usage: norman [-v|--verbose] [-p|--provider NAME] <command> [args...]
 
 Configuration is loaded from three sources (priority order):
-- environment variables (NORMAN_HOST, NORMAN_PORT, NORMAN_SERVER_URL)
+- environment variables (NORMAN_HOST, NORMAN_PORT, NORMAN_SERVER_URL, NORMAN_BASE_DIR)
 - .env files (~/.norman/.env, ././.env)
 - config.yaml (~/.config/norman/config.yaml)
 

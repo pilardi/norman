@@ -61,7 +61,7 @@ var allEnvVars = []EnvVar{
 		Name:     "NORMAN_BASE_DIR",
 		Type:     "string",
 		Default:  EmbeddedDefaults().System.BaseDir,
-		HelpText: fmt.Sprintf("Base directory for workspaces (default: %s)", EmbeddedDefaults().System.BaseDir),
+		HelpText: fmt.Sprintf("Base directory for all Norman data (default: %s)", "~/.norman"),
 		Apply: func(sc *SystemConfig, raw string) error {
 			sc.BaseDir = raw
 			return nil
@@ -134,20 +134,21 @@ func loadEnvFile(path string) error {
 // LoadEnvFiles loads .env files from standard locations.
 // Priority order (later files override earlier ones):
 //  1. Current directory .env
-//  2. $HOME/.norman/.env
+//  2. $NORMAN_BASE_DIR/.env (or $HOME/.norman/.env as default)
 func LoadEnvFiles() error {
 	// Load from current directory first (highest priority for local overrides)
 	if err := loadEnvFile(".env"); err != nil {
 		return fmt.Errorf("loading .env: %w", err)
 	}
 
-	// Then load from $HOME/.norman/.env
-	home, err := os.UserHomeDir()
-	if err == nil {
-		normanDotEnv := filepath.Join(home, ".norman", ".env")
-		if err := loadEnvFile(normanDotEnv); err != nil {
-			return fmt.Errorf("loading %s: %w", normanDotEnv, err)
-		}
+	// Then load from $NORMAN_BASE_DIR/.env
+	normanHome := os.Getenv("NORMAN_BASE_DIR")
+	if normanHome == "" {
+		normanHome = "$HOME/.norman"
+	}
+	normanDotEnv := filepath.Join(ExpandUserPath(normanHome), ".env")
+	if err := loadEnvFile(normanDotEnv); err != nil {
+		return fmt.Errorf("loading %s: %w", normanDotEnv, err)
 	}
 
 	return nil

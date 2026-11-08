@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -155,7 +156,7 @@ func (s *server) CreateProvider(c echo.Context) error {
 	}
 
 	// Persist to disk.
-	configPath := "/home/pablo/.norman/config.yaml"
+	configPath := filepath.Join(s.cfg.System.BaseDirPath(), "config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
 		log.Printf("[WARN] failed to persist provider config: %v", err)
 	}
@@ -238,7 +239,7 @@ func (s *server) UpdateProvider(c echo.Context, name string) error {
 	}
 
 	// Persist to disk.
-	configPath := "/home/pablo/.norman/config.yaml"
+	configPath := filepath.Join(s.cfg.System.BaseDirPath(), "config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
 		log.Printf("[WARN] failed to persist provider config: %v", err)
 	}
@@ -279,7 +280,7 @@ func (s *server) DeleteProvider(c echo.Context, name string) error {
 	}
 
 	// Persist to disk.
-	configPath := "/home/pablo/.norman/config.yaml"
+	configPath := filepath.Join(s.cfg.System.BaseDirPath(), "config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
 		log.Printf("[WARN] failed to persist provider config: %v", err)
 	}

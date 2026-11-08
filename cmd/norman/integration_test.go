@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/norman/norman/pkg/config"
+
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -302,8 +304,12 @@ func getBaseDir(t *testing.T) string {
 		}
 	}
 
-	// Fallback: derive from the server's working directory via env.
-	return os.ExpandEnv("$HOME/.norman/store")
+	// Fallback: derive from NORMAN_BASE_DIR or default to $HOME/.norman/store.
+	normanHome := os.Getenv("NORMAN_BASE_DIR")
+	if normanHome == "" {
+		normanHome = "$HOME/.norman"
+	}
+	return filepath.Join(config.ExpandUserPath(normanHome), "store")
 }
 
 // createTestWorkspace creates a test workspace and returns its ID.
