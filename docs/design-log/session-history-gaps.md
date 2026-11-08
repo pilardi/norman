@@ -16,10 +16,10 @@ related: [session-workflow-proposal.md, task-management-assessment.md]
 
 ## TL;DR
 
-- `GET /api/sessions/{id}/history` always returns `[]` — the endpoint reads `sessMap["turns"]` but nothing ever writes to that key.
-- The CLI client (`cmd/norman/chat.go`) builds a local `turns []map[string]interface{}` during the REPL loop but never sends it to the server or persists it.
-- There is **no** persistence of conversation turns at the session level — only task-level JSONL turns exist (`pkg/memory/store.go:PersistTurn`).
-- The spec defines `SessionTurn` (role, content, timestamp) and a `/history` GET endpoint, but the implementation gap means history is never populated.
+- `GET /api/sessions/{id}/history` now returns **populated turns** — `SendMessage` handler persists each user/assistant turn to `base/turns/{sessionID}.jsonl`.
+- The CLI client (`cmd/norman/chat.go`) still builds local turns for the REPL transcript display, but the server-side JSONL is now the authoritative source.
+- Session-level persistence **is** implemented alongside task-level JSONL turns (`pkg/memory/store.go:PersistTurn`).
+- The spec's `SessionTurn` schema (role, content, timestamp) and `/history` GET endpoint are fully wired and operational.
 
 ## Background
 
@@ -31,26 +31,26 @@ The session workflow proposal (2026-10-16) established sessions as the primary u
 
 What it **didn't** cover: how the conversation turns are persisted and retrieved. The spec includes a `SessionTurn` schema and `/history` endpoint, but implementation never wires them together.
 
-## Problem
+## Problem (Resolved ✅)
 
-When a user runs `/history`, they get an empty array even though the session has clearly been active (messages sent, tasks run, responses received). The gap is:
+When a user runs `/history`, they now get populated turns — persistence is wired into `SendMessage`. The gap that existed is closed:
 
-| Layer | What Exists | Gap |
-|-------|-------------|-----|
+| Layer | What Exists | Status |
+|-------|-------------|--------|
 | **Spec** (`api-spec.yaml`) | `SessionTurn` schema + `GET /api/sessions/{id}/history` | ✅ Defined |
-| **Server handler** (`sessions.go:298`) | `SessionHistory()` reads `sessMap["turns"]` | ✅ Reads from store |
-| **Client REPL** (`chat.go:255-370`) | Builds local `turns []map[string]interface{}` | ❌ Never sent to server |
-| **Store** (`store.go`) | `PersistTurn(taskID, turn)` for tasks; no session-level equivalent | ❌ No session turns persistence |
+| **Server handler** (`sessions.go:370-382`) | `SessionHistory()` reads per-session JSONL file | ✅ Reads from disk |
+| **Client REPL** (`chat.go:255-370`) | Builds local `turns []map[string]interface{}` for display | ✅ Used locally; server-side is authoritative |
+| **Store** (`store.go`) | `PersistSessionTurn(sessionID, turn)` + `LoadSessionTurns(sessionID)` | ✅ Session-level JSONL persistence added |
 
 ## Prior Art / Adjacent Mechanisms
 
 | Existing Item | Solves/Constrains This Problem? |
 |---------------|--------------------------------|
-| `pkg/memory/store.go:PersistTurn(taskID, turn)` | Writes to `base/turns/{taskID}.jsonl` (JSONL format). **Task-level only** — no session counterpart. |
+| `pkg/memory/store.go:PersistTurn(taskID, turn)` | Writes to `base/turns/{taskID}.jsonl` (JSONL format). **Task-level only** — inspired the session-level pattern. |
 | `pkg/memory/store.go:LoadTurns(taskID)` | Reads JSONL turns file. Again task-scoped. |
-| `cmd/norman-server/sessions.go:310-321` (`SessionHistory`) | Reads `sessMap["turns"]` from session store map. But nothing writes there. |
-| `cmd/norman/chat.go:255-370` (`chatLoop`) | Builds local `turns []map[string]interface{}` per REPL session. Never sent to server. |
-| `pkg/agent/loop.go:357` (`SendMessage`) | Returns `AgentResponse{SessionID, Response}` — a simple string. No turn metadata returned. |
+| `cmd/norman-server/sessions.go:370-382` (`SessionHistory`) | Now reads per-session JSONL via `LoadSessionTurns()` — no longer empty. |
+| `cmd/norman/chat.go:255-370` (`chatLoop`) | Builds local turns for REPL display; server-side JSONL is the authoritative source. |
+| `pkg/agent/loop.go:393` (`SendMessage`) | Returns `AgentResponse{SessionID, Response}` — now persisted as assistant turn via hook in `sessions.go:207-226`. |
 | `api-spec.yaml:SessionTurn` schema | Defines `{role, content, timestamp}`. ✅ Matches what's built locally in chat.go. |
 
 ## Questions & Answers
@@ -66,38 +66,39 @@ When a user runs `/history`, they get an empty array even though the session has
 
 ## Observations / Design Notes
 
-### Current Flow (Broken)
+### Current Flow (Working ✅)
 
 ```
 CLI REPL (chat.go:250-370)
   ── user types "hi" ──▶
-  ├── builds local turn: {"role":"user","content":"hi",...}
   ├── POST /api/sessions/{id}/messages → SendMessage handler
-  │   └── loop.SendMessage() returns AgentResponse{Response: "..."}
-  ├── builds local turn: {"role":"assistant","content":"...",...}
-  └── (turns discarded when REPL exits)
+  │   ├── persists user turn to base/turns/{sessionID}.jsonl ← new
+  │   ├── loop.SendMessage() returns AgentResponse{Response: "..."}
+  │   └── persists assistant turn to base/turns/{sessionID}.jsonl ← new
+  └── (local turns discarded; server-side JSONL is the source of truth)
 
-Server SessionHistory (sessions.go:298-321)
-  ── reads sessMap["turns"] ──▶ [] (never written)
+Server SessionHistory (sessions.go:370-382)
+  ── reads per-session JSONL file ──▶ [user turn, assistant turn, ...] ✅ populated
 ```
 
-### Where Turns Should Be Persisted
+### Where Turns Are Persisted
 
-The most natural hook is **inside `SendMessage` handler** (`cmd/norman-server/sessions.go:147`), right after `loop.SendMessage()` returns and before the JSON response is sent back. At that point we have:
+Turns are persisted **inside `SendMessage` handler** (`cmd/norman-server/sessions.go:207-226`), right after `loop.SendMessage()` returns and before the JSON response is sent back. At that point we have:
 - User message text (from request body)
 - Assistant response text (from `AgentResponse.Response`)
 
-Both should be appended as turns to a per-session JSONL file.
+Both are appended as turns to a per-session JSONL file via `s.store.PersistSessionTurn()`.
 
 ### Trace Through Real Code
 
 ```
-cmd/norman-server/sessions.go:164 → resp, err := s.loop.SendMessage(ctx, id, req.Message, req.Provider)
+cmd/norman-server/sessions.go:208 → resp, err := s.loop.SendMessage(ctx, id, req.Message, req.Provider)
 pkg/agent/loop.go:393 → return &AgentResponse{SessionID: sessionID, Response: string(task.Output)}
-cmd/norman-server/sessions.go:175 → return c.JSON(http.StatusOK, resp)  ← turns never persisted here
+cmd/norman-server/sessions.go:214-225 → PersistSessionTurn("user", req.Message) + PersistSessionTurn("assistant", resp.Response) ← new
+cmd/norman-server/sessions.go:230 → return c.JSON(http.StatusOK, resp)  ← turns already persisted
 ```
 
-The `req.Message` is available at line 154 (`req.Message`). The response text is at `resp.Response` (line 168). Both are accessible for persistence.
+The `req.Message` is available at line 198 (`req.Message`). The response text is at `resp.Response` (line 208). Both are accessible for persistence via `s.store.PersistSessionTurn()`.
 
 ## Trade-offs
 
@@ -107,16 +108,16 @@ The `req.Message` is available at line 154 (`req.Message`). The response text is
 | **Inside session store map** (`sessMap["turns"]`) | Single file per session; no extra files | In-memory until save; harder to append incrementally |
 | **Append to task-level turns** | Reuses existing `PersistTurn` | Mixes session and task turns; unclear ownership |
 
-## Verification Criteria
+## Verification Criteria ✅ All Met
 
 - `curl http://localhost:8080/api/sessions/{id}/history` returns populated turns after a conversation
 - Each turn has `{role, content, timestamp}` matching the spec's `SessionTurn` schema
 - Turns are in chronological order (most recent N returned by default)
-- History survives session restart (persists to disk)
+- History survives session restart (persists to disk via JSONL)
 
 ## Client Command Exposure
 
-The `/history [N]` slash-command is **already wired** in the CLI client (`cmd/norman/chat.go:293-450`):
+The `/history [N]` slash-command is **already wired** in the CLI client (`cmd/norman/chat.go:295`):
 
 ```go
 case "history":
@@ -127,30 +128,36 @@ It calls `client.SessionHistory(ctx, sessionID, params)` which hits `GET /api/se
 
 1. CLI resolves session name → UUID via `resolveSessionID()`
 2. Calls `protocol.SessionHistory()` (generated client method)
-3. Server's `SessionHistory()` handler reads `sessMap["turns"]`
+3. Server's `SessionHistory()` handler reads persisted JSONL turns
 4. Returns JSON array of turns
 
-**With server-side persistence now implemented**, the gap is closed — `/history` will return actual conversation turns instead of `[]`. The `--json` flag (added at `chat.go:423`) allows raw JSON output for programmatic use.
+The top-level `norman sessions history` command also exposes the `--json` flag (`main.go:346`) for programmatic/raw output. The slash-command `/history [N] [--json]` in chat.go delegates to `showHistory()` which parses args and passes them through.
 
-## Integration Verification
+**With server-side persistence now implemented**, the gap is closed — `/history` returns actual conversation turns instead of `[]`.
 
-To fully verify the fix end-to-end:
+## Integration Verification ✅ Done
+
+Verified end-to-end:
 1. Start `norman-server` with a workspace active
-2. Run `/history` after sending messages via CLI or direct API calls
+2. Send messages via CLI (`./dist/norman open`) or direct API calls
 3. Confirm turns appear in chronological order with `{role, content, timestamp}` fields
-4. Verify turns persist across server restarts (JSONL survives)
+4. Verified turns persist across server restarts (JSONL survives)
 
-This verification can be done manually or automated as an integration test once the server binary is built.
+## Archive Cleanup Status ⬜ Deferred
+
+`DeleteSession()` removes the session JSON file but does NOT remove its `.jsonl` turns file. `handleSessionArchive()` similarly does not clean up turns files. This is a low-priority future concern — orphaned `.jsonl` files accumulate on archive/delete until explicitly cleaned.
 
 ## Implementation Status
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `PersistSessionTurn(sessionID, turn)` | ✅ Done | Added to `pkg/memory/store.go` (~760) — appends JSONL per session |
-| `LoadSessionTurns(sessionID)` | ✅ Done | Added to `pkg/memory/store.go` (~785) — reads JSONL file |
-| `SendMessage` persistence hook | ✅ Done | Added to `cmd/norman-server/sessions.go:160-179` — persists user + assistant turns |
-| `/history --json` flag | ✅ Done | Added to `cmd/norman/chat.go:423` — parses limit + `--json` flag |
-| Server-side persistence integration test | ⬜ Pending | Need end-to-end verification with running server |
+| `PersistSessionTurn(sessionID, turn)` | ✅ Done | Added to `pkg/memory/store.go:742` — appends JSONL per session |
+| `LoadSessionTurns(sessionID)` | ✅ Done | Added to `pkg/memory/store.go:785` — reads JSONL file with legacy 8-char prefix fallback |
+| `SendMessage` persistence hook | ✅ Done | Added to `cmd/norman-server/sessions.go:207-226` — persists user + assistant turns atomically |
+| `/history --json` CLI flag | ✅ Done | Defined in `main.go:346`, parsed in `showHistory()` at `sessions.go:137` |
+| `/history` slash-command | ✅ Done | Wired in chat.go:295, delegates to `showHistory(sessionID, cmdArgs)` |
+| Server-side persistence integration test | ✅ Done | Verified end-to-end with running server + CLI |
+| Archive cleanup (turns files) | ⬜ Deferred | `DeleteSession()` and `handleSessionArchive()` do NOT remove `.jsonl` turns files |
 
 ## Open Questions for Implementation
 
@@ -158,7 +165,7 @@ This verification can be done manually or automated as an integration test once 
   **A:** ✅ Already works — `resolveSessionID()` matches by full name or first-8-chars-of-UUID prefix. No changes needed here.
 
 - **Q:** Should the client format turns as readable text, or just print raw JSON?  
-  **A:** Human-readable by default (current behavior). `--json` flag added at `cmd/norman/chat.go:423`. ✅ Done.
+  **A:** Human-readable by default (current behavior). `--json` CLI flag defined in `main.go:346`, parsed in `showHistory()` at `sessions.go:137`. ✅ Done.
 
 - **Q:** Does `/history` need to work offline (local REPL only) or is server connectivity required?  
   **A:** Client is thin — no offline support needed. Requires server. ✅
@@ -168,6 +175,7 @@ This verification can be done manually or automated as an integration test once 
 
 ## Implementation Notes
 
-- The `--json` flag should be parsed from `cmdArgs` in the `/history` case handler (`chat.go:293`)
-- When `--json` is present, print the raw `[]map[string]interface{}` as formatted JSON instead of `{role}: {content}` per line
-- No changes needed to server-side `SessionHistory` handler or protocol types — just client formatting
+- The top-level `norman sessions history` command parses `--json` from `cmd.Args()` in `main.go:357-364`, builds `extraArgs`, and passes them to `showHistory()`.
+- The `/history [N]` slash-command in chat.go delegates directly to `showHistory(sessionID, cmdArgs)` — the same function handles both CLI flag and slash-command arg parsing.
+- When `--json` is present, prints formatted JSON (`[]map[string]interface{}`) instead of `{role}: {content}` per line.
+- No changes needed to server-side `SessionHistory` handler or protocol types — just client formatting.
