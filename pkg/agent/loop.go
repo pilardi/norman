@@ -1433,18 +1433,18 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 		return
 	}
 
-	flags := l.budget.CheckThresholds()
-	if flags == budget.ThresholdNone {
+	state := l.budget.CurrentState()
+	if state == budget.BudgetNone {
 		return
 	}
 
 	log.Printf("agent: budget threshold triggered [%s] for task %s (used %.0f%%)",
-		flags.String(), taskID, l.budget.UsedFraction()*100)
+		state.String(), taskID, l.budget.UsedFraction()*100)
 
 	// Idempotency: skip compression if already compressed; still log and notify.
 	if l.budget.Compressed {
 		log.Printf("agent: session already compressed for task %s — skipping re-compression", taskID[:8])
-		l.pushThresholdNotification(taskID, flags)
+		l.pushThresholdNotification(taskID, state)
 		return
 	}
 
@@ -1482,10 +1482,10 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 	})
 
 	// Push notification via notifier path (threshold event logging)
-	l.pushThresholdNotification(taskID, flags)
+	l.pushThresholdNotification(taskID, state)
 
 	// Run compression (aggressive if critical threshold hit)
-	aggressive := flags.Is(budget.ThresholdCritical)
+	aggressive := state == budget.BudgetCritical
 	compressor := budget.NewCompressor(nil, l.budget.Budget) // nil client = no-op in tests
 	result, err := compressor.Summarize(l.budget, aggressive)
 	if err != nil {
@@ -1497,22 +1497,22 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 }
 
 // pushThresholdNotification sends a threshold event notification via the notifier path.
-func (l *Loop) pushThresholdNotification(taskID string, flags budget.ThresholdFlags) {
+func (l *Loop) pushThresholdNotification(taskID string, state budget.BudgetState) {
 	if l.notifier == nil {
 		return
 	}
 
 	severity := "info"
-	switch {
-	case flags.Is(budget.ThresholdCritical):
+	switch state {
+	case budget.BudgetCritical:
 		severity = "error"
-	case flags.Is(budget.ThresholdWarn):
+	case budget.BudgetWarn:
 		severity = "warn"
 	}
 
 	n := notify.Notification{
 		TaskID: taskID,
-		Title:  fmt.Sprintf("Budget threshold [%s]", flags.String()),
+		Title:  fmt.Sprintf("Budget threshold [%s]", state.String()),
 		Body: fmt.Sprintf("Token usage at %.0f%% of budget (%d/%d tokens). Threshold triggered.",
 			l.budget.UsedFraction()*100, l.budget.TokenCount, l.budget.Budget.MaxTokens),
 		Severity:  severity,

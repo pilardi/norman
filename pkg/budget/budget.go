@@ -73,19 +73,18 @@ func (s *SessionState) AddTurn(turn Turn) {
 	s.LastCheck = time.Now()
 }
 
-// CheckThresholds returns which thresholds have been breached.
-// Returns a bitmask of ThresholdWarn and/or ThresholdCritical.
-func (s *SessionState) CheckThresholds() ThresholdFlags {
-	flags := ThresholdFlags(0)
+// CurrentState returns the current budget state as a single enum value.
+// The state is monotonically increasing: none → warn → critical (never decreases).
+func (s *SessionState) CurrentState() BudgetState {
 	usedFraction := float64(s.TokenCount) / float64(s.Budget.MaxTokens)
 
 	if usedFraction >= s.Budget.CriticalThreshold {
-		flags |= ThresholdCritical
+		return BudgetCritical
 	}
 	if usedFraction >= s.Budget.WarnThreshold {
-		flags |= ThresholdWarn
+		return BudgetWarn
 	}
-	return flags
+	return BudgetNone
 }
 
 // UsedFraction returns the fraction of budget consumed (0.0 to 1.0+).
@@ -105,33 +104,18 @@ func (s *SessionState) Remaining() int {
 	return remaining
 }
 
-// ThresholdFlags represents which budget thresholds have been triggered.
-type ThresholdFlags int
+// BudgetState represents the current budget threshold state.
+type BudgetState string
 
 const (
-	ThresholdNone     ThresholdFlags = 0
-	ThresholdWarn     ThresholdFlags = 1 << 0 // 75% threshold
-	ThresholdCritical ThresholdFlags = 1 << 1 // 90% threshold
+	BudgetNone     BudgetState = "none"     // below warn threshold (<75%)
+	BudgetWarn     BudgetState = "warn"     // at or above warn threshold (>=75%)
+	BudgetCritical BudgetState = "critical" // at or above critical threshold (>=90%)
 )
 
-// Is returns true if the flags contain the given flag.
-func (f ThresholdFlags) Is(flag ThresholdFlags) bool {
-	return f&flag != 0
-}
-
-// String returns a human-readable representation of the flags.
-func (f ThresholdFlags) String() string {
-	if f == ThresholdNone {
-		return "none"
-	}
-	var parts []string
-	if f.Is(ThresholdWarn) {
-		parts = append(parts, "warn")
-	}
-	if f.Is(ThresholdCritical) {
-		parts = append(parts, "critical")
-	}
-	return strings.Join(parts, ", ")
+// String returns the human-readable representation of the budget state.
+func (s BudgetState) String() string {
+	return string(s)
 }
 
 // CountTokens estimates the number of tokens in a string using simple heuristics.
