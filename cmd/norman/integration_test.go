@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -305,52 +306,54 @@ func getBaseDir(t *testing.T) string {
 	return os.ExpandEnv("$HOME/.norman/store")
 }
 
-// createTestWorkspace creates a test workspace on disk if it doesn't exist and returns its ID.
+// createTestWorkspace creates a test workspace via the HTTP API and returns its ID.
+// Uses POST /api/workspaces to ensure the server's in-memory cache is updated.
 func createTestWorkspace(t *testing.T, baseDir string) string {
 	t.Helper()
 
-	wsPath := filepath.Join(baseDir, "workspaces")
-	if err := os.MkdirAll(wsPath, 0755); err != nil {
-		t.Fatalf("create workspaces dir: %v", err)
-	}
-
-	wsFile := filepath.Join(wsPath, "test-ws.json")
-	if _, err := os.Stat(wsFile); err == nil {
-		// Workspace already exists — read its ID.
-		data, err := os.ReadFile(wsFile)
-		if err != nil {
-			t.Fatalf("read workspace file: %v", err)
-		}
-		var ws map[string]interface{}
-		if err := json.Unmarshal(data, &ws); err != nil {
-			t.Fatalf("parse workspace file: %v", err)
-		}
-		if id, ok := ws["id"].(string); ok && id != "" {
-			return id
-		}
-	}
-
-	// Create workspace on disk with a deterministic UUID.
-	wsID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-	wsData := map[string]interface{}{
-		"id":         wsID,
-		"name":       "test-ws",
-		"path":       filepath.Join(baseDir, "workspaces", "test-ws"),
-		"status":     "active",
-		"created_at": time.Now().Format(time.RFC3339),
-		"updated_at": time.Now().Format(time.RFC3339),
-	}
-
-	contentBytes, err := json.MarshalIndent(wsData, "", "  ")
+	// First, check if "test-ws" already exists by listing workspaces.
+	resp, err := http.Get("http://127.0.0.1:8080/api/workspaces")
 	if err != nil {
-		t.Fatalf("marshal workspace data: %v", err)
+		t.Logf("warning: could not list workspaces: %v", err)
+	} else {
+		defer resp.Body.Close()
+		var existing []map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&existing); err == nil {
+			for _, wsMap := range existing {
+				if name, ok := wsMap["name"].(string); ok && name == "test-ws" {
+					if id, ok := wsMap["id"].(string); ok && id != "" {
+						return id
+					}
+				}
+			}
+		}
 	}
 
-	if err := os.WriteFile(wsFile, contentBytes, 0644); err != nil {
-		t.Fatalf("write workspace file: %v", err)
+	// Workspace doesn't exist yet — create it via the API.
+	createBody := map[string]interface{}{
+		"name": "test-ws",
+	}
+	bodyBytes, err := json.Marshal(createBody)
+	if err != nil {
+		t.Fatalf("marshal workspace creation request: %v", err)
 	}
 
-	return wsID
+	createResp, err := http.Post("http://127.0.0.1:8080/api/workspaces", "application/json", bytes.NewReader(bodyBytes))
+	if err != nil {
+		t.Fatalf("POST /api/workspaces: %v", err)
+	}
+	defer createResp.Body.Close()
+
+	var created map[string]interface{}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode workspace creation response: %v", err)
+	}
+
+	id, ok := created["id"].(string)
+	if !ok || id == "" {
+		t.Fatalf("workspace ID not found in response: %v", created)
+	}
+	return id
 }
 
 // deleteAllSessionsForWorkspace deletes all active sessions for a workspace.
