@@ -82,7 +82,7 @@ Rationale: The cap is a lifecycle concern (how many tasks can exist *right now*)
 
 Rationale: Tasks are scoped to sessions (via `Task.SessionId`). A global cap would create unfair contention between sessions. The value is configurable via `norman config --set max_tasks_per_session=N`.
 
-### Q5: Where does the cap value live — hardcoded or system config?
+### Q5: Where does the cap value live — hardcoded constant or system config?
 
 **A:** System config (`SystemConfig.MaxTasksPerSession`), defaulting to 10 if unset. Read from `config.yaml`, env vars, or set via `norman config --set max_tasks_per_session=N`. This follows the same pattern as `MaxTurns` and `MaxActiveSessions`.
 
