@@ -348,12 +348,15 @@ func createTestWorkspace(t *testing.T, baseDir string) string {
 		}
 		id, ok := created["id"].(string)
 		if !ok || id == "" {
-			t.Fatalf("workspace ID not found in response: %v", created)
+			// API returned success HTTP status but body contains an error (e.g. CreateSandbox unimplemented).
+			// Fall through to disk-write fallback below.
+			t.Logf("workspace creation API returned empty ID, falling back to disk write: %v", created)
+		} else {
+			return id
 		}
-		return id
 	}
 
-	// API unavailable (e.g. CreateSandbox not implemented in CI mock).
+	// REST API unavailable or failed (e.g. CreateSandbox not implemented in CI mock).
 	// Fall back to writing workspace JSON directly to disk.
 	wsPath := filepath.Join(baseDir, "workspaces")
 	if err := os.MkdirAll(wsPath, 0755); err != nil {
