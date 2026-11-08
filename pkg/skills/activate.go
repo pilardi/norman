@@ -10,10 +10,28 @@ import (
 	"github.com/norman/norman/pkg/env"
 )
 
+// SkillState represents the activation state of a skill.
+type SkillState string
+
+const (
+	SkillActive      SkillState = "active"
+	SkillDeactivated SkillState = "deactivated"
+)
+
+// Valid returns true if s is a known SkillState value.
+func (s SkillState) Valid() bool {
+	switch s {
+	case SkillActive, SkillDeactivated:
+		return true
+	default:
+		return false
+	}
+}
+
 // Activator manages progressive activation of skill tools into agent context.
 type Activator struct {
 	registry  map[string]SkillEntry // name → entry, loaded at startup
-	active    []string              // currently active skill names (reclaim budget by deactivating)
+	active    map[string]SkillState // currently active skill names → their state
 	maxActive int                   // max concurrent active skills
 }
 
@@ -24,7 +42,7 @@ func NewActivator(registry map[string]SkillEntry, maxActive int) *Activator {
 	}
 	return &Activator{
 		registry:  registry,
-		active:    make([]string, 0),
+		active:    make(map[string]SkillState),
 		maxActive: maxActive,
 	}
 }
@@ -47,18 +65,23 @@ func (a *Activator) Activate(name string, session *env.Session) (string, error) 
 	}
 
 	// Check if already active (idempotent)
-	for _, active := range a.active {
-		if active == name {
-			return "", nil // already active, nothing to inject
-		}
+	if state, ok := a.active[name]; ok && state == SkillActive {
+		return "", nil // already active, nothing to inject
 	}
 
 	// If at capacity, deactivate the least-recently-used skill
-	if len(a.active) >= a.maxActive && len(a.active) > 0 {
-		_ = a.Deactivate(a.active[0])
+	activeCount := len(a.active)
+	if activeCount >= a.maxActive && activeCount > 0 {
+		// Find first active key (oldest insertion order via map iteration)
+		for k := range a.active {
+			if a.active[k] == SkillActive {
+				_ = a.Deactivate(k)
+				break
+			}
+		}
 	}
 
-	a.active = append(a.active, name)
+	a.active[name] = SkillActive
 	return formatToolInjection(entry), nil
 }
 
@@ -157,25 +180,33 @@ func (a *Activator) deployBinary(name string, session *env.Session, entry *Skill
 
 // Deactivate removes a skill from active context.
 func (a *Activator) Deactivate(name string) error {
-	for i, active := range a.active {
-		if active == name {
-			a.active = append(a.active[:i], a.active[i+1:]...)
-			return nil
-		}
+	if _, ok := a.active[name]; !ok {
+		return fmt.Errorf("skill '%s' is not currently active", name)
 	}
-	return fmt.Errorf("skill '%s' is not currently active", name)
+	delete(a.active, name)
+	return nil
 }
 
 // DeactivateAll removes all active skills, reclaiming token budget.
 func (a *Activator) DeactivateAll() {
-	a.active = a.active[:0]
+	a.active = make(map[string]SkillState)
 }
 
 // Active returns the list of currently active skill names.
 func (a *Activator) Active() []string {
-	names := make([]string, len(a.active))
-	copy(names, a.active)
+	names := make([]string, 0, len(a.active))
+	for name, state := range a.active {
+		if state == SkillActive {
+			names = append(names, name)
+		}
+	}
 	return names
+}
+
+// GetState returns the activation state of a skill.
+func (a *Activator) GetState(name string) (SkillState, bool) {
+	state, ok := a.active[name]
+	return state, ok
 }
 
 // formatToolInjection formats a skill's tools into a prompt-injection string.
