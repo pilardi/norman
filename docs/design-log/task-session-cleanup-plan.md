@@ -17,7 +17,7 @@ related: [session-history-gaps.md, task-management-assessment.md, session-workfl
 
 - **Archive cleanup**: `handleSessionArchive()` MUST remove the session's `.jsonl` turns file AND all associated task JSON files. Archive = soft-delete of conversation + tasks.
 - **DeleteSession cleanup**: `DeleteSession()` handler MUST remove the session's `.jsonl` turns file. Deletion = hard-delete of conversation; tasks are cleaned separately via `DeleteTask()`.
-- **Task cap (last 10)**: The agent loop enforces a per-session task limit of 10 persisted tasks. When creating a new task beyond the cap, the oldest task's `.json` file is deleted and removed from the in-memory map (LRU eviction).
+- **Task cap (configurable)**: The agent loop enforces a per-session task limit via `max_tasks_per_session` system config (default 10). When creating a new task beyond the cap, the oldest task's `.json` file is deleted and removed from the in-memory map (LRU eviction).
 - **Responsibility boundaries are explicit**: `Store.ArchiveSession()` owns turns cleanup; `DeleteSession()` handler owns session JSON cleanup; agent loop owns task cap enforcement. No shared responsibility.
 
 ---
@@ -78,9 +78,15 @@ Rationale: The cap is a lifecycle concern (how many tasks can exist *right now*)
 
 ### Q4: Should the cap apply globally or per-session?
 
-**A:** Per-session. Each session can have up to 10 tasks persisted. Different sessions are independent — a session with 3 tasks doesn't affect another session's count.
+**A:** Per-session. Each session can have up to `max_tasks_per_session` tasks persisted (default 10). Different sessions are independent — a session with 3 tasks doesn't affect another session's count.
 
-Rationale: Tasks are scoped to sessions (via `Task.SessionId`). A global cap would create unfair contention between sessions.
+Rationale: Tasks are scoped to sessions (via `Task.SessionId`). A global cap would create unfair contention between sessions. The value is configurable via `norman config --set max_tasks_per_session=N`.
+
+### Q5: Where does the cap value live — hardcoded or system config?
+
+**A:** System config (`SystemConfig.MaxTasksPerSession`), defaulting to 10 if unset. Read from `config.yaml`, env vars, or set via `norman config --set max_tasks_per_session=N`. This follows the same pattern as `MaxTurns` and `MaxActiveSessions`.
+
+Rationale: Configurable allows tuning per deployment without code changes. Default of 10 is reasonable for most use cases but should be adjustable (e.g., long-running sessions may need more).
 
 ### Q5: Does the agent loop need to know about `.jsonl` turns files?
 
@@ -138,9 +144,9 @@ cmd/norman/sessions.go:handleSessionArchive() {
 }
 ```
 
-### 4. Constants & Configuration
+### 4. Configuration
 
-- `MAX_TASKS_PER_SESSION = 10` — hardcoded constant in agent loop config or as a package-level const
+- `max_tasks_per_session` — system config value (`SystemConfig.MaxTasksPerSession`), defaulting to 10 if unset. Set via `norman config --set max_tasks_per_session=N`.
 - Cleanup is **eager** (on delete/archive), not deferred/garbage-collected
 - No background cleanup goroutine needed — cleanup happens synchronously during lifecycle events
 
@@ -149,10 +155,11 @@ cmd/norman/sessions.go:handleSessionArchive() {
 ## Implementation Plan
 
 ### Phase 1: Task Cap in Agent Loop
-- Add `MAX_TASKS_PER_SESSION = 10` constant to `pkg/agent/loop.go`
-- Modify `CreateTask()` to check cap before adding new task
+- Add `MaxTasksPerSession int` field to `SystemConfig` struct (`pkg/config/config.go`) with default value of 10
+- Modify `CreateTask()` in agent loop to read cap from config and check before adding new task
 - Implement `evictOldestTask(sessionID)` helper that calls `store.DeleteTask()` and removes from map
-- Add unit test: verify cap enforcement (create 12 tasks, verify only 10 persisted)
+- Add unit test: verify cap enforcement (create 12 tasks with default config, verify only 10 persisted)
+- Integration test: verify `norman config --set max_tasks_per_session=5` affects live loop behavior
 
 ### Phase 2: DeleteSession Cleanup
 - Extend `DeleteSession()` handler in `cmd/norman-server/sessions.go` to remove `.jsonl` turns file
@@ -173,13 +180,22 @@ cmd/norman/sessions.go:handleSessionArchive() {
 
 ## Examples
 
-### Good: Task cap enforcement
+### Good: Task cap enforcement (config-driven)
 ```go
 // In agent loop CreateTask():
-if len(l.filterTasksBySession(sessionID)) >= 10 {
+cap := l.config.MaxTasksPerSession // reads from config, defaults to 10
+if len(l.filterTasksBySession(sessionID)) >= cap {
     l.evictOldestTask(sessionID)
 }
-// New task saved, oldest removed — exactly 10 persisted
+// New task saved, oldest removed — exactly max_tasks_per_session persisted
+```
+
+### Good: Config via CLI
+```bash
+# Set custom cap (e.g., for long-running sessions)
+norman config --set max_tasks_per_session=20
+# Inspect effective value
+norman config --json | jq '.max_tasks_per_session'
 ```
 
 ### Bad: Shared responsibility (what we're avoiding)
@@ -215,8 +231,8 @@ func evictOldestTask(sessionID string) {
 |----------|------|------|
 | **Eager cleanup (on delete/archive)** | Immediate disk reclamation; no orphaned files; simple logic | Blocks on I/O during cleanup; must handle missing files gracefully |
 | **Deferred/GC cleanup** | Non-blocking; handles edge cases naturally | Orphaned files accumulate until GC runs; unpredictable disk usage |
-| **Cap at 10 tasks per session** | Predictable disk usage; bounded memory footprint | Oldest tasks lost permanently; no "keep all" option |
-| **Cap at 10 + keep completed tasks** | Retains historical task state | Defeats the purpose of a cap; defeats LRU eviction model |
+| **Configurable cap (default 10)** | Tunable per deployment; no code changes needed | Default may need adjustment for long-running sessions |
+| **Hardcoded cap** | Simple; no config dependency | Requires code change to adjust; less flexible |
 
 **Chosen approach:** Eager cleanup + hard cap at 10 per session. Simple, predictable, no background processes needed.
 
