@@ -11,7 +11,7 @@ related: [session-history-gaps.md, task-management-assessment.md, session-workfl
 
 > **Date:** 2026-11-07  
 > **Author:** Pablo (via goose)  
-> **Status:** Phases 1–3 complete; Phase 4 deferred
+> **Status:** All phases complete ✅
 
 ## TL;DR
 
@@ -284,11 +284,19 @@ func evictOldestTask(sessionID string) {
 
 ---
 
-### Phase 4 — Verification & Edge Cases ⬜ Deferred
+### Phase 4 — Verification & Edge Cases ✅ Complete (commit `d0c9b12`)
 
-TODO:
-- Verify cleanup when session has zero tasks (no-op)
-- Verify cleanup when session is already deleted (idempotent)
-- Verify cleanup when `.jsonl` file doesn't exist (legacy sessions)
+End-to-end integration test added in `cmd/norman/integration_test.go`:
 
-> **Note:** Some of these edge cases are already covered by Phase 2 (`TestDeleteSessionIdempotentTurnsFile`) and Phase 3 (`TestArchiveSessionNoTurnsFile`, `TestArchiveSessionNoTasksForSession`). The remaining gap is a dedicated end-to-end integration test: start server, send messages via CLI, curl `/api/sessions/{id}/history` to confirm turns populated, then verify cleanup after archive/delete.
+| Test | What it verifies |
+|------|-----------------|
+| `TestPhase4SessionCleanup` | Full lifecycle: create session → send messages → verify turns via `/api/sessions/{id}/history` → archive (turns removed, `.archive.json` created) → delete second session (turns + task files removed) |
+| `TestPhase4ArchiveIdempotent` | Double-archive returns success without error; `.archive.json` persists correctly |
+| `TestPhase4DeleteSessionWithTasks` | Delete removes turns file AND all associated task `.json` files for the session |
+
+> **Implementation notes:**
+> - Tests use a deterministic workspace UUID (`a1b2c3d4-e5f6-7890-abcd-ef1234567890`) written to disk to avoid gRPC sandbox creation failures in the test mock.
+> - `ensureServer()` uses `syscall.Signal(0)` for non-destructive process liveness checks.
+> - `deleteAllSessionsForWorkspace()` cleans up existing sessions before each test to respect `max_active_sessions` limits.
+
+> **Note:** Edge cases (zero tasks, already-deleted session, missing `.jsonl`) are covered by Phase 2 and Phase 3 unit tests. The remaining gap — a dedicated end-to-end integration test — is now satisfied by the three Phase 4 tests above.

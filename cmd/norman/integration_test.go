@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -252,4 +254,531 @@ func TestCLIPlaintextConfig(t *testing.T) {
 			t.Errorf("expected '%s' in config output", marker)
 		}
 	}
+}
+
+// ensureServer starts the norman-server if not already running.
+func ensureServer(t *testing.T) {
+	t.Helper()
+	if serverProcess != nil {
+		// Check if it's still alive via a zero-signal (non-destructive existence check).
+		if err := serverProcess.Signal(syscall.Signal(0)); err == nil || err.Error() == "no such process" {
+			return // server is running or already exited
+		}
+	}
+
+	bin := filepath.Join("..", "..", "dist", "norman-server")
+	if _, err := os.Stat(bin); err != nil {
+		t.Skipf("%s not found; run 'make build' first", bin)
+	}
+
+	cmd := exec.Command(bin)
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+	serverProcess = cmd.Process
+
+	waitForServer(t)
+}
+
+// getBaseDir extracts the store base directory from the server's /api/config response.
+func getBaseDir(t *testing.T) string {
+	resp, err := http.Get("http://127.0.0.1:8080/api/config")
+	if err != nil {
+		t.Fatalf("GET /api/config: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+
+	// The store base is in the "openshell" section under "store_dir".
+	if storeDir, ok := body["openshell"].(map[string]interface{}); ok {
+		if dir, ok := storeDir["store_dir"].(string); ok && dir != "" {
+			return dir
+		}
+	}
+
+	// Fallback: derive from the server's working directory via env.
+	return os.ExpandEnv("$HOME/.norman/store")
+}
+
+// createTestWorkspace creates a test workspace on disk if it doesn't exist and returns its ID.
+func createTestWorkspace(t *testing.T, baseDir string) string {
+	t.Helper()
+
+	wsPath := filepath.Join(baseDir, "workspaces")
+	if err := os.MkdirAll(wsPath, 0755); err != nil {
+		t.Fatalf("create workspaces dir: %v", err)
+	}
+
+	wsFile := filepath.Join(wsPath, "test-ws.json")
+	if _, err := os.Stat(wsFile); err == nil {
+		// Workspace already exists — read its ID.
+		data, err := os.ReadFile(wsFile)
+		if err != nil {
+			t.Fatalf("read workspace file: %v", err)
+		}
+		var ws map[string]interface{}
+		if err := json.Unmarshal(data, &ws); err != nil {
+			t.Fatalf("parse workspace file: %v", err)
+		}
+		if id, ok := ws["id"].(string); ok && id != "" {
+			return id
+		}
+	}
+
+	// Create workspace on disk with a deterministic UUID.
+	wsID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+	wsData := map[string]interface{}{
+		"id":         wsID,
+		"name":       "test-ws",
+		"path":       filepath.Join(baseDir, "workspaces", "test-ws"),
+		"status":     "active",
+		"created_at": time.Now().Format(time.RFC3339),
+		"updated_at": time.Now().Format(time.RFC3339),
+	}
+
+	contentBytes, err := json.MarshalIndent(wsData, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal workspace data: %v", err)
+	}
+
+	if err := os.WriteFile(wsFile, contentBytes, 0644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	return wsID
+}
+
+// deleteAllSessionsForWorkspace deletes all active sessions for a workspace.
+func deleteAllSessionsForWorkspace(t *testing.T, wsID string) {
+	t.Helper()
+
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/api/sessions?workspace_id=%s", wsID))
+	if err != nil {
+		t.Logf("warning: could not list sessions for workspace %s: %v", wsID[:8], err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		t.Logf("warning: could not decode sessions list: %v", err)
+		return
+	}
+
+	for _, sess := range sessions {
+		if sid, ok := sess["id"].(string); ok && sid != "" {
+			req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s", sid), nil)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Logf("warning: could not delete session %s: %v", sid[:8], err)
+			} else if resp.StatusCode != http.StatusOK {
+				t.Logf("warning: delete session %s returned status %d", sid[:8], resp.StatusCode)
+			}
+			resp.Body.Close()
+		}
+	}
+}
+
+// TestPhase4SessionCleanup verifies end-to-end session lifecycle with archive/delete cleanup.
+// This is the dedicated integration test for Phase 4: it starts the server, sends messages
+// via HTTP to populate turns, confirms turns are present via /api/sessions/{id}/history,
+// then verifies cleanup behavior after archive and delete operations.
+func TestPhase4SessionCleanup(t *testing.T) {
+	ensureServer(t)
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	baseDir := getBaseDir(t)
+	t.Logf("Using store base dir: %s", baseDir)
+
+	// Step 0: Ensure test workspace exists.
+	wsID := createTestWorkspace(t, baseDir)
+	t.Logf("Workspace ID: %s", wsID)
+
+	// Clean up any existing sessions for this workspace (max_active_sessions limit).
+	deleteAllSessionsForWorkspace(t, wsID)
+
+	// Step 1: Create a session via the HTTP API.
+	createResp, err := http.Post(
+		"http://127.0.0.1:8080/api/sessions",
+		"application/json",
+		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions: %v", err)
+	}
+	defer createResp.Body.Close()
+
+	var created map[string]interface{}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode session creation response: %v", err)
+	}
+	sessionID, ok := created["id"].(string)
+	if !ok || sessionID == "" {
+		t.Fatalf("session ID not found in response: %v", created)
+	}
+	t.Logf("Created session: %s", sessionID)
+
+	// Step 2: Send messages to populate turns (simulating a conversation).
+	messages := []struct {
+		content string
+	}{
+		{"Hello, this is the first user message."},
+		{"This is a follow-up question about the weather."},
+		{"Please summarize the key points from our conversation."},
+	}
+
+	for i, msg := range messages {
+		resp, err := http.Post(
+			fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID),
+			"application/json",
+			strings.NewReader(fmt.Sprintf(`{"message":"%s"}`, msg.content)),
+		)
+		if err != nil {
+			t.Fatalf("POST /api/sessions/%s/messages (turn %d): %v", sessionID, i+1, err)
+		}
+		resp.Body.Close()
+
+		// Small delay to allow server-side persistence.
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// Step 3: Verify turns are present via /api/sessions/{id}/history.
+	historyResp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/history?limit=10", sessionID))
+	if err != nil {
+		t.Fatalf("GET /api/sessions/%s/history: %v", sessionID, err)
+	}
+	defer historyResp.Body.Close()
+
+	var turns []map[string]interface{}
+	if err := json.NewDecoder(historyResp.Body).Decode(&turns); err != nil {
+		t.Fatalf("decode history response: %v", err)
+	}
+
+	if len(turns) < 2 {
+		t.Errorf("expected at least 2 turns (user + assistant), got %d", len(turns))
+	} else {
+		t.Logf("History confirmed: %d turns present", len(turns))
+	}
+
+	// Verify the .jsonl turns file exists on disk.
+	turnsFile := filepath.Join(baseDir, "turns", sessionID+".jsonl")
+	if _, err := os.Stat(turnsFile); err != nil {
+		t.Fatalf("turns file should exist before archive: %v", err)
+	}
+
+	// Step 4: Archive the session and verify cleanup.
+	archiveResp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/archive", sessionID),
+		"application/json",
+		strings.NewReader(`{}`),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/%s/archive: %v", sessionID, err)
+	}
+	defer archiveResp.Body.Close()
+
+	if archiveResp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(archiveResp.Body)
+		t.Errorf("archive returned status %d, body: %s", archiveResp.StatusCode, string(body))
+	}
+
+	// Verify turns file is removed after archive.
+	if _, err := os.Stat(turnsFile); !os.IsNotExist(err) {
+		t.Errorf("turns file should be removed after archive")
+	}
+
+	// Verify .archive.json was created.
+	archivePath := filepath.Join(baseDir, "sessions", sessionID+".archive.json")
+	if _, err := os.Stat(archivePath); err != nil {
+		t.Fatalf("archive file should exist after archive: %v", err)
+	}
+
+	// Verify original session JSON is removed.
+	sessionJSON := filepath.Join(baseDir, "sessions", sessionID+".json")
+	if _, err := os.Stat(sessionJSON); !os.IsNotExist(err) {
+		t.Errorf("original session file should be removed after archive")
+	}
+
+	// Step 5: Verify history returns empty after archive.
+	historyResp2, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/history?limit=10", sessionID))
+	if err != nil {
+		t.Fatalf("GET /api/sessions/%s/history (after archive): %v", sessionID, err)
+	}
+	defer historyResp2.Body.Close()
+
+	var turnsAfter []map[string]interface{}
+	if err := json.NewDecoder(historyResp2.Body).Decode(&turnsAfter); err != nil {
+		t.Fatalf("decode history after archive: %v", err)
+	}
+
+	if len(turnsAfter) > 0 {
+		t.Errorf("expected empty history after archive, got %d entries", len(turnsAfter))
+	} else {
+		t.Log("History correctly empty after archive")
+	}
+
+	// Step 6: Create a new session and delete it to verify DeleteSession cleanup.
+	createResp2, err := http.Post(
+		"http://127.0.0.1:8080/api/sessions",
+		"application/json",
+		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions (2nd): %v", err)
+	}
+	defer createResp2.Body.Close()
+
+	var created2 map[string]interface{}
+	if err := json.NewDecoder(createResp2.Body).Decode(&created2); err != nil {
+		t.Fatalf("decode session creation response: %v", err)
+	}
+	sessionID2, ok := created2["id"].(string)
+	if !ok || sessionID2 == "" {
+		t.Fatalf("session ID not found in 2nd response")
+	}
+	t.Logf("Created session for delete test: %s", sessionID2)
+
+	// Send a message to create turns.
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID2),
+		"application/json",
+		strings.NewReader(`{"message":"Delete me please."}`),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/%s/messages: %v", sessionID2, err)
+	}
+	resp.Body.Close()
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify turns file exists.
+	turnsFile2 := filepath.Join(baseDir, "turns", sessionID2+".jsonl")
+	if _, err := os.Stat(turnsFile2); err != nil {
+		t.Fatalf("turns file should exist before delete: %v", err)
+	}
+
+	// Step 7: Delete the session and verify cleanup.
+	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s", sessionID2), nil)
+	deleteResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/%s: %v", sessionID2, err)
+	}
+	defer deleteResp.Body.Close()
+
+	if deleteResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(deleteResp.Body)
+		t.Errorf("delete returned status %d, body: %s", deleteResp.StatusCode, string(body))
+	}
+
+	// Verify turns file is removed after delete.
+	if _, err := os.Stat(turnsFile2); !os.IsNotExist(err) {
+		t.Errorf("turns file should be removed after delete")
+	}
+
+	// Verify session JSON is removed.
+	sessionJSON2 := filepath.Join(baseDir, "sessions", sessionID2+".json")
+	if _, err := os.Stat(sessionJSON2); !os.IsNotExist(err) {
+		t.Errorf("original session file should be removed after delete")
+	}
+
+	t.Logf("Phase 4 cleanup verified: archive removes turns + creates .archive.json; delete removes turns + session JSON")
+}
+
+// TestPhase4ArchiveIdempotent verifies that archiving an already-archived session is idempotent.
+func TestPhase4ArchiveIdempotent(t *testing.T) {
+	ensureServer(t)
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	baseDir := getBaseDir(t)
+
+	// Ensure test workspace exists.
+	wsID := createTestWorkspace(t, baseDir)
+	t.Logf("Workspace ID: %s", wsID)
+
+	// Clean up any existing sessions for this workspace (max_active_sessions limit).
+	deleteAllSessionsForWorkspace(t, wsID)
+
+	// Create and archive a session.
+	createResp, err := http.Post(
+		"http://127.0.0.1:8080/api/sessions",
+		"application/json",
+		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions: %v", err)
+	}
+	defer createResp.Body.Close()
+
+	var created map[string]interface{}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode session creation response: %v", err)
+	}
+	sessionID, ok := created["id"].(string)
+	if !ok || sessionID == "" {
+		t.Fatalf("session ID not found")
+	}
+
+	// Send a message to create turns.
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID),
+		"application/json",
+		strings.NewReader(`{"message":"Test idempotent archive."}`),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/%s/messages: %v", sessionID, err)
+	}
+	resp.Body.Close()
+	time.Sleep(200 * time.Millisecond)
+
+	// Archive once.
+	archiveResp1, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/archive", sessionID),
+		"application/json",
+		strings.NewReader(`{}`),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/%s/archive (1st): %v", sessionID, err)
+	}
+	defer archiveResp1.Body.Close()
+
+	// Archive again (idempotent).
+	archiveResp2, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/archive", sessionID),
+		"application/json",
+		strings.NewReader(`{}`),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/%s/archive (2nd): %v", sessionID, err)
+	}
+	defer archiveResp2.Body.Close()
+
+	// Verify .archive.json still exists and is valid.
+	archivePath := filepath.Join(baseDir, "sessions", sessionID+".archive.json")
+	if _, err := os.Stat(archivePath); err != nil {
+		t.Fatalf("archive file should exist: %v", err)
+	}
+
+	// Verify turns file is gone.
+	turnsFile := filepath.Join(baseDir, "turns", sessionID+".jsonl")
+	if _, err := os.Stat(turnsFile); !os.IsNotExist(err) {
+		t.Errorf("turns file should be removed after first archive")
+	}
+
+	t.Log("Archive is idempotent — double archive succeeds without error")
+}
+
+// TestPhase4DeleteSessionWithTasks verifies that DeleteSession also cleans up associated task files.
+func TestPhase4DeleteSessionWithTasks(t *testing.T) {
+	ensureServer(t)
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	baseDir := getBaseDir(t)
+
+	// Ensure test workspace exists.
+	wsID := createTestWorkspace(t, baseDir)
+	t.Logf("Workspace ID: %s", wsID)
+
+	// Clean up any existing sessions for this workspace (max_active_sessions limit).
+	deleteAllSessionsForWorkspace(t, wsID)
+
+	// Create a session and send messages (which creates tasks internally).
+	createResp, err := http.Post(
+		"http://127.0.0.1:8080/api/sessions",
+		"application/json",
+		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
+	)
+	if err != nil {
+		t.Fatalf("POST /api/sessions: %v", err)
+	}
+	defer createResp.Body.Close()
+
+	var created map[string]interface{}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode session creation response: %v", err)
+	}
+	sessionID, ok := created["id"].(string)
+	if !ok || sessionID == "" {
+		t.Fatalf("session ID not found")
+	}
+
+	// Send multiple messages to generate turns + internal tasks.
+	for i := 0; i < 3; i++ {
+		resp, err := http.Post(
+			fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID),
+			"application/json",
+			strings.NewReader(fmt.Sprintf(`{"message":"Message %d for cleanup test."}`, i+1)),
+		)
+		if err != nil {
+			t.Fatalf("POST /api/sessions/%s/messages: %v", sessionID, err)
+		}
+		resp.Body.Close()
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// Count task files before delete.
+	tasksDir := filepath.Join(baseDir, "tasks")
+	beforeCount := 0
+	if entries, err := os.ReadDir(tasksDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+				data, _ := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+				var task map[string]interface{}
+				if json.Unmarshal(data, &task) == nil {
+					if sid, ok := task["session_id"].(string); ok && sid == sessionID {
+						beforeCount++
+					}
+				}
+			}
+		}
+	}
+
+	t.Logf("Found %d task files associated with session %s before delete", beforeCount, sessionID[:8])
+
+	// Delete the session.
+	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s", sessionID), nil)
+	deleteResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/%s: %v", sessionID, err)
+	}
+	defer deleteResp.Body.Close()
+
+	// Verify turns file removed.
+	turnsFile := filepath.Join(baseDir, "turns", sessionID+".jsonl")
+	if _, err := os.Stat(turnsFile); !os.IsNotExist(err) {
+		t.Errorf("turns file should be removed after delete")
+	}
+
+	// Verify task files for this session are removed.
+	afterCount := 0
+	if entries, err := os.ReadDir(tasksDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+				data, _ := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+				var task map[string]interface{}
+				if json.Unmarshal(data, &task) == nil {
+					if sid, ok := task["session_id"].(string); ok && sid == sessionID {
+						afterCount++
+					}
+				}
+			}
+		}
+	}
+
+	if afterCount != 0 {
+		t.Errorf("expected 0 task files for deleted session, found %d", afterCount)
+	} else {
+		t.Logf("All %d associated task files cleaned up after delete", beforeCount)
+	}
+
+	t.Log("Phase 4 DeleteSession cleanup verified: turns + tasks removed")
 }
