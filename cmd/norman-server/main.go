@@ -55,7 +55,7 @@ func main() {
 		Description: `Norman Agent Server — single long-running process exposing HTTP API + WebSocket events via Echo
 
 Configuration loaded from (priority order):
-- environment variables (NORMAN_HOST, NORMAN_PORT, OPENSHELL_GATEWAY_ADDRESS, NORMAN_HOME)
+- environment variables (NORMAN_HOST, NORMAN_PORT, OPENSHELL_GATEWAY_ADDRESS, NORMAN_BASE_DIR)
 - .env files (~/.norman/.env, ././.env)
 - config.yaml (~/.config/norman/config.yaml)
 - embedded defaults

@@ -73,14 +73,14 @@ func printStartupInfo(srv *server, startTime time.Time) {
 	// Memory store
 	storeDir := os.Getenv("NORMAN_STORE_DIR")
 	if storeDir == "" {
-		storeDir = filepath.Join(srv.cfg.System.NormanHomePath(), "store")
+		storeDir = filepath.Join(srv.cfg.System.BaseDirPath(), "store")
 	}
 	log.Printf("  [memory] Store directory: %s", storeDir)
 
 	// Raw sources
 	rawSourcesDir := os.Getenv("NORMAN_RAW_SOURCES_DIR")
 	if rawSourcesDir == "" {
-		rawSourcesDir = filepath.Join(srv.cfg.System.NormanHomePath(), "raw_sources")
+		rawSourcesDir = filepath.Join(srv.cfg.System.BaseDirPath(), "raw_sources")
 	}
 	log.Printf("  [raw-sources] Directory: %s", rawSourcesDir)
 

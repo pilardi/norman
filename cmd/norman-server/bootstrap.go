@@ -51,7 +51,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 	// location is now configurable and can be passed in or auto-detected.
 	storeDir := os.Getenv("NORMAN_STORE_DIR")
 	if storeDir == "" {
-		storeDir = filepath.Join(cfg.System.NormanHomePath(), "store") // fallback for local dev
+		storeDir = filepath.Join(cfg.System.BaseDirPath(), "store") // fallback for local dev
 	}
 	store, err := memory.NewStore(storeDir)
 	if err != nil {
@@ -108,7 +108,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 	// Initialize raw sources store for environment snapshots (context injection).
 	rawSourcesDir := os.Getenv("NORMAN_RAW_SOURCES_DIR")
 	if rawSourcesDir == "" {
-		rawSourcesDir = filepath.Join(cfg.System.NormanHomePath(), "raw_sources") // fallback for local dev
+		rawSourcesDir = filepath.Join(cfg.System.BaseDirPath(), "raw_sources") // fallback for local dev
 	}
 	rawSources, err := memory.NewRawSources(rawSourcesDir)
 	if err != nil {
@@ -158,7 +158,7 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 	loop = loop.WithNotifier(notifier).WithResultsChannel(resultsCh)
 
 	// Build server with all dependencies
-	registryPath := filepath.Join(cfg.System.NormanHomePath(), "skills_registry.json")
+	registryPath := filepath.Join(cfg.System.BaseDirPath(), "skills_registry.json")
 	reg := skills.NewRegistry(registryPath)
 
 	srv := &server{

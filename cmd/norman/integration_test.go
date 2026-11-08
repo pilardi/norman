@@ -304,8 +304,8 @@ func getBaseDir(t *testing.T) string {
 		}
 	}
 
-	// Fallback: derive from NORMAN_HOME or default to $HOME/.norman/store.
-	normanHome := os.Getenv("NORMAN_HOME")
+	// Fallback: derive from NORMAN_BASE_DIR or default to $HOME/.norman/store.
+	normanHome := os.Getenv("NORMAN_BASE_DIR")
 	if normanHome == "" {
 		normanHome = "$HOME/.norman"
 	}

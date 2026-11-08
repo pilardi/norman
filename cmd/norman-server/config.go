@@ -65,7 +65,7 @@ func (s *server) PutConfig(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to apply config update"})
 	}
 
-	configPath := filepath.Join(s.cfg.System.NormanHomePath(), "config.yaml")
+	configPath := filepath.Join(s.cfg.System.BaseDirPath(), "config.yaml")
 	if err := s.cfg.Save(configPath); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save config"})
 	}
