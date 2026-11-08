@@ -156,7 +156,7 @@ func LoadEnvFiles() error {
 	if normanHome == "" {
 		normanHome = "$HOME/.norman"
 	}
-	normanDotEnv := filepath.Join(os.ExpandEnv(normanHome), ".env")
+	normanDotEnv := filepath.Join(ExpandUserPath(normanHome), ".env")
 	if err := loadEnvFile(normanDotEnv); err != nil {
 		return fmt.Errorf("loading %s: %w", normanDotEnv, err)
 	}

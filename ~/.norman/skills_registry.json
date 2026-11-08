@@ -1,0 +1,8 @@
+{
+  "task-management": {
+    "source_url": "",
+    "version": "",
+    "description": "Manage, monitor, and control tasks — list active/scheduled/deferred tasks, cancel or delete them, create new scheduled or deferred tasks, and view task logs. Tools are available to the agent for programmatic task lifecycle management.\n",
+    "installed_in_workspaces": []
+  }
+}

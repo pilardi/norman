@@ -1,0 +1,13 @@
+[
+  {
+    "archive_status": "archived",
+    "archived_at": "2026-11-08T13:07:10-05:00",
+    "client_type": "cli",
+    "created_at": "2026-11-08T13:07:00-05:00",
+    "id": "b2d61b32-a415-459d-aa44-c1a3dcc3b6ea",
+    "name": "b2d61b32-session",
+    "status": "active",
+    "updated_at": "2026-11-08T13:07:00-05:00",
+    "workspace_id": "45d8cdfb-9f8f-4960-98b8-112e97c58e0a"
+  }
+]

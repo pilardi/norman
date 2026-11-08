@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/norman/norman/pkg/config"
+
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -307,7 +309,7 @@ func getBaseDir(t *testing.T) string {
 	if normanHome == "" {
 		normanHome = "$HOME/.norman"
 	}
-	return filepath.Join(os.ExpandEnv(normanHome), "store")
+	return filepath.Join(config.ExpandUserPath(normanHome), "store")
 }
 
 // createTestWorkspace creates a test workspace and returns its ID.

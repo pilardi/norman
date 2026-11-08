@@ -7,9 +7,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// ExpandUserPath expands both $VAR and ~ prefixes in a path string.
+// Unlike os.ExpandEnv, this also handles shell-style tilde expansion.
+func ExpandUserPath(path string) string {
+	return os.ExpandEnv(strings.ReplaceAll(path, "~", "$HOME"))
+}
 
 // SystemConfig holds global defaults shared across all workspaces.
 type SystemConfig struct {
@@ -209,9 +216,9 @@ func Load(path string) (*Config, error) {
 // It reads from SystemConfig.NormanHome, falling back to "$HOME/.norman".
 func (sc *SystemConfig) NormanHomePath() string {
 	if sc.NormanHome != "" {
-		return os.ExpandEnv(sc.NormanHome)
+		return ExpandUserPath(sc.NormanHome)
 	}
-	return os.ExpandEnv("$HOME/.norman")
+	return ExpandUserPath("$HOME/.norman")
 }
 
 // ConfigPath returns the canonical path used for loading the YAML config file.
@@ -221,7 +228,7 @@ func (sc *SystemConfig) ConfigPath() string {
 
 // DefaultConfigPath returns the default config path without a SystemConfig instance.
 func DefaultConfigPath() string {
-	return os.ExpandEnv("$HOME/.norman/config.yaml")
+	return ExpandUserPath("$HOME/.norman/config.yaml")
 }
 
 // LoadDefault reads from the standard config path (~/.norman/config.yaml).
