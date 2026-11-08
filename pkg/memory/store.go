@@ -90,6 +90,37 @@ func (s *Store) ArchiveSession(taskID string, turns []interface{}) error {
 	activePath := filepath.Join(dir, taskID+".json")
 	_ = os.Remove(activePath)
 
+	// Remove the session's .jsonl turns file.
+	turnsPath := filepath.Join(s.base, "turns", taskID+".jsonl")
+	if err := os.Remove(turnsPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("warn: failed to remove turns file for session %s: %v", taskID, err)
+	}
+
+	// Delete all task files associated with this session (inline to avoid deadlock).
+	tasksDir := filepath.Join(s.base, "tasks")
+	if entries, err := os.ReadDir(tasksDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+			if err != nil {
+				continue // skip unreadable files
+			}
+			var task map[string]interface{}
+			if err := json.Unmarshal(data, &task); err != nil {
+				continue // skip corrupt files
+			}
+			sid, _ := task["session_id"].(string)
+			taskIDInner, _ := task["id"].(string)
+			if sid == taskID && taskIDInner != "" {
+				if delErr := os.Remove(filepath.Join(tasksDir, entry.Name())); delErr != nil {
+					log.Printf("warn: failed to delete task %s for session %s: %v", taskIDInner, taskID, delErr)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

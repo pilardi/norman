@@ -261,4 +261,16 @@ func evictOldestTask(sessionID string) {
 - 4 unit tests added: `TestDeleteSessionRemovesTurnsFile`, `TestDeleteSessionRemovesAssociatedTasks`, `TestDeleteSessionIdempotentTurnsFile`, `TestDeleteSessionNoTasksForSession`
 - All pass with `make verify` (0 lint issues, race detector clean)
 
-**Status:** Phase 2 done. Phases 3–4 remain deferred.
+**Phase 3 — ArchiveCleanup:** ✅ Complete (commit `d91b7f5`)
+
+- `store.ArchiveSession()` extended to remove `.jsonl` turns file + delete all associated task files
+- Cleanup is idempent: gracefully handles missing turns files and already-deleted sessions
+- Correctly scoped: only tasks with matching `session_id` are removed; other sessions' tasks preserved
+- 5 unit tests added: `TestArchiveSessionRemovesTurnsFile`, `TestArchiveSessionRemovesAssociatedTasks`, `TestArchiveSessionNoTurnsFile`, `TestArchiveSessionNoTasksForSession`, `TestArchiveSessionCreatesValidArchiveFile`
+- All pass with `make verify` (0 lint issues, race detector clean)
+
+**Deviations from plan:**
+- Cleanup is inlined directly in `store.ArchiveSession()` rather than calling `s.DeleteTask()` — avoids deadlock since `ArchiveSession` holds `s.mu.Lock()` and Go's mutex is not reentrant.
+- The CLI `handleSessionArchive()` delegates to the server API, so cleanup happens server-side in `ArchiveSessionByID` → `store.ArchiveSession()`.
+
+**Status:** Phase 3 done. Phase 4 remains deferred.
