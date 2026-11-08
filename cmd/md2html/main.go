@@ -47,7 +47,7 @@ const materialCSS = `
     line-height: 1.6;
     max-width: 960px;
     margin: 0 auto;
-    padding: 2rem 1.5rem;
+    padding-top: 4rem;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -82,6 +82,29 @@ const materialCSS = `
 
   strong { color: var(--color-gold); }
 
+  /* Header bar */
+  .header-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1.5rem;
+    background: var(--md-surface);
+    border-bottom: 1px solid var(--color-gold);
+    box-shadow: var(--md-elevation-2);
+  }
+  .header-bar a { text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+  .header-bar img.header-logo { width: 36px; height: auto; border-radius: 4px; }
+  .header-bar .github-link { color: var(--md-on-surface); font-size: 0.9rem; display: flex; align-items: center; gap: 0.25rem; }
+  .header-bar .github-link:hover { color: var(--color-gold); }
+  .header-bar .material-icons { font-size: 1.3rem; }
+
+  body { padding-top: 4rem; }
+
   @media (prefers-color-scheme: dark) {
     :root {
       --md-primary: #D4AF37;
@@ -99,6 +122,16 @@ const materialCSS = `
     blockquote { background: #1C1C1C; }
   }
 </style>
+
+<header class="header-bar">
+  <a href="index.html" aria-label="Back to index">
+    <img src="norman1.jpg" alt="Norman" class="header-logo">
+  </a>
+  <a href="https://github.com/pilardi/norman" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="GitHub repository">
+    <span class="material-icons">code</span>
+    GitHub
+  </a>
+</header>
 `
 
 func stripFrontmatter(data []byte) []byte {
