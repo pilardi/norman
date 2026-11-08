@@ -83,6 +83,12 @@ func (sc *SystemConfig) Validate() error {
 	if sc.Skills.MaxActive < 0 {
 		return fmt.Errorf("system.skills.max_active must be >= 0, got %d", sc.Skills.MaxActive)
 	}
+	// Validate builtin_skills references only known built-in skill directories.
+	for _, name := range sc.Skills.BuiltInSkills {
+		if name == "" {
+			return fmt.Errorf("system.skills.builtin_skills must not contain empty entries")
+		}
+	}
 	if sc.Notify.RateLimitPerMin < 1 {
 		return fmt.Errorf("system.notify.rate_limit_per_minute must be >= 1, got %d", sc.Notify.RateLimitPerMin)
 	}
@@ -140,9 +146,15 @@ type Config struct {
 
 // SkillsConfig holds skill-related settings.
 type SkillsConfig struct {
-	DiscoveryPaths []string `yaml:"discovery_paths"` // paths to scan for SKILL.md files
+	DiscoveryPaths []string `yaml:"discovery_paths"` // external paths to scan for SKILL.md files (user-added)
 	MaxActive      int      `yaml:"max_active"`      // max concurrent active skills (0 = unlimited)
-	Path           string   `yaml:"path"`            // base directory where uploaded skills are stored
+	BuiltInSkills  []string `yaml:"builtin_skills"`  // names of built-in skills to include in discovery
+}
+
+// SkillsPath returns the canonical path for storing uploaded/installed skills:
+// $NORMAN_BASE_DIR/skills/.
+func (sc *SystemConfig) SkillsPath() string {
+	return filepath.Join(sc.BaseDirPath(), "skills")
 }
 
 // NotifyConfig holds notification delivery settings.
@@ -206,6 +218,9 @@ func Load(path string) (*Config, error) {
 	}
 	if c.System.Skills.MaxActive == 0 {
 		c.System.Skills.MaxActive = EmbeddedDefaults().System.Skills.MaxActive
+	}
+	if len(c.System.Skills.BuiltInSkills) == 0 {
+		c.System.Skills.BuiltInSkills = append([]string{}, EmbeddedDefaults().System.Skills.BuiltInSkills...)
 	}
 
 	return c, nil
@@ -275,6 +290,9 @@ func LoadDefault() (*Config, error) {
 	}
 	if c.System.Skills.MaxActive == 0 {
 		c.System.Skills.MaxActive = EmbeddedDefaults().System.Skills.MaxActive
+	}
+	if len(c.System.Skills.BuiltInSkills) == 0 {
+		c.System.Skills.BuiltInSkills = append([]string{}, EmbeddedDefaults().System.Skills.BuiltInSkills...)
 	}
 
 	// Step 2: Apply NORMAN_* env var overrides (highest priority).
