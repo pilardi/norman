@@ -58,6 +58,7 @@ type Loop struct {
 	mcpClient     *mcp.Client               // MCP client for remote tool discovery/invocation (optional)
 	systemPrompt  string                    // immutable system prompt (e.g. agent identity/facts) injected as first "system" role message
 	debug         bool                      // if true, log detailed message contents before sending to LLM
+	processing    bool                      // whether the loop is currently processing (for graceful shutdown)
 }
 
 // WorkspaceConfig returns the merged (system + workspace overrides) config for a given workspace.
@@ -1432,18 +1433,18 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 		return
 	}
 
-	flags := l.budget.CheckThresholds()
-	if flags == budget.ThresholdNone {
+	state := l.budget.CurrentState()
+	if state == budget.BudgetNone {
 		return
 	}
 
 	log.Printf("agent: budget threshold triggered [%s] for task %s (used %.0f%%)",
-		flags.String(), taskID, l.budget.UsedFraction()*100)
+		state.String(), taskID, l.budget.UsedFraction()*100)
 
 	// Idempotency: skip compression if already compressed; still log and notify.
 	if l.budget.Compressed {
 		log.Printf("agent: session already compressed for task %s — skipping re-compression", taskID[:8])
-		l.pushThresholdNotification(taskID, flags)
+		l.pushThresholdNotification(taskID, state)
 		return
 	}
 
@@ -1481,10 +1482,10 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 	})
 
 	// Push notification via notifier path (threshold event logging)
-	l.pushThresholdNotification(taskID, flags)
+	l.pushThresholdNotification(taskID, state)
 
 	// Run compression (aggressive if critical threshold hit)
-	aggressive := flags.Is(budget.ThresholdCritical)
+	aggressive := state == budget.BudgetCritical
 	compressor := budget.NewCompressor(nil, l.budget.Budget) // nil client = no-op in tests
 	result, err := compressor.Summarize(l.budget, aggressive)
 	if err != nil {
@@ -1496,22 +1497,24 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 }
 
 // pushThresholdNotification sends a threshold event notification via the notifier path.
-func (l *Loop) pushThresholdNotification(taskID string, flags budget.ThresholdFlags) {
+func (l *Loop) pushThresholdNotification(taskID string, state budget.BudgetState) {
 	if l.notifier == nil {
 		return
 	}
 
-	severity := "info"
-	switch {
-	case flags.Is(budget.ThresholdCritical):
-		severity = "error"
-	case flags.Is(budget.ThresholdWarn):
-		severity = "warn"
+	var severity notify.NotificationSeverity
+	switch state {
+	case budget.BudgetCritical:
+		severity = notify.NotificationError
+	case budget.BudgetWarn:
+		severity = notify.NotificationWarn
+	default:
+		severity = notify.NotificationInfo
 	}
 
 	n := notify.Notification{
 		TaskID: taskID,
-		Title:  fmt.Sprintf("Budget threshold [%s]", flags.String()),
+		Title:  fmt.Sprintf("Budget threshold [%s]", state.String()),
 		Body: fmt.Sprintf("Token usage at %.0f%% of budget (%d/%d tokens). Threshold triggered.",
 			l.budget.UsedFraction()*100, l.budget.TokenCount, l.budget.Budget.MaxTokens),
 		Severity:  severity,
@@ -1558,11 +1561,11 @@ func (l *Loop) pushCompletion(task *Task) {
 
 	// Push notification via notifier (if configured)
 	if l.notifier != nil {
-		severity := "info"
+		var severity notify.NotificationSeverity
 		if task.Error != "" {
-			severity = "error"
+			severity = notify.NotificationError
 		} else if task.Status == protocol.TaskStatusCompleted {
-			severity = "info"
+			severity = notify.NotificationInfo
 		}
 
 		n := notify.Notification{
@@ -1592,12 +1595,11 @@ func (l *Loop) pushCompletion(task *Task) {
 		select {
 		case result := <-l.resultsCh:
 			if result.Err != nil {
-				severity := "warn"
 				n := notify.Notification{
 					TaskID:    result.TaskID,
 					Title:     fmt.Sprintf("Task %s", result.TaskID[:8]),
 					Body:      result.Err.Error(),
-					Severity:  severity,
+					Severity:  notify.NotificationWarn,
 					Timestamp: time.Now(),
 				}
 				if l.notifier != nil {
@@ -1608,7 +1610,7 @@ func (l *Loop) pushCompletion(task *Task) {
 					TaskID:    result.TaskID,
 					Title:     fmt.Sprintf("Task %s", result.TaskID[:8]),
 					Body:      result.Output,
-					Severity:  "info",
+					Severity:  notify.NotificationInfo,
 					Timestamp: time.Now(),
 				}
 				if l.notifier != nil {
@@ -2037,6 +2039,9 @@ func (l *Loop) handleMCPCall(sandboxName string, argsRaw string) (string, int, e
 
 // MarkActive signals that a workspace is currently in use (updates last activity).
 func (l *Loop) MarkActive(workspace string) {
+	l.mu.Lock()
+	l.processing = true
+	l.mu.Unlock()
 	if l.workspaceDef != nil && l.workspaceDef.Name == workspace {
 		log.Printf("[loop] Workspace '%s' marked active", workspace)
 	}
@@ -2044,9 +2049,20 @@ func (l *Loop) MarkActive(workspace string) {
 
 // MarkIdle signals that a workspace has no active sessions (start idle timer).
 func (l *Loop) MarkIdle(workspace string) {
+	l.mu.Lock()
+	l.processing = false
+	l.mu.Unlock()
 	if l.workspaceDef != nil && l.workspaceDef.Name == workspace {
 		log.Printf("[loop] Workspace '%s' marked idle", workspace)
 	}
+}
+
+// IsProcessing returns whether the loop is currently processing a task or session.
+// Useful for graceful shutdown: callers can check this before blocking on long operations.
+func (l *Loop) IsProcessing() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.processing
 }
 
 // shellEscape wraps a string for safe inclusion in a single-quoted shell argument.

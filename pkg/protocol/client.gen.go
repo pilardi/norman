@@ -3971,17 +3971,17 @@ type CreateNotificationResponse struct {
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *struct {
-		Id       *int64  `json:"id,omitempty"`
-		Severity *string `json:"severity,omitempty"`
-		Title    *string `json:"title,omitempty"`
+		Id       *int64      `json:"id,omitempty"`
+		Severity interface{} `json:"severity,omitempty"`
+		Title    *string     `json:"title,omitempty"`
 	}
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
 func (r CreateNotificationResponse) GetJSON201() *struct {
-	Id       *int64  `json:"id,omitempty"`
-	Severity *string `json:"severity,omitempty"`
-	Title    *string `json:"title,omitempty"`
+	Id       *int64      `json:"id,omitempty"`
+	Severity interface{} `json:"severity,omitempty"`
+	Title    *string     `json:"title,omitempty"`
 } {
 	return r.JSON201
 }
@@ -6594,9 +6594,9 @@ func ParseCreateNotificationResponse(rsp *http.Response) (*CreateNotificationRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest struct {
-			Id       *int64  `json:"id,omitempty"`
-			Severity *string `json:"severity,omitempty"`
-			Title    *string `json:"title,omitempty"`
+			Id       *int64      `json:"id,omitempty"`
+			Severity interface{} `json:"severity,omitempty"`
+			Title    *string     `json:"title,omitempty"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err

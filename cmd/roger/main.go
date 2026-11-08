@@ -17,6 +17,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/norman/norman/pkg/notify"
 	"github.com/norman/norman/pkg/version"
 )
 
@@ -28,17 +29,17 @@ type ContextFile struct {
 
 // NotificationRequest mirrors the API schema for creating a notification.
 type NotificationRequest struct {
-	Title    string `json:"title"`
-	Body     string `json:"body"`
-	Severity string `json:"severity"` // "info", "warn", "error"
-	TaskID   string `json:"task_id,omitempty"`
+	Title    string                      `json:"title"`
+	Body     string                      `json:"body"`
+	Severity notify.NotificationSeverity `json:"severity"`
+	TaskID   string                      `json:"task_id,omitempty"`
 }
 
 // NotificationResponse is the API response for a created notification.
 type NotificationResponse struct {
-	ID       int64  `json:"id"`
-	Title    string `json:"title"`
-	Severity string `json:"severity"`
+	ID       int64                       `json:"id"`
+	Title    string                      `json:"title"`
+	Severity notify.NotificationSeverity `json:"severity"`
 }
 
 func main() {
@@ -66,7 +67,7 @@ Configuration loaded from environment variables:
 
 // notifyCommand returns the "notify" subcommand.
 func notifyCommand() *cli.Command {
-	var title, body, severity string
+	var title, body string
 
 	return &cli.Command{
 		Name:        "notify",
@@ -94,7 +95,6 @@ func notifyCommand() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			title = cmd.String("title")
 			body = cmd.String("body")
-			severity = cmd.String("severity")
 
 			if title == "" {
 				return fmt.Errorf("--title is required")
@@ -103,6 +103,16 @@ func notifyCommand() *cli.Command {
 			envCtx, err := ensureEnv()
 			if err != nil {
 				return fmt.Errorf("error: %v", err)
+			}
+
+			var severity notify.NotificationSeverity
+			switch cmd.String("severity") {
+			case "warn":
+				severity = notify.NotificationWarn
+			case "error":
+				severity = notify.NotificationError
+			default:
+				severity = notify.NotificationInfo
 			}
 
 			req := NotificationRequest{

@@ -116,8 +116,8 @@ func (b *PromptBuilder) compressIfNeeded(messages []Message) []Message {
 		return messages
 	}
 
-	flags := b.budget.CheckThresholds()
-	if flags == budget.ThresholdNone {
+	state := b.budget.CurrentState()
+	if state == budget.BudgetNone {
 		return messages
 	}
 

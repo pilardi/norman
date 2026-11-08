@@ -52,59 +52,43 @@ func TestAddTurn(t *testing.T) {
 	}
 }
 
-func TestCheckThresholdsNone(t *testing.T) {
+func TestCurrentStateNone(t *testing.T) {
 	cfg := NewBudgetConfig(1000)
 	state := NewSessionState(cfg)
 	state.AddTurn(Turn{Tokens: 100}) // 10% used
 
-	flags := state.CheckThresholds()
-	if flags.Is(ThresholdWarn) {
-		t.Error("expected no warn threshold at 10%")
-	}
-	if flags.Is(ThresholdCritical) {
-		t.Error("expected no critical threshold at 10%")
+	if state.CurrentState() != BudgetNone {
+		t.Errorf("expected BudgetNone at 10%%, got %s", state.CurrentState())
 	}
 }
 
-func TestCheckThresholdsWarn(t *testing.T) {
+func TestCurrentStateWarn(t *testing.T) {
 	cfg := NewBudgetConfig(1000)
 	state := NewSessionState(cfg)
 	state.AddTurn(Turn{Tokens: 750}) // 75% used
 
-	flags := state.CheckThresholds()
-	if !flags.Is(ThresholdWarn) {
-		t.Error("expected warn threshold at 75%")
-	}
-	if flags.Is(ThresholdCritical) {
-		t.Error("expected no critical threshold at exactly 75%")
+	if state.CurrentState() != BudgetWarn {
+		t.Errorf("expected BudgetWarn at 75%%, got %s", state.CurrentState())
 	}
 }
 
-func TestCheckThresholdsCritical(t *testing.T) {
+func TestCurrentStateCritical(t *testing.T) {
 	cfg := NewBudgetConfig(1000)
 	state := NewSessionState(cfg)
 	state.AddTurn(Turn{Tokens: 900}) // 90% used
 
-	flags := state.CheckThresholds()
-	if !flags.Is(ThresholdWarn) {
-		t.Error("expected warn threshold at 90%")
-	}
-	if !flags.Is(ThresholdCritical) {
-		t.Error("expected critical threshold at 90%")
+	if state.CurrentState() != BudgetCritical {
+		t.Errorf("expected BudgetCritical at 90%%, got %s", state.CurrentState())
 	}
 }
 
-func TestCheckThresholdsBoth(t *testing.T) {
+func TestCurrentStateAboveCritical(t *testing.T) {
 	cfg := NewBudgetConfig(1000)
 	state := NewSessionState(cfg)
 	state.AddTurn(Turn{Tokens: 950}) // 95% used
 
-	flags := state.CheckThresholds()
-	if !flags.Is(ThresholdWarn) {
-		t.Error("expected warn threshold")
-	}
-	if !flags.Is(ThresholdCritical) {
-		t.Error("expected critical threshold")
+	if state.CurrentState() != BudgetCritical {
+		t.Errorf("expected BudgetCritical at 95%%, got %s", state.CurrentState())
 	}
 }
 
@@ -148,18 +132,15 @@ func TestRemainingOverflow(t *testing.T) {
 	}
 }
 
-func TestThresholdFlagsString(t *testing.T) {
-	if ThresholdNone.String() != "none" {
-		t.Errorf("expected 'none', got '%s'", ThresholdNone.String())
+func TestBudgetStateString(t *testing.T) {
+	if BudgetNone.String() != "none" {
+		t.Errorf("expected 'none', got '%s'", BudgetNone.String())
 	}
-	if ThresholdWarn.String() != "warn" {
-		t.Errorf("expected 'warn', got '%s'", ThresholdWarn.String())
+	if BudgetWarn.String() != "warn" {
+		t.Errorf("expected 'warn', got '%s'", BudgetWarn.String())
 	}
-	if ThresholdCritical.String() != "critical" {
-		t.Errorf("expected 'critical', got '%s'", ThresholdCritical.String())
-	}
-	if (ThresholdWarn | ThresholdCritical).String() != "warn, critical" {
-		t.Errorf("expected 'warn, critical', got '%s'", (ThresholdWarn | ThresholdCritical).String())
+	if BudgetCritical.String() != "critical" {
+		t.Errorf("expected 'critical', got '%s'", BudgetCritical.String())
 	}
 }
 
