@@ -1,7 +1,7 @@
 ---
 title: "Task & Session Cleanup Plan"
 type: implementation
-status: draft
+status: active — phases 1–3 done, phase 4 deferred
 date: 2026-11-07
 author: Pablo (via goose)
 related: [session-history-gaps.md, task-management-assessment.md, session-workflow-proposal.md]
@@ -11,7 +11,7 @@ related: [session-history-gaps.md, task-management-assessment.md, session-workfl
 
 > **Date:** 2026-11-07  
 > **Author:** Pablo (via goose)  
-> **Status:** Draft — awaiting review before implementation
+> **Status:** Phases 1–3 complete; Phase 4 deferred
 
 ## TL;DR
 
@@ -173,10 +173,9 @@ cmd/norman/sessions.go:handleSessionArchive() {
 - 5 unit tests added in `cmd/norman-server/sessions_test.go`
 - All pass with `make verify` (0 lint issues, race detector clean)
 
-### Phase 4: Verification & Edge Cases
-- Verify cleanup when session has zero tasks (no-op)
-- Verify cleanup when session is already deleted (idempotent)
-- Verify cleanup when `.jsonl` file doesn't exist (legacy sessions)
+### Phase 4: Verification & Edge Cases ⬜ Deferred
+- **Already covered:** `TestDeleteSessionIdempotentTurnsFile` (Phase 2), `TestArchiveSessionNoTurnsFile`, `TestArchiveSessionNoTasksForSession` (Phase 3)
+- **Remaining gap:** Dedicated end-to-end integration test — start server, send messages via CLI, curl `/api/sessions/{id}/history` to confirm turns populated, then verify cleanup after archive/delete
 
 ---
 
@@ -242,40 +241,54 @@ func evictOldestTask(sessionID string) {
 
 ## Implementation Results
 
-**Phase 1 — Task Cap in Agent Loop:** ✅ Complete (commit `28fe5ed`)
+## Implementation Results
 
-- `MaxTasksPerSession` added to `SystemConfig` with default value of 10
-- `Submit()` enforces cap via LRU eviction (`evictOldestTask()`) before adding new tasks
-- `session_id` persisted in task JSON files via `taskToMap()` for proper filtering
-- 4 unit tests added: `TestTaskCapEnforcement`, `TestTaskCapZeroDisabled`, `TestTaskCapLruEviction`, `TestTaskCapDifferentSessionsIndependent`
-- All pass with `make verify` (0 lint issues)
+### Phase 1 — Task Cap in Agent Loop ✅ Complete (commit `28fe5ed`)
 
-**Deviations from plan:**
-- Added nil-safe workspace guard in `execute()` to prevent panics when tests pass `nil` workspace — this is a defensive fix, not a deviation.
-- The cap check happens *before* adding the new task to the map (not after), so at peak exactly `max_tasks_per_session` tasks exist.
+| File | Change |
+|------|--------|
+| `pkg/config/config.go` | Added `MaxTasksPerSession int` field to `SystemConfig` with default value of 10 |
+| `pkg/agent/loop.go` | `Submit()` enforces cap via LRU eviction (`evictOldestTask()`) before adding new tasks; `session_id` persisted in task JSON files via `taskToMap()` for proper filtering |
 
-**Phase 2 — DeleteSession Cleanup:** ✅ Complete (commit `9abebe0`)
+**Tests (4):** `TestTaskCapEnforcement`, `TestTaskCapZeroDisabled`, `TestTaskCapLruEviction`, `TestTaskCapDifferentSessionsIndependent`
+**Verification:** 0 lint issues, all tests pass.
 
-- `DeleteSession()` handler extended to remove `.jsonl` turns file on disk
-- Iterates over all stored tasks and calls `store.DeleteTask()` for each task with matching `SessionId`
-- Idempotent: gracefully handles missing turns files (legacy sessions)
-- Correctly scoped: only tasks belonging to the deleted session are removed; other sessions' tasks are preserved
-- 4 unit tests added: `TestDeleteSessionRemovesTurnsFile`, `TestDeleteSessionRemovesAssociatedTasks`, `TestDeleteSessionIdempotentTurnsFile`, `TestDeleteSessionNoTasksForSession`
-- All pass with `make verify` (0 lint issues, race detector clean)
+> **Deviation:** Cap check happens *before* adding the new task to the map (not after), so at peak exactly `max_tasks_per_session` tasks exist. Added nil-safe workspace guard in `execute()` to prevent panics when tests pass `nil` workspace — defensive fix, not a deviation.
 
-**Phase 3 — ArchiveCleanup:** ✅ Complete (commit `c40bb88`)
+---
 
-- `store.ArchiveSession()` extended to remove `.jsonl` turns file + delete all associated task files
-- Cleanup is idempotent: gracefully handles missing turns files and already-deleted sessions
-- Correctly scoped: only tasks with matching `session_id` are removed; other sessions' tasks preserved
-- 5 unit tests added: `TestArchiveSessionRemovesTurnsFile`, `TestArchiveSessionRemovesAssociatedTasks`, `TestArchiveSessionNoTurnsFile`, `TestArchiveSessionNoTasksForSession`, `TestArchiveSessionCreatesValidArchiveFile`
-- All pass with `make verify` (0 lint issues, race detector clean)
+### Phase 2 — DeleteSession Cleanup ✅ Complete (commit `9abebe0`)
 
-**Deviations from plan:**
-- Cleanup is inlined directly in `store.ArchiveSession()` rather than calling `s.DeleteTask()` — avoids deadlock since `ArchiveSession` holds `s.mu.Lock()` and Go's mutex is not reentrant.
-- The CLI `handleSessionArchive()` delegates to the server API, so cleanup happens server-side in `ArchiveSessionByID` → `store.ArchiveSession()`.
+| File | Change |
+|------|--------|
+| `cmd/norman-server/sessions.go` | Extended `DeleteSession()` handler to remove `.jsonl` turns file + iterate over all stored tasks and call `store.DeleteTask()` for each task with matching `SessionId` |
 
-**Status:** Phase 3 done. Phase 4 remains deferred.
-- The CLI `handleSessionArchive()` delegates to the server API, so cleanup happens server-side in `ArchiveSessionByID` → `store.ArchiveSession()`.
+**Tests (4):** `TestDeleteSessionRemovesTurnsFile`, `TestDeleteSessionRemovesAssociatedTasks`, `TestDeleteSessionIdempotentTurnsFile`, `TestDeleteSessionNoTasksForSession`
+**Verification:** 0 lint issues, race detector clean.
 
-**Status:** Phase 3 done. Phase 4 remains deferred.
+---
+
+### Phase 3 — ArchiveCleanup ✅ Complete (commit `c40bb88`)
+
+| File | Change |
+|------|--------|
+| `pkg/memory/store.go` | Extended `ArchiveSession()` to remove `.jsonl` turns file + delete all associated task files (inlined to avoid deadlock) |
+| `cmd/norman-server/sessions_test.go` | Added 5 unit tests for archive cleanup behavior |
+
+**Tests (5):** `TestArchiveSessionRemovesTurnsFile`, `TestArchiveSessionRemovesAssociatedTasks`, `TestArchiveSessionNoTurnsFile`, `TestArchiveSessionNoTasksForSession`, `TestArchiveSessionCreatesValidArchiveFile`
+**Verification:** 0 lint issues, race detector clean.
+
+> **Deviations from plan:**
+> - Cleanup is inlined directly in `store.ArchiveSession()` rather than calling `s.DeleteTask()` — avoids deadlock since `ArchiveSession` holds `s.mu.Lock()` and Go's mutex is not reentrant.
+> - The CLI `handleSessionArchive()` delegates to the server API, so cleanup happens server-side in `ArchiveSessionByID` → `store.ArchiveSession()`.
+
+---
+
+### Phase 4 — Verification & Edge Cases ⬜ Deferred
+
+TODO:
+- Verify cleanup when session has zero tasks (no-op)
+- Verify cleanup when session is already deleted (idempotent)
+- Verify cleanup when `.jsonl` file doesn't exist (legacy sessions)
+
+> **Note:** Some of these edge cases are already covered by Phase 2 (`TestDeleteSessionIdempotentTurnsFile`) and Phase 3 (`TestArchiveSessionNoTurnsFile`, `TestArchiveSessionNoTasksForSession`). The remaining gap is a dedicated end-to-end integration test: start server, send messages via CLI, curl `/api/sessions/{id}/history` to confirm turns populated, then verify cleanup after archive/delete.
