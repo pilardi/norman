@@ -26,10 +26,22 @@ func (s *server) CreateNotification(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	var severity notify.NotificationSeverity
+	if s, ok := req.Severity.(string); ok {
+		switch s {
+		case "warn":
+			severity = notify.NotificationWarn
+		case "error":
+			severity = notify.NotificationError
+		default:
+			severity = notify.NotificationInfo
+		}
+	}
+
 	n := notify.Notification{
 		Title:     req.Title,
 		Body:      req.Body,
-		Severity:  req.Severity,
+		Severity:  severity,
 		Timestamp: time.Now(),
 	}
 	if req.TaskId != nil {
@@ -43,7 +55,7 @@ func (s *server) CreateNotification(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"id":       time.Now().UnixNano(),
 		"title":    req.Title,
-		"severity": req.Severity,
+		"severity": severity,
 	})
 }
 

@@ -1502,12 +1502,14 @@ func (l *Loop) pushThresholdNotification(taskID string, state budget.BudgetState
 		return
 	}
 
-	severity := "info"
+	var severity notify.NotificationSeverity
 	switch state {
 	case budget.BudgetCritical:
-		severity = "error"
+		severity = notify.NotificationError
 	case budget.BudgetWarn:
-		severity = "warn"
+		severity = notify.NotificationWarn
+	default:
+		severity = notify.NotificationInfo
 	}
 
 	n := notify.Notification{
@@ -1559,11 +1561,11 @@ func (l *Loop) pushCompletion(task *Task) {
 
 	// Push notification via notifier (if configured)
 	if l.notifier != nil {
-		severity := "info"
+		var severity notify.NotificationSeverity
 		if task.Error != "" {
-			severity = "error"
+			severity = notify.NotificationError
 		} else if task.Status == protocol.TaskStatusCompleted {
-			severity = "info"
+			severity = notify.NotificationInfo
 		}
 
 		n := notify.Notification{
@@ -1593,12 +1595,11 @@ func (l *Loop) pushCompletion(task *Task) {
 		select {
 		case result := <-l.resultsCh:
 			if result.Err != nil {
-				severity := "warn"
 				n := notify.Notification{
 					TaskID:    result.TaskID,
 					Title:     fmt.Sprintf("Task %s", result.TaskID[:8]),
 					Body:      result.Err.Error(),
-					Severity:  severity,
+					Severity:  notify.NotificationWarn,
 					Timestamp: time.Now(),
 				}
 				if l.notifier != nil {
@@ -1609,7 +1610,7 @@ func (l *Loop) pushCompletion(task *Task) {
 					TaskID:    result.TaskID,
 					Title:     fmt.Sprintf("Task %s", result.TaskID[:8]),
 					Body:      result.Output,
-					Severity:  "info",
+					Severity:  notify.NotificationInfo,
 					Timestamp: time.Now(),
 				}
 				if l.notifier != nil {

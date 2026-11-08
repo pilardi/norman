@@ -418,7 +418,7 @@ paths:
                   title:
                     type: string
                   severity:
-                    type: string
+                    enum: [info, warn, error]
 
   /api/notifications/{id}:
     delete:
@@ -1558,7 +1558,7 @@ components:
           type: string
           nullable: true
         severity:
-          type: string
+          enum: [info, warn, error]
           nullable: true
         created_at:
           type: string
@@ -1631,7 +1631,7 @@ components:
           type: string
           description: Notification body text
         severity:
-          type: string
+          enum: [info, warn, error]
         task_id:
           type: string
           description: Optional task ID to associate with this notification

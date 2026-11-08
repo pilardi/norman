@@ -17,12 +17,43 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
+// NotificationSeverity represents the severity level of a notification.
+type NotificationSeverity string
+
+const (
+	NotificationInfo  NotificationSeverity = "info"
+	NotificationWarn  NotificationSeverity = "warn"
+	NotificationError NotificationSeverity = "error"
+)
+
+// Valid returns true if the severity is one of the known values.
+func (s NotificationSeverity) Valid() bool {
+	switch s {
+	case NotificationInfo, NotificationWarn, NotificationError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Escalate returns the next higher severity level. Returns the same value if already at "error".
+func (s NotificationSeverity) Escalate() NotificationSeverity {
+	switch s {
+	case NotificationInfo:
+		return NotificationWarn
+	case NotificationWarn:
+		return NotificationError
+	default:
+		return s
+	}
+}
+
 // Notification represents a single notification to be delivered.
 type Notification struct {
-	TaskID    string `json:"task_id"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	Severity  string `json:"severity"` // "info", "warn", "error"
+	TaskID    string               `json:"task_id"`
+	Title     string               `json:"title"`
+	Body      string               `json:"body"`
+	Severity  NotificationSeverity `json:"severity"`
 	Timestamp time.Time
 }
 
@@ -228,6 +259,13 @@ func (n *Notifier) Push(title string, body string) error {
 	return nil
 }
 
+// Escalate returns a new Notification with severity escalated by one level.
+// For example: info → warn, warn → error, error → error.
+func (n *Notifier) Escalate(notification Notification) Notification {
+	notification.Severity = notification.Severity.Escalate()
+	return notification
+}
+
 // ringBell prints a bell character and brief text to stdout.
 func (n *Notifier) ringBell(title, body string) {
 	fmt.Print("\a") // ASCII bell character (0x07)
@@ -284,10 +322,10 @@ func (n *Notifier) postSlack(notification Notification) {
 func strPtr(s string) *string { return &s }
 
 // priority maps severity to WebSocketEventPriority.
-func priority(severity string) *protocol.WebSocketEventPriority {
+func priority(severity NotificationSeverity) *protocol.WebSocketEventPriority {
 	p := protocol.WebSocketEventPriorityNormal
 	switch severity {
-	case "error":
+	case NotificationError:
 		p = protocol.WebSocketEventPriorityHigh
 	}
 	return &p

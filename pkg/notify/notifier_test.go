@@ -50,7 +50,7 @@ func TestNotifyBasic(t *testing.T) {
 		TaskID:    "task-123",
 		Title:     "Build Complete",
 		Body:      "All tests passed successfully",
-		Severity:  "info",
+		Severity:  NotificationInfo,
 		Timestamp: time.Now(),
 	})
 	if err != nil {
@@ -132,7 +132,7 @@ func TestAskUserBlocking(t *testing.T) {
 		TaskID:    "test",
 		Title:     "Test",
 		Body:      "blocking test",
-		Severity:  "info",
+		Severity:  NotificationInfo,
 		Timestamp: time.Now(),
 	})
 	if err != nil {
@@ -261,5 +261,80 @@ func TestAskUserTimeout(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("test timed out waiting for AskUser")
+	}
+}
+
+func TestNotificationSeverityValid(t *testing.T) {
+	tests := []struct {
+		severity NotificationSeverity
+		want     bool
+	}{
+		{NotificationInfo, true},
+		{NotificationWarn, true},
+		{NotificationError, true},
+		{NotificationSeverity("debug"), false},
+		{NotificationSeverity(""), false},
+	}
+
+	for _, tt := range tests {
+		if got := tt.severity.Valid(); got != tt.want {
+			t.Errorf("NotificationSeverity(%q).Valid() = %v; want %v", tt.severity, got, tt.want)
+		}
+	}
+}
+
+func TestNotificationSeverityEscalate(t *testing.T) {
+	tests := []struct {
+		input NotificationSeverity
+		want  NotificationSeverity
+	}{
+		{NotificationInfo, NotificationWarn},
+		{NotificationWarn, NotificationError},
+		{NotificationError, NotificationError},
+	}
+
+	for _, tt := range tests {
+		got := tt.input.Escalate()
+		if got != tt.want {
+			t.Errorf("NotificationSeverity(%q).Escalate() = %q; want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestNotifierEscalate(t *testing.T) {
+	wh := &mockWSHub{}
+	n := New(wh, false, "", 10)
+
+	orig := Notification{
+		TaskID:   "task-1",
+		Title:    "Test",
+		Body:     "original message",
+		Severity: NotificationInfo,
+	}
+
+	escalated := n.Escalate(orig)
+
+	if escalated.Severity != NotificationWarn {
+		t.Errorf("escalated severity = %q; want %q", escalated.Severity, NotificationWarn)
+	}
+	if escalated.Title != orig.Title {
+		t.Errorf("title changed unexpectedly: %q", escalated.Title)
+	}
+	if escalated.Body != orig.Body {
+		t.Errorf("body changed unexpectedly: %q", escalated.Body)
+	}
+
+	// Escalate from warn → error
+	warnNotif := Notification{Severity: NotificationWarn}
+	warnEscalated := n.Escalate(warnNotif)
+	if warnEscalated.Severity != NotificationError {
+		t.Errorf("warn escalation = %q; want %q", warnEscalated.Severity, NotificationError)
+	}
+
+	// Escalate from error → stays error
+	errorNotif := Notification{Severity: NotificationError}
+	errorEscalated := n.Escalate(errorNotif)
+	if errorEscalated.Severity != NotificationError {
+		t.Errorf("error escalation = %q; want %q", errorEscalated.Severity, NotificationError)
 	}
 }

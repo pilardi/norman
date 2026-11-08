@@ -583,8 +583,8 @@ type NotificationConfigPriority string
 // NotificationCreateRequest defines model for NotificationCreateRequest.
 type NotificationCreateRequest struct {
 	// Body Notification body text
-	Body     string `json:"body"`
-	Severity string `json:"severity"`
+	Body     string      `json:"body"`
+	Severity interface{} `json:"severity"`
 
 	// TaskId Optional task ID to associate with this notification
 	TaskId *string `json:"task_id,omitempty"`
@@ -595,12 +595,12 @@ type NotificationCreateRequest struct {
 
 // NotificationEntry defines model for NotificationEntry.
 type NotificationEntry struct {
-	Body      *string    `json:"body,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	Id        *string    `json:"id,omitempty"`
-	Severity  *string    `json:"severity,omitempty"`
-	TaskId    *string    `json:"task_id,omitempty"`
-	Title     *string    `json:"title,omitempty"`
+	Body      *string     `json:"body,omitempty"`
+	CreatedAt *time.Time  `json:"created_at,omitempty"`
+	Id        *string     `json:"id,omitempty"`
+	Severity  interface{} `json:"severity,omitempty"`
+	TaskId    *string     `json:"task_id,omitempty"`
+	Title     *string     `json:"title,omitempty"`
 }
 
 // NotifyConfig defines model for NotifyConfig.
