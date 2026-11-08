@@ -51,6 +51,4 @@ All design documents follow the [Design-Log Methodology](design-log/README.md), 
 | [CLI Library Assessment](design-log/cli-library-assessment.md) | `implemented` | urfave/v3 migration status |
 | [Agent Loop ↔ Workspace Interaction Principles](design-log/workspace-interaction-principles.md) | `implemented` | Single Workspace abstraction, session-level activity tracking, Get() vs GetSession() semantics |
 
-## Project Links
 
-- [GitHub Repository](https://github.com/pilardi/norman)
