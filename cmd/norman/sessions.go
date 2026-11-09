@@ -19,6 +19,7 @@ func shortID(id string) string {
 }
 
 // handleSessionList lists active sessions using the generated protocol client.
+// Optionally filters by workspace name if a workspace arg is provided.
 func handleSessionList(args []string) error {
 	client, err := getProtocolClient()
 	if err != nil {
@@ -35,14 +36,72 @@ func handleSessionList(args []string) error {
 		return fmt.Errorf("error parsing sessions response: %w", err)
 	}
 
-	if parsed.JSON200 == nil || len(*parsed.JSON200) == 0 {
-		fmt.Println("No active sessions.")
+	sessions := *parsed.JSON200
+
+	// If a workspace name is provided as the first arg, filter to that workspace.
+	var workspaceFilter string
+	if len(args) > 0 && args[0] != "" {
+		workspaceFilter = args[0]
+	}
+
+	if len(sessions) == 0 {
+		if workspaceFilter != "" {
+			fmt.Printf("No active sessions for workspace '%s'.\n", workspaceFilter)
+		} else {
+			fmt.Println("No active sessions.")
+		}
 		return nil
 	}
 
-	sessions := *parsed.JSON200
-	fmt.Println("Active sessions:")
+	// Build a workspace name → ID lookup map.
+	wsMap := make(map[string]string)
+	if resp, err := client.ListWorkspaces(context.Background(), nil); err == nil {
+		parsedWS, _ := protocol.ParseListWorkspacesResponse(resp)
+		workspaces := parsedWS.GetJSON200()
+		for _, ws := range *workspaces {
+			if ws.Name != nil {
+				wsMap[*ws.Name] = ws.Id.String()
+			}
+		}
+	}
+
+	// If workspace filter provided, validate and resolve.
+	var targetWorkspaceID string
+	if workspaceFilter != "" {
+		if id, ok := wsMap[workspaceFilter]; ok {
+			targetWorkspaceID = id
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found.\n", workspaceFilter)
+			return fmt.Errorf("workspace '%s' not found", workspaceFilter)
+		}
+	}
+
+	// Collect matching sessions.
+	var matchedSessions []*protocol.Session
 	for _, s := range sessions {
+		if targetWorkspaceID != "" && s.WorkspaceId != nil && *s.WorkspaceId != targetWorkspaceID {
+			continue
+		}
+		matchedSessions = append(matchedSessions, &s)
+	}
+
+	if len(matchedSessions) == 0 {
+		if workspaceFilter != "" {
+			fmt.Printf("No active sessions for workspace '%s'.\n", workspaceFilter)
+		} else {
+			fmt.Println("No active sessions.")
+		}
+		return nil
+	}
+
+	// Print header with optional workspace context.
+	if workspaceFilter != "" {
+		fmt.Printf("Active sessions (workspace: %s):\n", workspaceFilter)
+	} else {
+		fmt.Println("Active sessions:")
+	}
+
+	for _, s := range matchedSessions {
 		name := "(unknown)"
 		if s.Name != nil {
 			name = *s.Name
@@ -51,7 +110,18 @@ func handleSessionList(args []string) error {
 		if s.SessionStatus != nil {
 			status = string(*s.SessionStatus)
 		}
-		fmt.Printf("  %-20s status=%s\n", name, status)
+
+		wsName := ""
+		if s.WorkspaceId != nil {
+			for wsNameVal, wsID := range wsMap {
+				if wsID == *s.WorkspaceId {
+					wsName = wsNameVal
+					break
+				}
+			}
+		}
+
+		fmt.Printf("  %-20s | %s  status=%s\n", name, wsName, status)
 	}
 	return nil
 }
@@ -83,47 +153,6 @@ func handleSessionArchive(sessionID string) error {
 
 	fmt.Printf("Session '%s' archived successfully.\n", shortID(actualID))
 	return nil
-}
-
-// listSessions lists all active sessions via GET /api/sessions.
-func listSessions() {
-	client, err := getProtocolClient()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to create API client: %v\n", err)
-		return
-	}
-
-	resp, err := client.ListSessions(context.Background())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching sessions: %v\n", err)
-		return
-	}
-
-	parsed, err := protocol.ParseListSessionsResponse(resp)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing sessions response: %v\n", err)
-		return
-	}
-
-	if parsed.JSON200 == nil || len(*parsed.JSON200) == 0 {
-		fmt.Println("--- Active Sessions ---\n(No active sessions)\n---")
-		return
-	}
-
-	sessions := *parsed.JSON200
-	fmt.Println("--- Active Sessions ---")
-	for _, s := range sessions {
-		name := "(unknown)"
-		if s.Name != nil {
-			name = *s.Name
-		}
-		status := "unknown"
-		if s.SessionStatus != nil {
-			status = string(*s.SessionStatus)
-		}
-		fmt.Printf("  %-20s status=%s\n", name, status)
-	}
-	fmt.Println("---")
 }
 
 // showHistory displays the last N messages of a session.

@@ -273,7 +273,9 @@ Examples:
 					{
 						Name:    "list",
 						Aliases: []string{"ls"},
-						Usage:   "List active chat sessions",
+						Usage:   "List active chat sessions, optionally filtered by workspace name",
+						Description: `Without a workspace argument, lists all sessions across all workspaces.
+Pass a workspace name (e.g., 'norman sessions ls test-ws') to show only sessions for that workspace.`,
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							err := handleSessionList(cmd.Args().Slice())
 							if err != nil {
