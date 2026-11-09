@@ -41,7 +41,7 @@ func listSkills(ctx context.Context, cmd *cli.Command) error {
 		if desc != "" {
 			fmt.Printf("     %s\n", desc)
 		}
-		if len(*s.Tools) > 0 {
+		if s.Tools != nil && len(*s.Tools) > 0 {
 			toolNames := make([]string, len(*s.Tools))
 			for i, t := range *s.Tools {
 				toolNames[i] = strVal(t.Name)

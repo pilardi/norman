@@ -54,7 +54,14 @@ func (s *server) UploadSkill(c echo.Context) error {
 
 // ListSkills discovers and returns all available skills.
 func (s *server) ListSkills(c echo.Context) error {
-	skillsResult, err := skills.Discover(s.cfg.System.Skills.DiscoveryPaths)
+	// Build discovery paths: built-in skills + external discovery paths.
+	var allPaths []string
+	for _, name := range s.cfg.System.Skills.BuiltInSkills {
+		allPaths = append(allPaths, "builtin://"+name)
+	}
+	allPaths = append(allPaths, s.cfg.System.Skills.DiscoveryPaths...)
+
+	skillsResult, err := skills.Discover(allPaths)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
