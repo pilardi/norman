@@ -281,7 +281,7 @@ Current REPL slash-commands map to TUI keyboard shortcuts:
 
 **Deliverable:** Chat messages with `render_hint=chart`, `render_hint=json`, `render_hint=markdown` render as formatted content instead of raw text.
 
-### Phase 3 — Keyboard Commands & Session Management (Week 5)
+### Phase 3 — Keyboard Commands & Session Management (Week 5) ✅ COMPLETE
 
 | Step | File | Description |
 |------|------|-------------|
@@ -290,6 +290,17 @@ Current REPL slash-commands map to TUI keyboard shortcuts:
 | 13 | `cmd/norman-tui/help_overlay.go` | Help overlay (bubbles.Confirm-style) |
 
 **Deliverable:** Full key bindings matching the existing slash-commands, session switching via TUI modal.
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+h` | Show help overlay |
+| `Ctrl+s` | Open session switcher (bubbles.List modal) |
+| `Ctrl+n` | Create new session |
+| `Ctrl+t` | Focus event panel |
+| `Ctrl+c` | Close current session |
+| `/` | Toggle command mode |
+
+**Build:** golangci-lint 0 issues, make build produces dist/norman-tui (12MB).
 
 ### Phase 4 — Polish & Integration Tests (Week 6)
 
@@ -396,7 +407,7 @@ func (m *Model) handleWebSocketEvent(evt protocol.WebSocketEvent) tea.Cmd {
 
 ## Implementation Results
 
-**Status: 🟡 Phase 1–2 complete (2026-11-09).**
+**Status: 🟢 Phase 1–3 complete (2026-11-09).**
 
 ### Completed (Phase 1 — Scaffold & Basic Chat Panel)
 
