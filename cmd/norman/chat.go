@@ -9,111 +9,50 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/norman/norman/pkg/protocol"
 )
 
-// runWebSocketLoop connects to the WebSocket endpoint and displays incoming events.
-// It runs concurrently with the REPL input loop.
 const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)"
 
-func runWebSocketLoop(sessionID string) {
+// createNewSession creates a new session and returns its ID.
+// Used by both REPL and TUI slash-command dispatch.
+func createNewSession() string {
 	client, err := getProtocolClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
+		return ""
 	}
 
-	params := &protocol.ConnectWebSocketParams{
-		SessionId: sessionID,
+	ct := protocol.Cli
+	body := protocol.SessionCreateRequest{
+		ClientType: &ct,
 	}
 
-	resp, err := client.ConnectWebSocket(context.Background(), params)
+	newSessRsp, err := client.CreateSession(context.Background(), body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "WebSocket connection failed: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Failed to create new session: %v\n", err)
+		return ""
 	}
-	defer resp.Body.Close()
-
-	// Upgrade the HTTP response to a WebSocket connection.
-	// Convert http:// → ws:// and https:// → wss:// for the dialer.
-	dialURL := resp.Request.URL.String()
-	if strings.HasPrefix(dialURL, "http://") {
-		dialURL = "ws://" + dialURL[len("http://"):]
-	} else if strings.HasPrefix(dialURL, "https://") {
-		dialURL = "wss://" + dialURL[len("https://"):]
-	}
-
-	// Strip WebSocket upgrade headers from the response before passing to Dialer.
-	// The dialer adds its own Sec-Websocket-Version etc., so we must remove any
-	// existing ones to avoid "duplicate header not allowed" errors.
-	for _, key := range []string{"Sec-Websocket-Version", "Sec-Websocket-Accept", "Sec-Websocket-Extensions", "Sec-Websocket-Protocol"} {
-		resp.Header.Del(key)
-	}
-
-	conn, _, err := websocket.DefaultDialer.Dial(dialURL, resp.Header)
+	parsedNewSess, err := protocol.ParseCreateSessionResponse(newSessRsp)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "WebSocket dial failed: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Error parsing new session response: %v\n", err)
+		return ""
 	}
-	defer func() { _ = conn.Close() }()
 
-	for {
-		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "\n[ws] Connection closed: %v\n", err)
-			return
-		}
-
-		var event map[string]interface{}
-		if err := json.Unmarshal(msg, &event); err != nil {
-			fmt.Fprintf(os.Stderr, "[ws] Bad JSON: %v\n", err)
-			continue
-		}
-
-		displayWSMessage(event)
-	}
+	newSess := parsedNewSess.GetJSON201()
+	fmt.Printf("New session '%s' created.\n", strVal(newSess.Name))
+	return newSess.Id.String()
 }
 
-// displayWSMessage formats and prints a WebSocket event for the user.
-func displayWSMessage(event map[string]interface{}) {
-	eventType, _ := event["event"].(string)
-	message, _ := event["message"].(string)
-	sessionID, _ := event["session_id"].(string)
-	taskID, _ := event["task_id"].(string)
-	step, _ := event["step"].(float64)
-	threshold, _ := event["threshold"].(string)
-
-	prefix := fmt.Sprintf("[ws] %s", eventType)
-	if sessionID != "" {
-		prefix += " @" + sessionID[:8]
+// displayResponseTyped formats and prints the agent's typed response.
+func displayResponseTyped(result *protocol.AgentResponse) {
+	if result != nil && result.Response != nil {
+		fmt.Println(*result.Response)
+		return
 	}
-
-	switch eventType {
-	case "task_progress":
-		fmt.Printf("%s  step=%d task=%s\n", prefix, int(step), taskID)
-	case "session_compressed":
-		fmt.Printf("%s  budget threshold: %s\n", prefix, threshold)
-	case "notification":
-		fmt.Printf("%s  %s\n", prefix, message)
-	default:
-		data, _ := json.MarshalIndent(event, "", "  ")
-		fmt.Printf("%s\n%s\n", prefix, string(data))
-	}
-}
-
-// parseSlashCommand checks if a line is a slash-command and returns the command + args.
-// Returns (command, args, isSlash) — only slash-commands trigger local actions.
-func parseSlashCommand(line string) (string, []string, bool) {
-	line = strings.TrimSpace(line)
-	if !strings.HasPrefix(line, "/") {
-		return "", nil, false
-	}
-	parts := strings.Fields(line[1:]) // strip leading '/' and split
-	if len(parts) == 0 {
-		return "", nil, false
-	}
-	return parts[0], parts[1:], true
+	// Fallback: print as formatted JSON (for backward compat).
+	data, _ := json.MarshalIndent(map[string]interface{}{}, "", "  ")
+	fmt.Println(string(data))
 }
 
 // handleChat implements the interactive REPL chat mode.
@@ -122,7 +61,7 @@ func handleChat(args []string) {
 	workspaceName := ""
 	sessionID := ""
 
-	client, err := getProtocolClient()
+	_, err := getProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
 		os.Exit(1)
@@ -268,68 +207,13 @@ func handleChat(args []string) {
 		cmd, cmdArgs, isSlash := parseSlashCommand(line)
 
 		if isSlash {
-			switch cmd {
-			case "help":
-				fmt.Fprintln(os.Stderr, chatHelpText)
-			case "list", "tasks":
-				listEmergentTasks(sessionID)
-			case "close":
-				fmt.Println("Closing session...")
-				return
-			case "new":
-				// Start a new session (auto-create).
-				fmt.Printf("Creating new session...\n")
-				ct := protocol.Cli
-				body := protocol.SessionCreateRequest{
-					ClientType: &ct,
-				}
-
-				newSessRsp, err := client.CreateSession(context.Background(), body)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to create new session: %v\n", err)
-					continue
-				}
-				parsedNewSess, err := protocol.ParseCreateSessionResponse(newSessRsp)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error parsing new session response: %v\n", err)
-					continue
-				}
-				newSess := parsedNewSess.GetJSON201()
-				sessionID = newSess.Id.String()
-				fmt.Printf("New session '%s' created.\n", strVal(newSess.Name))
-			case "history":
-				showHistory(sessionID, cmdArgs)
-			case "sessions":
-				_ = handleSessionList([]string{})
-			case "switch":
-				if len(cmdArgs) == 0 {
-					fmt.Fprintln(os.Stderr, "Usage: /switch <session-id>")
-					continue
-				}
-				resolvedID, found, err := resolveSessionID(cmdArgs[0])
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error resolving session '%s': %v\n", cmdArgs[0], err)
-					continue
-				}
-				if !found {
-					fmt.Fprintf(os.Stderr, "Error: session '%s' not found.\n", cmdArgs[0])
-					continue
-				}
-				sessionID = resolvedID
-				fmt.Printf("Switched to session '%s'\n", cmdArgs[0])
-			case "archive":
-				id := cmdArgs[0]
-				if len(cmdArgs) == 0 {
-					// Auto-archive current session.
-					id = sessionID
-				}
-				if err := handleSessionArchive(id); err != nil {
-					fmt.Fprintf(os.Stderr, "Error archiving session: %v\n", err)
-				}
-			default:
-				fmt.Fprintf(os.Stderr, "Unknown slash-command: /%s\n", cmd)
+			newSessionID, handled := dispatchSlashCommand(cmd, cmdArgs, sessionID)
+			if !handled {
+				// Fall through to normal message handling.
+			} else {
+				sessionID = newSessionID
+				continue
 			}
-			continue
 		}
 
 		// Normal message — send to agent.
@@ -391,73 +275,4 @@ func handleChat(args []string) {
 		fmt.Fprintf(os.Stderr, "Read error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-// listEmergentTasks lists tasks for the given session.
-func listEmergentTasks(sessionID string) {
-	client, err := getProtocolClient()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
-		return
-	}
-
-	rsp, err := client.ListTasks(context.Background(), nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching tasks: %v\n", err)
-		return
-	}
-
-	parsed, err := protocol.ParseListTasksResponse(rsp)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing tasks response: %v\n", err)
-		return
-	}
-
-	tasks := parsed.GetJSON200()
-	fmt.Println("Emergent scheduled tasks:")
-	for _, t := range *tasks {
-		fmt.Printf("  Task %s\n", t.Id.String())
-	}
-}
-
-// resolveSessionID resolves a session name/short ID to the actual UUID.
-// Returns (resolvedID, found, error). If an error occurred (e.g., server down),
-// found=false and error is non-nil — caller should surface it instead of
-// treating it as "not found".
-func resolveSessionID(input string) (string, bool, error) {
-	client, err := getProtocolClient()
-	if err != nil {
-		return input, false, fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	rsp, err := client.ListSessions(context.Background())
-	if err != nil {
-		return input, false, err
-	}
-
-	parsed, err := protocol.ParseListSessionsResponse(rsp)
-	if err != nil {
-		return input, false, fmt.Errorf("error parsing sessions response: %w", err)
-	}
-
-	sessions := parsed.GetJSON200()
-	for _, s := range *sessions {
-		name := strVal(s.Name)
-		id := s.Id.String()
-		if name == input || strings.HasPrefix(id[:8], input[:8]) {
-			return id, true, nil
-		}
-	}
-	return input, false, nil
-}
-
-// displayResponseTyped formats and prints the agent's typed response.
-func displayResponseTyped(result *protocol.AgentResponse) {
-	if result != nil && result.Response != nil {
-		fmt.Println(*result.Response)
-		return
-	}
-	// Fallback: print as formatted JSON (for backward compat).
-	data, _ := json.MarshalIndent(map[string]interface{}{}, "", "  ")
-	fmt.Println(string(data))
 }

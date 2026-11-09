@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/norman/norman/pkg/protocol"
@@ -16,6 +17,37 @@ func shortID(id string) string {
 		return id[:8]
 	}
 	return id
+}
+
+// resolveSessionID resolves a session name/short ID to the actual UUID.
+// Returns (resolvedID, found, error). If an error occurred (e.g., server down),
+// found=false and error is non-nil — caller should surface it instead of
+// treating it as "not found".
+func resolveSessionID(input string) (string, bool, error) {
+	client, err := getProtocolClient()
+	if err != nil {
+		return input, false, fmt.Errorf("failed to create API client: %w", err)
+	}
+
+	rsp, err := client.ListSessions(context.Background())
+	if err != nil {
+		return input, false, err
+	}
+
+	parsed, err := protocol.ParseListSessionsResponse(rsp)
+	if err != nil {
+		return input, false, fmt.Errorf("error parsing sessions response: %w", err)
+	}
+
+	sessions := parsed.GetJSON200()
+	for _, s := range *sessions {
+		name := strVal(s.Name)
+		id := s.Id.String()
+		if name == input || strings.HasPrefix(id[:8], input[:8]) {
+			return id, true, nil
+		}
+	}
+	return input, false, nil
 }
 
 // handleSessionList lists active sessions using the generated protocol client.
@@ -234,4 +266,31 @@ func showHistory(sessionID string, args []string) {
 		}
 	}
 	fmt.Printf("---\n")
+}
+
+// listEmergentTasks lists tasks for the given session.
+func listEmergentTasks(sessionID string) {
+	client, err := getProtocolClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
+		return
+	}
+
+	rsp, err := client.ListTasks(context.Background(), nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching tasks: %v\n", err)
+		return
+	}
+
+	parsed, err := protocol.ParseListTasksResponse(rsp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing tasks response: %v\n", err)
+		return
+	}
+
+	tasks := parsed.GetJSON200()
+	fmt.Println("Emergent scheduled tasks:")
+	for _, t := range *tasks {
+		fmt.Printf("  Task %s\n", t.Id.String())
+	}
 }
