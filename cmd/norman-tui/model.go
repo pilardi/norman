@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -41,6 +42,11 @@ type Model struct {
 	initialWorkspace string
 	events           []EventItem
 	done             bool
+
+	// Phase 3 overlays
+	helpOverlay     helpOverlay
+	sessionSwitcher sessionSwitcher
+	commandMode     bool
 }
 
 // NewModel creates a new application model with default settings.
@@ -74,6 +80,35 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatPanel.height = msg.Height - 12
 
 	case tea.KeyMsg:
+		// Phase 3: help overlay dismissal (always handled first)
+		if m.helpOverlay.IsShowing() {
+			switch msg.String() {
+			case "esc", "q":
+				m.helpOverlay.showing = false
+				return m, nil
+			case "enter":
+				m.helpOverlay.showing = false
+				return m, nil
+			}
+		}
+
+		// Phase 3: session switcher dismissal / selection
+		if m.sessionSwitcher.IsShowing() {
+			switch msg.String() {
+			case "esc", "q":
+				m.sessionSwitcher.showing = false
+				return m, nil
+			case "enter":
+				if len(m.sessionSwitcher.list.Items()) > 0 {
+					item := m.sessionSwitcher.list.SelectedItem().(SessionItem)
+					return m, switchToSession(item.ID)
+				}
+			}
+			lst, _ := m.sessionSwitcher.list.Update(msg)
+			m.sessionSwitcher.list = lst
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c":
 			m.done = true
@@ -106,10 +141,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+l":
 			m.chatPanel.Clear()
 			return m, nil
+
+		// Phase 3: new keyboard shortcuts
+		case "ctrl+h":
+			if !m.helpOverlay.IsShowing() {
+				m.helpOverlay = newHelpOverlay(helpText())
+			} else {
+				m.helpOverlay.showing = false
+			}
+			return m, nil
+
+		case "ctrl+s":
+			if !m.sessionSwitcher.IsShowing() {
+				return m, loadSessionsList(m)
+			}
+			m.sessionSwitcher.showing = false
+			return m, nil
+
+		case "/":
+			m.commandMode = !m.commandMode
+			if m.commandMode {
+				m.statusBar.SetConnection("⊶ Command mode — type a command")
+			} else {
+				m.statusBar.SetConnection(fmt.Sprintf("● Connected (%s)", m.connectionState))
+			}
+			return m, nil
 		}
 
 	default:
 		switch msg := msg.(type) {
+		case sessionListMsg:
+			m.sessionSwitcher = newSessionSwitcher(msg.items)
+			return m, nil
+
 		case WSMessageEvent:
 			m.handleWSMessage(msg)
 		}
@@ -128,6 +192,15 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		})
 	case "turn_completed":
 		m.statusBar.SetConnection("● Connected")
+	case "session_switched":
+		m.sessionID = msg.SessionID
+		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", shortID(msg.SessionID)))
+	case "session_created":
+		m.statusBar.SetConnection(fmt.Sprintf("✓ New session: %s", truncate(msg.Message, 20)))
+	case "session_closed":
+		m.statusBar.SetConnection(fmt.Sprintf("✗ Session closed: %s", truncate(msg.Message, 20)))
+	case "session_compressed":
+		m.statusBar.SetConnection("⚠ Session compressed — context trimmed")
 	case "task_progress":
 		m.events = append(m.events, EventItem{
 			Type:      "progress",
@@ -236,6 +309,16 @@ func (m *Model) View() string {
 
 	// Event panel (right, ~30%)
 	out += "\n" + RenderEventPanel(m.events)
+
+	// Phase 3: help overlay on top
+	if m.helpOverlay.IsShowing() {
+		out += m.helpOverlay.View()
+	}
+
+	// Phase 3: session switcher modal on top (takes full width)
+	if m.sessionSwitcher.IsShowing() {
+		out = m.sessionSwitcher.showModal() + "\n"
+	}
 
 	return out
 }
