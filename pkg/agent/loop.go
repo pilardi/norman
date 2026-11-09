@@ -37,6 +37,7 @@ type Task struct {
 	ProviderName string // LLM provider name used for this task (empty = workspace default)
 	RetryCount   int
 	CreatedAt    time.Time
+	RichOutput   *protocol.RichOutput // structured metadata about the final output
 }
 
 // Loop is the main agent loop managing session messages and emergent/manual task execution.
@@ -1011,6 +1012,11 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		l.logf("setting task.Output to: %q", string(task.Output))
 		task.Status = protocol.TaskStatusCompleted
 
+		// Populate RichOutput metadata from accumulated output.
+		if richOut := l.detectRichOutput(task.Output); richOut != nil {
+			task.RichOutput = richOut
+		}
+
 		// Persist the final assistant turn (item #5)
 		turnMap := map[string]interface{}{
 			"role":    "assistant",
@@ -1034,6 +1040,72 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
 // Generic in-sandbox tools (bash, read_file, write_file) and host-interaction
 // tools (ask_user, notify) are always included; activated skills are appended.
+// detectRichOutput analyzes accumulated task output and returns a RichOutput struct
+// populated with content type, render hint, and structured data if parseable as JSON.
+func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
+	trimmed := strings.TrimSpace(string(output))
+	if len(trimmed) == 0 {
+		return nil
+	}
+
+	richOut := &protocol.RichOutput{}
+
+	// Detect content type and render hint.
+	contentType, renderHint := detectContentType(trimmed)
+	richOut.ContentType = strPtr(contentType)
+	richOut.RenderHint = &renderHint
+
+	// If output is valid JSON, populate StructuredData.
+	var jsonMap map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmed), &jsonMap); err == nil {
+		richOut.StructuredData = &jsonMap
+	}
+
+	return richOut
+}
+
+// detectContentType returns a high-level content type and matching render hint from raw text.
+func detectContentType(s string) (contentType string, renderHint protocol.RichOutputRenderHint) {
+	trimmed := strings.TrimSpace(s)
+
+	// Check for JSON first (most specific structured format).
+	if isJSON(trimmed) {
+		return "json", protocol.Json
+	}
+
+	// Check for HTML.
+	if hasHTMLTags(trimmed) {
+		return "html", protocol.Html
+	}
+
+	// Check for markdown (headers, code blocks, lists).
+	if hasMarkdown(trimmed) {
+		return "markdown", protocol.Markdown
+	}
+
+	// Default to text.
+	return "text", protocol.Text
+}
+
+func isJSON(s string) bool {
+	var js json.RawMessage
+	return json.Unmarshal([]byte(s), &js) == nil
+}
+
+func hasHTMLTags(s string) bool {
+	return strings.Contains(s, "<") && strings.Contains(s, ">")
+}
+
+func hasMarkdown(s string) bool {
+	// Detect common markdown patterns: headings (#), code blocks (```), lists (-/1.), bold (**).
+	for _, marker := range []string{"\n# ", "\n## ", "```", "\n- ", "\n1. ", "**"} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *Loop) buildTools() []llm.Tool {
 	var tools []llm.Tool
 
