@@ -1160,6 +1160,10 @@ components:
         retry_count:
           type: integer
           default: 0
+        rich_output:
+          $ref: "#/components/schemas/RichOutput"
+          nullable: true
+          description: Structured metadata about the task output (content type, render hint, artifact URL)
 
     SendMessageRequest:
       type: object
@@ -1248,6 +1252,31 @@ components:
         total_tokens:
           type: integer
 
+    RichOutput:
+      type: object
+      properties:
+        content_type:
+          type: string
+          description: High-level category of the output (e.g., "text", "markdown", "html", "json", "pdf", "chart", "diagram", "file_ref")
+        mime_type:
+          type: string
+          nullable: true
+          description: IANA media type (e.g., "application/pdf", "text/markdown")
+        render_hint:
+          type: string
+          enum: [text, markdown, html, json, pdf, chart, diagram, file_ref]
+          nullable: true
+          description: Hint for client-side rendering strategy
+        artifact_url:
+          type: string
+          nullable: true
+          description: URL or path to a rich artifact (HTML page, PDF download, etc.)
+        structured_data:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Machine-readable structured content (JSON object)
+
     TaskCompletion:
       type: object
       required: [task_id, status]
@@ -1272,6 +1301,10 @@ components:
           type: object
           additionalProperties: true
           description: Arbitrary task-specific metadata
+        rich_output:
+          $ref: "#/components/schemas/RichOutput"
+          nullable: true
+          description: Structured metadata about the task output (content type, render hint, artifact URL)
 
     SkillEntry:
       type: object
