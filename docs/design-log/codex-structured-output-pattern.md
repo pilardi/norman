@@ -342,6 +342,26 @@ All three phases have been implemented and tested. The branch `feat/rich-output-
 
 ---
 
+## Client Impact
+
+The current Norman CLI client (`cmd/norman/`) has **zero RichOutput awareness** — the generated protocol types include `rich_output` on `TaskCompletion`, but the CLI code hasn't been updated to read or display it yet.
+
+| Area | Current behavior | Potential enhancement |
+|------|-----------------|-----------------------|
+| **Chat (`norman sessions open`)** | Displays raw text from `AgentResponse.Response` | Could use `rich_output.render_hint` to format output (e.g., render JSON as a formatted table, show markdown rendered) |
+| **WebSocket loop** | Handles coarse events: `task_progress`, `session_compressed`, `notification` | Could subscribe with `?scope=events` to get granular item/turn events for real-time dashboards |
+| **Task listing (`/tasks`)** | Shows only task IDs | Could show `rich_output.render_hint` as a badge/icon (📊 chart, 📋 json, 📝 markdown) |
+| **History (`/history`)** | Reads turns from store JSONL files | Could use `structured_data` to render richer turn content instead of raw text |
+| **Archive (`/archive`)** | Archives session transcript as plain text | Could preserve `rich_output` metadata in the archive for future re-rendering |
+
+**Implementation effort:** The server-side auto-detection (Phase 2) is complete. Client updates would be additive — no breaking changes, just new rendering paths that existing clients can opt into gradually. For example:
+- A chat client could check `rich_output.render_hint == "json"` and render the output as a formatted JSON tree instead of raw text.
+- A dashboard client subscribing to `?scope=events` WebSocket could build a real-time progress panel showing which tool calls started/completed.
+
+This is **Phase 4** work — not part of the current PR, but the foundation (schema + event types) makes it straightforward to add later.
+
+---
+
 ## Images
 
 Two images were left over from a previous PR and are now included:
