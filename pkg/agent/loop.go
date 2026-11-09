@@ -38,6 +38,7 @@ type Task struct {
 	RetryCount   int
 	CreatedAt    time.Time
 	RichOutput   *protocol.RichOutput // structured metadata about the final output
+	events       []protocol.WebSocketEvent // granular event log for ?type=events REST access
 }
 
 // Loop is the main agent loop managing session messages and emergent/manual task execution.
@@ -190,6 +191,7 @@ type OpenShellClient interface {
 type WSHubPublisher interface {
 	BroadcastEvent(event protocol.WebSocketEvent)
 	BroadcastSession(sessionID string, event protocol.WebSocketEvent)
+	BroadcastGranular(event protocol.WebSocketEventEvent, taskID, sessionID, message string)
 }
 
 // New creates a new agent loop with the given dependencies.
@@ -838,6 +840,13 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 				log.Printf("agent: stream read error at turn %d: %v", turn, err)
 				task.Status = protocol.TaskStatusFailed
 				task.Error = fmt.Sprintf("streaming failed at turn %d: %v", turn, err)
+				// Granular event: turn.failed (stored + pushed via scope=events WebSocket clients)
+				l.emitStored(task.ID, protocol.WebSocketEvent{
+					Event:     protocol.TurnFailed,
+					TaskId:    &task.ID,
+					SessionId: &task.SessionId,
+					Message:   strPtr(fmt.Sprintf("stream error at turn %d: %v", turn, err)),
+				})
 				_ = stream.Close()
 				return nil, fmt.Errorf("streaming failed at turn %d: %v", turn, err)
 			}
@@ -947,6 +956,14 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					Step:    intPtr(7 + turn),
 				})
 
+				// Granular event: item.started (stored + pushed via scope=events WebSocket clients)
+				l.emitStored(task.ID, protocol.WebSocketEvent{
+					Event:     protocol.ItemStarted,
+					TaskId:    &task.ID,
+					SessionId: &task.SessionId,
+					Message:   strPtr(fmt.Sprintf("tool:%s", tc.Name)),
+				})
+
 				output, exitCode, execErr := l.dispatchToolCall(ctx, sandboxName, tc.Name, string(tc.Arguments))
 				if execErr != nil {
 					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
@@ -964,6 +981,14 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					TaskId:  &task.ID,
 					Message: strPtr(fmt.Sprintf("Tool '%s' completed: %s (exit %d)", tc.Name, status, exitCode)),
 					Step:    intPtr(7 + turn),
+				})
+
+				// Granular event: item.completed (stored + pushed via scope=events WebSocket clients)
+				l.emitStored(task.ID, protocol.WebSocketEvent{
+					Event:     protocol.ItemCompleted,
+					TaskId:    &task.ID,
+					SessionId: &task.SessionId,
+					Message:   strPtr(fmt.Sprintf("tool:%s status:%s", tc.Name, status)),
 				})
 
 				// Persist tool call result for replay/debugging (item #5 companion)
@@ -1026,6 +1051,14 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			log.Printf("agent: failed to persist final turn for task %s: %v", task.ID, err)
 		}
 
+		// Granular event: turn.completed (stored + pushed via scope=events WebSocket clients)
+		l.emitStored(task.ID, protocol.WebSocketEvent{
+			Event:     protocol.TurnCompleted,
+			TaskId:    &task.ID,
+			SessionId: &task.SessionId,
+			Message:   strPtr(fmt.Sprintf("turn %d/%d completed with %d bytes output", turn+1, l.config.System.MaxTurns, len(task.Output))),
+		})
+
 		return task.Output, nil
 	}
 
@@ -1033,13 +1066,52 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 	if len(task.Output) == 0 {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = fmt.Sprintf("reached max turns (%d) without completing", l.config.System.MaxTurns)
+		// Granular event: turn.failed (stored + pushed via scope=events WebSocket clients)
+		l.emitStored(task.ID, protocol.WebSocketEvent{
+			Event:     protocol.TurnFailed,
+			TaskId:    &task.ID,
+			SessionId: &task.SessionId,
+			Message:   strPtr(fmt.Sprintf("max turns (%d) reached without completion", l.config.System.MaxTurns)),
+		})
 	}
 	return task.Output, nil
+}
+
+// GetTaskEvents returns the granular event log for a task (used by ?type=events REST).
+func (l *Loop) GetTaskEvents(taskID string) []protocol.WebSocketEvent {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	task, ok := l.tasks[taskID]
+	if !ok {
+		return nil
+	}
+	return task.events
 }
 
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
 // Generic in-sandbox tools (bash, read_file, write_file) and host-interaction
 // tools (ask_user, notify) are always included; activated skills are appended.
+// emitEvent records a granular event in the task's event log and broadcasts it.
+func (l *Loop) emitEvent(taskID, sessionID string, event protocol.WebSocketEventEvent, message string) {
+	evt := protocol.WebSocketEvent{
+		Event:     event,
+		TaskId:    &taskID,
+		SessionId: &sessionID,
+		Message:   strPtr(message),
+	}
+	l.wsHub.BroadcastSession(sessionID, evt)
+}
+
+// emitStored records a granular event in the task's event log and broadcasts to scope=events clients.
+func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if task, ok := l.tasks[taskID]; ok {
+		task.events = append(task.events, evt)
+	}
+	l.wsHub.BroadcastGranular(evt.Event, taskID, *evt.SessionId, *evt.Message)
+}
+
 // detectRichOutput analyzes accumulated task output and returns a RichOutput struct
 // populated with content type, render hint, and structured data if parseable as JSON.
 func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {

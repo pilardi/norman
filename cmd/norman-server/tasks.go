@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -175,6 +177,18 @@ func (s *server) TailTaskLog(c echo.Context, id string, params protocol.TailTask
 	task, err := s.loop.GetTask(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	// ?type=events: return structured JSONL event stream.
+	if c.QueryParam("type") == "events" {
+		events := s.loop.GetTaskEvents(id)
+		var jsonl strings.Builder
+		for _, evt := range events {
+			data, _ := json.Marshal(evt)
+			jsonl.Write(data)
+			jsonl.WriteString("\n")
+		}
+		return c.String(http.StatusOK, jsonl.String())
 	}
 
 	logs, err := s.loop.GetLogs(c.Request().Context(), task.SessionId)

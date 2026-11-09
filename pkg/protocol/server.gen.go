@@ -415,12 +415,16 @@ func (e TaskCreateRequestPriority) Valid() bool {
 // Defines values for WebSocketEventEvent.
 const (
 	ContextBudgetWarning WebSocketEventEvent = "context_budget_warning"
+	ItemCompleted        WebSocketEventEvent = "item_completed"
+	ItemStarted          WebSocketEventEvent = "item_started"
 	Notification         WebSocketEventEvent = "notification"
 	SessionCompressed    WebSocketEventEvent = "session_compressed"
 	SessionEvent         WebSocketEventEvent = "session_event"
 	TaskComplete         WebSocketEventEvent = "task_complete"
 	TaskFailed           WebSocketEventEvent = "task_failed"
 	TaskProgress         WebSocketEventEvent = "task_progress"
+	TurnCompleted        WebSocketEventEvent = "turn_completed"
+	TurnFailed           WebSocketEventEvent = "turn_failed"
 	UserResponse         WebSocketEventEvent = "user_response"
 )
 
@@ -428,6 +432,10 @@ const (
 func (e WebSocketEventEvent) Valid() bool {
 	switch e {
 	case ContextBudgetWarning:
+		return true
+	case ItemCompleted:
+		return true
+	case ItemStarted:
 		return true
 	case Notification:
 		return true
@@ -440,6 +448,10 @@ func (e WebSocketEventEvent) Valid() bool {
 	case TaskFailed:
 		return true
 	case TaskProgress:
+		return true
+	case TurnCompleted:
+		return true
+	case TurnFailed:
 		return true
 	case UserResponse:
 		return true

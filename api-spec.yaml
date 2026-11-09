@@ -1537,6 +1537,10 @@ components:
             - session_compressed
             - context_budget_warning
             - user_response
+            - item_started
+            - item_completed
+            - turn_completed
+            - turn_failed
         task_id:
           type: string
           nullable: true

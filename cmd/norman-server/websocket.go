@@ -21,6 +21,9 @@ type WSHub struct {
 	// responseChannels stores registered channels keyed by request ID.
 	// Used for blocking AskUser/request_permission calls waiting on user input.
 	responseChannels map[string]chan string
+
+	// granularClients tracks clients subscribed to scope=events (granular task-level events).
+	granularClients map[*websocket.Conn]struct{}
 }
 
 // NewWSHub creates a new WebSocket hub.
@@ -83,9 +86,9 @@ func (h *WSHub) BroadcastSession(sessionID string, event protocol.WebSocketEvent
 	h.mu.RUnlock()
 }
 
-// Add registers a WebSocket connection with an optional session_id.
-// If sessionID is empty, the client joins the global broadcast pool.
-func (h *WSHub) Add(c *websocket.Conn, sessionID string) {
+// Add registers a WebSocket connection with an optional session_id and scope.
+// If scope is "events", the client subscribes to granular task-level events.
+func (h *WSHub) Add(c *websocket.Conn, sessionID string, scope string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.clients[c] = struct{}{}
@@ -95,15 +98,40 @@ func (h *WSHub) Add(c *websocket.Conn, sessionID string) {
 		}
 		h.sessionClients[sessionID][c] = struct{}{}
 	}
+	if scope == "events" {
+		h.granularClients[c] = struct{}{}
+	}
 }
 
-// Remove unregisters a WebSocket connection from both global and session pools.
+// Remove unregisters a WebSocket connection from all pools.
 func (h *WSHub) Remove(c *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.clients, c)
 	for _, subs := range h.sessionClients {
 		delete(subs, c)
+	}
+	delete(h.granularClients, c)
+}
+
+// BroadcastGranular sends a granular event only to clients subscribed with scope=events.
+func (h *WSHub) BroadcastGranular(event protocol.WebSocketEventEvent, taskID, sessionID, message string) {
+	data, err := json.Marshal(protocol.WebSocketEvent{
+		Event:     event,
+		TaskId:    &taskID,
+		SessionId: &sessionID,
+		Message:   strPtr(message),
+	})
+	if err != nil {
+		log.Printf("ws granular marshal error: %v", err)
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.granularClients {
+		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+			log.Printf("ws granular write error: %v", err)
+		}
 	}
 }
 
@@ -169,7 +197,14 @@ func (s *server) ConnectWebSocket(c echo.Context, params protocol.ConnectWebSock
 	if err != nil {
 		return err
 	}
-	s.wsHub.Add(conn, params.SessionId)
+
+	// Determine scope: "events" for granular task-level events, "session" (default) for coarse notifications.
+	scope := c.QueryParam("scope")
+	if scope == "" {
+		scope = "session"
+	}
+
+	s.wsHub.Add(conn, params.SessionId, scope)
 	defer s.wsHub.Remove(conn)
 
 	for {
