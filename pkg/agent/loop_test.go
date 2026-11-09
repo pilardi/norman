@@ -371,6 +371,10 @@ func (f *FakeWSHub) BroadcastSession(sessionID string, event protocol.WebSocketE
 	f.events = append(f.events, eventCopy)
 }
 
+func (f *FakeWSHub) BroadcastGranular(event protocol.WebSocketEventEvent, taskID, sessionID, message string) {
+	// For tests: no-op stub; granular events are not validated here
+}
+
 func (f *FakeWSHub) RegisterResponseChannel() (string, chan string) {
 	id := fmt.Sprintf("resp_%d", time.Now().UnixNano())
 	ch := make(chan string, 1)

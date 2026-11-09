@@ -37,7 +37,7 @@ type Task struct {
 	ProviderName string // LLM provider name used for this task (empty = workspace default)
 	RetryCount   int
 	CreatedAt    time.Time
-	RichOutput   *protocol.RichOutput // structured metadata about the final output
+	RichOutput   *protocol.RichOutput      // structured metadata about the final output
 	events       []protocol.WebSocketEvent // granular event log for ?type=events REST access
 }
 
@@ -1091,17 +1091,6 @@ func (l *Loop) GetTaskEvents(taskID string) []protocol.WebSocketEvent {
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
 // Generic in-sandbox tools (bash, read_file, write_file) and host-interaction
 // tools (ask_user, notify) are always included; activated skills are appended.
-// emitEvent records a granular event in the task's event log and broadcasts it.
-func (l *Loop) emitEvent(taskID, sessionID string, event protocol.WebSocketEventEvent, message string) {
-	evt := protocol.WebSocketEvent{
-		Event:     event,
-		TaskId:    &taskID,
-		SessionId: &sessionID,
-		Message:   strPtr(message),
-	}
-	l.wsHub.BroadcastSession(sessionID, evt)
-}
-
 // emitStored records a granular event in the task's event log and broadcasts to scope=events clients.
 func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
 	l.mu.Lock()
