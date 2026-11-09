@@ -396,26 +396,34 @@ func (m *Model) handleWebSocketEvent(evt protocol.WebSocketEvent) tea.Cmd {
 
 ## Implementation Results
 
-**Status: 🟡 Phase 1 scaffold complete (2026-11-09).**
+**Status: 🟡 Phase 1–2 complete (2026-11-09).**
 
 ### Completed (Phase 1 — Scaffold & Basic Chat Panel)
 
 | File | Lines | Status |
 |------|-------|--------|
 | `cmd/norman-tui/main.go` | ~73 | ✅ Entry point, client init, workspace selection |
-| `cmd/norman-tui/model.go` | ~175 | ✅ Model struct, Init/Update/View cycle |
-| `cmd/norman-tui/chat_panel.go` | ~94 | ✅ Scrollable chat with textinput + lipgloss borders |
+| `cmd/norman-tui/model.go` | ~200 | ✅ Model struct, Init/Update/View cycle |
+| `cmd/norman-tui/chat_panel.go` | ~100 | ✅ Scrollable chat with textinput + lipgloss borders |
 | `cmd/norman-tui/event_panel.go` | ~71 | ✅ Event panel via bubbles.List + RenderEventPanel |
 | `cmd/norman-tui/status_bar.go` | ~54 | ✅ Connection state, workspace, session ID display |
 | `cmd/norman-tui/websocket.go` | ~165 | ✅ WS connection + event dispatch to Model.Update() |
+
+### Completed (Phase 2 — RichOutput Rendering)
+
+| File | Lines | Status |
+|------|-------|--------|
+| `cmd/norman-tui/renderer.go` | ~39 | ✅ renderRichOutput dispatcher function |
+| `cmd/norman-tui/json_renderer.go` | ~80 | ✅ JSON tree renderer with collapsible nodes |
+| `cmd/norman-tui/chart_renderer.go` | ~155 | ✅ ASCII bar chart from structured_data |
+| `cmd/norman-tui/markdown_renderer.go` | ~145 | ✅ Basic Markdown → terminal text rendering |
 
 ### Build Status
 - `golangci-lint run ./cmd/norman-tui/...` — **0 issues** ✅
 - `make build` — binary produced at `dist/norman-tui` (12MB) ✅
 - Smoke test: exits gracefully on non-TTY (`tea.WithAltScreen()`) ✅
 
-### Pending (Phases 2–4)
-- Phase 2: RichOutput rendering (JSON trees, ASCII bar charts)
+### Pending (Phases 3–4)
 - Phase 3: Keyboard commands mapping + session switcher modal
 - Phase 4: Polish + integration tests
 

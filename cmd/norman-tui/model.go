@@ -7,13 +7,15 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/norman/norman/pkg/protocol"
 )
 
 // ChatMessage represents a single message in the chat stream.
 type ChatMessage struct {
-	Role      string
-	Content   string
-	Timestamp time.Time
+	Role       string
+	Content    string
+	RichOutput *protocol.RichOutput
+	Timestamp  time.Time
 }
 
 // EventItem represents an item in the event/task panel list.
@@ -146,12 +148,76 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		})
 	}
 
+	// Extract RichOutput from event data if present (Phase 2).
+	if ro := extractRichOutput(msg.Data); ro != nil {
+		m.chatPanel.AppendMessage(ChatMessage{
+			Role:       "assistant",
+			Content:    "[RichOutput rendered below]",
+			RichOutput: ro,
+			Timestamp:  time.Now(),
+		})
+	}
+
 	// Update event panel list.
 	items := make([]list.Item, len(m.events))
 	for i, e := range m.events {
 		items[i] = e
 	}
 	m.eventPanel.SetItems(items)
+}
+
+// extractRichOutput parses a data map into a *protocol.RichOutput if present.
+func extractRichOutput(data map[string]interface{}) *protocol.RichOutput {
+	if data == nil {
+		return nil
+	}
+
+	ro := &protocol.RichOutput{}
+
+	if ct, ok := data["content_type"].(string); ok {
+		ro.ContentType = &ct
+	}
+	if md, ok := data["mime_type"].(string); ok {
+		ro.MimeType = &md
+	}
+	if rh, ok := data["render_hint"].(string); ok {
+		switch rh {
+		case "text":
+			hint := protocol.Text
+			ro.RenderHint = &hint
+		case "markdown":
+			hint := protocol.Markdown
+			ro.RenderHint = &hint
+		case "html":
+			hint := protocol.Html
+			ro.RenderHint = &hint
+		case "json":
+			hint := protocol.Json
+			ro.RenderHint = &hint
+		case "pdf":
+			hint := protocol.Pdf
+			ro.RenderHint = &hint
+		case "chart":
+			hint := protocol.Chart
+			ro.RenderHint = &hint
+		case "diagram":
+			hint := protocol.Diagram
+			ro.RenderHint = &hint
+		case "file_ref":
+			hint := protocol.FileRef
+			ro.RenderHint = &hint
+		}
+	}
+	if au, ok := data["artifact_url"].(string); ok {
+		ro.ArtifactUrl = &au
+	}
+
+	// Extract structured_data if present.
+	if sd, ok := data["structured_data"].(map[string]interface{}); ok {
+		ro.StructuredData = &sd
+	}
+
+	return ro
 }
 
 // View renders the TUI layout.

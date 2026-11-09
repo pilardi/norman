@@ -70,10 +70,16 @@ func (p *ChatPanel) Render() string {
 			sb.WriteString(lipgloss.NewStyle().Foreground(color).Render(header))
 			sb.WriteString("\n")
 
-			// Truncate long messages for display
-			content := msg.Content
-			if len(content) > p.width-20 {
-				content = content[:p.width-23] + "..."
+			// RichOutput rendering (Phase 2)
+			var content string
+			if msg.RichOutput != nil {
+				content = renderRichOutput(msg.RichOutput)
+			} else {
+				// Truncate long messages for display
+				content = msg.Content
+				if len(content) > p.width-20 {
+					content = content[:p.width-23] + "..."
+				}
 			}
 			sb.WriteString("  " + content + "\n\n")
 

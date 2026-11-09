@@ -15,11 +15,12 @@ import (
 
 // WSMessageEvent represents a parsed WebSocket event message.
 type WSMessageEvent struct {
-	Event     string `json:"event"`
-	Message   string `json:"message,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	TaskID    string `json:"task_id,omitempty"`
-	Step      int    `json:"step,omitempty"`
+	Event     string                 `json:"event"`
+	Message   string                 `json:"message,omitempty"`
+	SessionID string                 `json:"session_id,omitempty"`
+	TaskID    string                 `json:"task_id,omitempty"`
+	Step      int                    `json:"step,omitempty"`
+	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
 // connectWebSocket establishes a WebSocket connection to the server for the current session.
