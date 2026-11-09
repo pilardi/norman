@@ -297,4 +297,74 @@ The existing `/ws?session_id=...` carries coarse notifications (`task_progress`,
 
 ## Implementation Results
 
-*(To be appended after code changes are made and tested)*
+**Status: ✅ Implemented (merged to master via PR #79, then committed on `feat/rich-output-schema`).**
+
+All three phases have been implemented and tested. The branch `feat/rich-output-schema` contains four commits:
+
+### Phase 1 — Schema Enrichment (`2f5339ef`)
+- Added `RichOutput` component schema to `api-spec.yaml` with 5 nullable fields: `content_type`, `mime_type`, `render_hint` (closed enum), `artifact_url`, `structured_data`.
+- Added `rich_output` field (nullable) to both `Task` and `TaskCompletion` structs.
+- Regenerated Go types via `make generate` — produces `protocol.RichOutput` struct + `RichOutputRenderHint` string enum type.
+- Build passes cleanly; all integration tests pass.
+
+### Phase 2 — Server Loop Integration (`b9088c4`)
+- Added `RichOutput *protocol.RichOutput` field to local `Task` struct in `pkg/agent/loop.go`.
+- Implemented `detectRichOutput(output []byte) *protocol.RichOutput` which auto-detects content type at task completion:
+  - **JSON detection**: validates via `json.Unmarshal` → sets `content_type: "json"`, `render_hint: json`, populates `structured_data`.
+  - **HTML detection**: checks for `<...>` tag patterns → sets `content_type: "html"`, `render_hint: html`.
+  - **Markdown detection**: checks for `# `, `\`\`\``, `- `, `1. `, `**` patterns → sets `content_type: "markdown"`, `render_hint: markdown`.
+  - **Default**: falls through to `text`/`Text`.
+- Applied at task completion, before returning `task.Output`.
+
+### Phase 3 — Transport Filters (`05b3226`)
+- Added `item_started`, `item_completed`, `turn_completed`, `turn_failed` event types to `WebSocketEvent.event` enum in `api-spec.yaml`.
+- Regenerated Go types via `make generate`.
+- **REST enhancement**: `/api/tasks/{id}/log?type=events` returns newline-delimited JSONL event stream. Default behavior (`raw`) unchanged — no breaking change.
+- **WebSocket enhancement**: `/ws?session_id=X&scope=events` subscribes to granular task-level events only. Existing clients default to `scope=session` (coarse notifications).
+- `Task.events []protocol.WebSocketEvent` stores granular events during execution for pull access via REST.
+- `WSHub.granularClients map[*websocket.Conn]struct{}` tracks scope=events subscribers; `BroadcastGranular()` routes only to those clients.
+- Events emitted at: tool call start (`item_started`), tool call completion (`item_completed`), turn completion (`turn_completed`), stream error/failure (`turn_failed`).
+
+### Files Changed Summary (6 files, +319 / -14 lines)
+| File | Change |
+|------|--------|
+| `api-spec.yaml` | RichOutput component + event enum values (+37) |
+| `pkg/protocol/server.gen.go` | Regenerated types: `RichOutput`, `RichOutputRenderHint` (+85) |
+| `pkg/agent/loop.go` | Phase 2+3: RichOutput tracking, event storage, emitStored/GetTaskEvents (+144) |
+| `cmd/norman-server/tasks.go` | `?type=events` JSONL REST handler (+14) |
+| `cmd/norman-server/websocket.go` | `?scope=events` granular WebSocket subscription (+45/-2) |
+| `cmd/norman/integration_test.go` | Pre-existing test fix: use system.base_dir from config response (+8/-2) |
+
+### Testing
+- All integration tests pass (`go test ./...`).
+- Build passes cleanly (`make build`).
+- No breaking changes for existing clients (all new fields nullable/optional).
+
+---
+
+## Client Impact
+
+The current Norman CLI client (`cmd/norman/`) has **zero RichOutput awareness** — the generated protocol types include `rich_output` on `TaskCompletion`, but the CLI code hasn't been updated to read or display it yet.
+
+| Area | Current behavior | Potential enhancement |
+|------|-----------------|-----------------------|
+| **Chat (`norman sessions open`)** | Displays raw text from `AgentResponse.Response` | Could use `rich_output.render_hint` to format output (e.g., render JSON as a formatted table, show markdown rendered) |
+| **WebSocket loop** | Handles coarse events: `task_progress`, `session_compressed`, `notification` | Could subscribe with `?scope=events` to get granular item/turn events for real-time dashboards |
+| **Task listing (`/tasks`)** | Shows only task IDs | Could show `rich_output.render_hint` as a badge/icon (📊 chart, 📋 json, 📝 markdown) |
+| **History (`/history`)** | Reads turns from store JSONL files | Could use `structured_data` to render richer turn content instead of raw text |
+| **Archive (`/archive`)** | Archives session transcript as plain text | Could preserve `rich_output` metadata in the archive for future re-rendering |
+
+**Implementation effort:** The server-side auto-detection (Phase 2) is complete. Client updates would be additive — no breaking changes, just new rendering paths that existing clients can opt into gradually. For example:
+- A chat client could check `rich_output.render_hint == "json"` and render the output as a formatted JSON tree instead of raw text.
+- A dashboard client subscribing to `?scope=events` WebSocket could build a real-time progress panel showing which tool calls started/completed.
+
+This is **Phase 4** work — not part of the current PR, but the foundation (schema + event types) makes it straightforward to add later.
+
+---
+
+## Images
+
+Two images were left over from a previous PR and are now included:
+
+![norman1](../norman1.jpg "Norman screenshot 1")
+![norman2](../norman2.jpg "Norman screenshot 2")

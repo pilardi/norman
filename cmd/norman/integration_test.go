@@ -297,10 +297,10 @@ func getBaseDir(t *testing.T) string {
 		t.Fatalf("decode config: %v", err)
 	}
 
-	// The store base is in the "openshell" section under "store_dir".
-	if storeDir, ok := body["openshell"].(map[string]interface{}); ok {
-		if dir, ok := storeDir["store_dir"].(string); ok && dir != "" {
-			return dir
+	// The store base is derived from system.base_dir in the config response.
+	if system, ok := body["system"].(map[string]interface{}); ok {
+		if baseDir, ok := system["base_dir"].(string); ok && baseDir != "" {
+			return filepath.Join(config.ExpandUserPath(baseDir), "store")
 		}
 	}
 

@@ -157,6 +157,42 @@ func (e ProviderUpdateRequestType) Valid() bool {
 	}
 }
 
+// Defines values for RichOutputRenderHint.
+const (
+	Chart    RichOutputRenderHint = "chart"
+	Diagram  RichOutputRenderHint = "diagram"
+	FileRef  RichOutputRenderHint = "file_ref"
+	Html     RichOutputRenderHint = "html"
+	Json     RichOutputRenderHint = "json"
+	Markdown RichOutputRenderHint = "markdown"
+	Pdf      RichOutputRenderHint = "pdf"
+	Text     RichOutputRenderHint = "text"
+)
+
+// Valid indicates whether the value is a known member of the RichOutputRenderHint enum.
+func (e RichOutputRenderHint) Valid() bool {
+	switch e {
+	case Chart:
+		return true
+	case Diagram:
+		return true
+	case FileRef:
+		return true
+	case Html:
+		return true
+	case Json:
+		return true
+	case Markdown:
+		return true
+	case Pdf:
+		return true
+	case Text:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScheduledTaskStatus.
 const (
 	ScheduledTaskStatusActive ScheduledTaskStatus = "active"
@@ -379,12 +415,16 @@ func (e TaskCreateRequestPriority) Valid() bool {
 // Defines values for WebSocketEventEvent.
 const (
 	ContextBudgetWarning WebSocketEventEvent = "context_budget_warning"
+	ItemCompleted        WebSocketEventEvent = "item_completed"
+	ItemStarted          WebSocketEventEvent = "item_started"
 	Notification         WebSocketEventEvent = "notification"
 	SessionCompressed    WebSocketEventEvent = "session_compressed"
 	SessionEvent         WebSocketEventEvent = "session_event"
 	TaskComplete         WebSocketEventEvent = "task_complete"
 	TaskFailed           WebSocketEventEvent = "task_failed"
 	TaskProgress         WebSocketEventEvent = "task_progress"
+	TurnCompleted        WebSocketEventEvent = "turn_completed"
+	TurnFailed           WebSocketEventEvent = "turn_failed"
 	UserResponse         WebSocketEventEvent = "user_response"
 )
 
@@ -392,6 +432,10 @@ const (
 func (e WebSocketEventEvent) Valid() bool {
 	switch e {
 	case ContextBudgetWarning:
+		return true
+	case ItemCompleted:
+		return true
+	case ItemStarted:
 		return true
 	case Notification:
 		return true
@@ -404,6 +448,10 @@ func (e WebSocketEventEvent) Valid() bool {
 	case TaskFailed:
 		return true
 	case TaskProgress:
+		return true
+	case TurnCompleted:
+		return true
+	case TurnFailed:
 		return true
 	case UserResponse:
 		return true
@@ -765,6 +813,27 @@ type RestoreRequest struct {
 	RecreateSandbox *bool `json:"recreate_sandbox,omitempty"`
 }
 
+// RichOutput defines model for RichOutput.
+type RichOutput struct {
+	// ArtifactUrl URL or path to a rich artifact (HTML page, PDF download, etc.)
+	ArtifactUrl *string `json:"artifact_url,omitempty"`
+
+	// ContentType High-level category of the output (e.g., "text", "markdown", "html", "json", "pdf", "chart", "diagram", "file_ref")
+	ContentType *string `json:"content_type,omitempty"`
+
+	// MimeType IANA media type (e.g., "application/pdf", "text/markdown")
+	MimeType *string `json:"mime_type,omitempty"`
+
+	// RenderHint Hint for client-side rendering strategy
+	RenderHint *RichOutputRenderHint `json:"render_hint,omitempty"`
+
+	// StructuredData Machine-readable structured content (JSON object)
+	StructuredData *map[string]interface{} `json:"structured_data,omitempty"`
+}
+
+// RichOutputRenderHint Hint for client-side rendering strategy
+type RichOutputRenderHint string
+
 // ScheduledTask defines model for ScheduledTask.
 type ScheduledTask struct {
 	// ActivationCommand Optional command to run before task execution (e.g., skill activation script)
@@ -1064,9 +1133,12 @@ type Task struct {
 	Id         *openapi_types.UUID `json:"id,omitempty"`
 
 	// OutputPath Path to task output file (if applicable)
-	OutputPath  *string     `json:"output_path,omitempty"`
-	Prompt      *string     `json:"prompt,omitempty"`
-	RetryCount  *int        `json:"retry_count,omitempty"`
+	OutputPath *string `json:"output_path,omitempty"`
+	Prompt     *string `json:"prompt,omitempty"`
+	RetryCount *int    `json:"retry_count,omitempty"`
+
+	// RichOutput Structured metadata about the task output (content type, render hint, artifact URL)
+	RichOutput  *RichOutput `json:"rich_output,omitempty"`
 	Status      *TaskStatus `json:"status,omitempty"`
 	WorkspaceId *string     `json:"workspace_id,omitempty"`
 }
@@ -1083,8 +1155,11 @@ type TaskCompletion struct {
 	Metadata   *map[string]interface{} `json:"metadata,omitempty"`
 	OutputPath *string                 `json:"output_path,omitempty"`
 	RetryCount *int                    `json:"retry_count,omitempty"`
-	Status     TaskCompletionStatus    `json:"status"`
-	TaskId     string                  `json:"task_id"`
+
+	// RichOutput Structured metadata about the task output (content type, render hint, artifact URL)
+	RichOutput *RichOutput          `json:"rich_output,omitempty"`
+	Status     TaskCompletionStatus `json:"status"`
+	TaskId     string               `json:"task_id"`
 }
 
 // TaskCompletionStatus defines model for TaskCompletion.Status.
