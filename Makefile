@@ -54,6 +54,7 @@ build: lint
 	go build $(VERSION_FLAGS) -o $(DIST)/norman ./cmd/norman
 	go build $(VERSION_FLAGS) -o $(DIST)/norman-server ./cmd/norman-server
 	go build $(VERSION_FLAGS) -o $(DIST)/roger ./cmd/roger
+	go build $(VERSION_FLAGS) -o $(DIST)/norman-tui ./cmd/norman-tui
 
 rebuild:
 	@$(MAKE) clean
