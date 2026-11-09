@@ -166,6 +166,7 @@ func handleChat(args []string) {
 	}
 
 	// If only workspace provided (no session ID), resolve/create one.
+	var sess *protocol.Session
 	if workspaceName != "" && sessionID == "" {
 		// Fetch server version info for diagnostic output.
 		client, err := getProtocolClient()
@@ -225,7 +226,7 @@ func handleChat(args []string) {
 			fmt.Fprintf(os.Stderr, "Error parsing session response: %v\n", err)
 			os.Exit(1)
 		}
-		sess := parsedSess.GetJSON201()
+		sess = parsedSess.GetJSON201()
 		if sess == nil {
 			// Server returned an error response (e.g., 409 max sessions reached).
 			body := string(parsedSess.GetBody())
@@ -243,7 +244,7 @@ func handleChat(args []string) {
 			os.Exit(1)
 		}
 		sessionID = sess.Id.String()
-		fmt.Printf("Created session '%s' for workspace '%s'\n", sessionID, workspaceName)
+		fmt.Printf("Created session '%s' for workspace '%s'\n", *sess.Name, workspaceName)
 	}
 
 	// Start real-time WebSocket event push loop (runs concurrently).
@@ -251,7 +252,11 @@ func handleChat(args []string) {
 
 	// Enter REPL loop.
 	fmt.Println("\n=== Norman Chat Session ===")
-	fmt.Printf("Session: %s | Workspace resolved\n", sessionID)
+	sessionName := "(unknown)"
+	if sess != nil && sess.Name != nil {
+		sessionName = *sess.Name
+	}
+	fmt.Printf("Session: %s | Workspace resolved\n", sessionName)
 	fmt.Println("Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)")
 
 	// Track turns for server-side transcript persistence.
@@ -291,18 +296,27 @@ func handleChat(args []string) {
 				}
 				newSess := parsedNewSess.GetJSON201()
 				sessionID = newSess.Id.String()
-				fmt.Printf("New session '%s' created.\n", sessionID)
+				fmt.Printf("New session '%s' created.\n", strVal(newSess.Name))
 			case "history":
 				showHistory(sessionID, cmdArgs)
 			case "sessions":
-				listSessions()
+				_ = handleSessionList([]string{})
 			case "switch":
 				if len(cmdArgs) == 0 {
 					fmt.Fprintln(os.Stderr, "Usage: /switch <session-id>")
 					continue
 				}
-				sessionID = cmdArgs[0]
-				fmt.Printf("Switched to session '%s'\n", sessionID[:8])
+				resolvedID, found, err := resolveSessionID(cmdArgs[0])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error resolving session '%s': %v\n", cmdArgs[0], err)
+					continue
+				}
+				if !found {
+					fmt.Fprintf(os.Stderr, "Error: session '%s' not found.\n", cmdArgs[0])
+					continue
+				}
+				sessionID = resolvedID
+				fmt.Printf("Switched to session '%s'\n", cmdArgs[0])
 			case "archive":
 				id := cmdArgs[0]
 				if len(cmdArgs) == 0 {
@@ -339,7 +353,7 @@ func handleChat(args []string) {
 
 		msgRsp, err := client.SendMessage(context.Background(), sessionID, body)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", sessionID, err)
+			fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", shortID(sessionID), err)
 			continue
 		}
 
