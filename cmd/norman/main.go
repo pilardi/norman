@@ -326,6 +326,13 @@ Slash-commands (prefix with /):
 Examples:
   norman sessions open my-project
   norman sessions open my-project abc12345`,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "mode",
+								Usage: "Interface mode: auto (default), tui, or repl",
+								Value: "auto",
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							args := cmd.Args().Slice()
 							if len(args) == 0 {
@@ -339,14 +346,28 @@ Examples:
 								sessionID = args[1]
 							}
 
-							// Auto-detect TTY: launch TUI in terminal, fallback to REPL.
-							if term.IsTerminal(int(os.Stdout.Fd())) {
-								tui.Main(workspaceName, sessionID)
+							// Resolve mode: auto-detect TTY unless overridden by --mode flag.
+							mode := cmd.String("mode")
+							if mode == "" || mode == "auto" {
+								if term.IsTerminal(int(os.Stdout.Fd())) {
+									tui.Main(workspaceName, sessionID)
+									return nil
+								}
+								handleChat(args)
 								return nil
 							}
 
-							handleChat(args)
-							return nil
+							switch strings.ToLower(mode) {
+							case "tui":
+								tui.Main(workspaceName, sessionID)
+								return nil
+							case "repl":
+								handleChat(args)
+								return nil
+							default:
+								fmt.Fprintf(os.Stderr, "Error: invalid mode '%s'. Allowed: auto, tui, repl\n", mode)
+								return fmt.Errorf("invalid mode: %s", mode)
+							}
 						},
 					},
 					{
@@ -363,12 +384,6 @@ Examples:
   norman sessions history ab953ff5          # Last 10 messages (default)
   norman sessions history ab953ff5 20      # Last 20 messages
   norman sessions history my-session --json  # Raw JSON output`,
-						Flags: []cli.Flag{
-							&cli.BoolFlag{
-								Name:  "json",
-								Usage: "Output as machine-readable JSON instead of human-readable format",
-							},
-						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							args := cmd.Args().Slice()
 							if len(args) == 0 {
