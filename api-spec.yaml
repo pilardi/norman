@@ -847,8 +847,16 @@ paths:
                 $ref: "#/components/schemas/ProviderResponse"
         "400":
           description: Invalid request (e.g., duplicate name, missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "409":
           description: Provider with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/providers/{name}:
     get:
@@ -1827,6 +1835,15 @@ components:
           type: object
           additionalProperties: true
           description: Type-specific fields (e.g., cache_size for llamacpp)
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+      example:
+        error: "model is required"
 
     ProviderCreateRequest:
       type: object

@@ -120,6 +120,13 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("error parsing response: %w", err)
 	}
 
+	if parsed.JSON400 != nil {
+		return fmt.Errorf("provider creation failed: %s", strPtrVal(parsed.JSON400.Error))
+	}
+	if parsed.JSON409 != nil {
+		return fmt.Errorf("provider creation failed: %s", strPtrVal(parsed.JSON409.Error))
+	}
+
 	fmt.Printf("Provider '%s' created successfully.\n", name)
 	printprovidersSummaryTyped(parsed.JSON201)
 	return nil
@@ -486,6 +493,15 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 	parsed, err := protocol.ParseCreateProviderResponse(resp)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
+		os.Exit(1)
+	}
+
+	if parsed.JSON400 != nil {
+		fmt.Fprintf(os.Stderr, "Error creating provider: %s\n", strPtrVal(parsed.JSON400.Error))
+		os.Exit(1)
+	}
+	if parsed.JSON409 != nil {
+		fmt.Fprintf(os.Stderr, "Error creating provider: %s\n", strPtrVal(parsed.JSON409.Error))
 		os.Exit(1)
 	}
 

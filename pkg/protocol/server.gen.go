@@ -601,6 +601,12 @@ type DeferTaskRequest struct {
 	WorkspaceId *string `json:"workspace_id,omitempty"`
 }
 
+// Error defines model for Error.
+type Error struct {
+	// Error Human-readable error message
+	Error *string `json:"error,omitempty"`
+}
+
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
 	// BuildDate ISO 8601 build timestamp
