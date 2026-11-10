@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 	"github.com/google/uuid"
 	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/config"
@@ -168,14 +167,8 @@ func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, e
 
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
-	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error)
-	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
-	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
-	RunCommand(ctx context.Context, workspaceName string, command string) (string, int, error)
+	RunCommand(ctx context.Context, sessionId string, command string) (string, int, error)
 	GetLogs(ctx context.Context, workspaceID string) ([]string, error)
-	DeleteSandbox(ctx context.Context, workspace, name string) error
-	ListSandboxes(ctx context.Context, workspace string) ([]string, error)
-	KeepAlive(ctx context.Context, workspaceName string) error
 	GetMTLSPaths() (certPath, keyPath string)
 }
 
@@ -924,9 +917,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 			}
 
 			// Keepalive heartbeat between turns (item #7) — prevents idle-timeout deletion
-			if err := l.Ws.KeepAlive(ctx, task.Workspace); err != nil {
-				log.Printf("agent: keepalive failed for workspace %s: %v", task.Workspace, err)
-			}
+			l.Ws.UpdateActivity(ctx, task.Workspace)
 
 			continue // Loop back for another turn
 		}
@@ -1797,7 +1788,7 @@ func (l *Loop) dispatchToolCall(ctx context.Context, workspaceName string, name 
 		return l.handleMCPCall(workspaceName, argsRaw)
 	default:
 		// Fall back to raw RunCommand for activated skill tools
-		output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, argsRaw)
+		output, exitCode, err := l.Ws.RunCommand(ctx, workspaceName, argsRaw)
 		return output, exitCode, err
 	}
 }
@@ -1814,7 +1805,7 @@ func (l *Loop) handleBash(ctx context.Context, workspaceName string, argsRaw str
 		return "", 0, fmt.Errorf("bash requires a 'command' field (string)")
 	}
 
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, cmd)
+	output, exitCode, err := l.Ws.RunCommand(ctx, workspaceName, cmd)
 	return output, exitCode, err
 }
 
@@ -1830,7 +1821,7 @@ func (l *Loop) handleReadFile(ctx context.Context, workspaceName string, argsRaw
 		return "", 0, fmt.Errorf("read_file requires a 'path' field (string)")
 	}
 
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, "cat "+shellEscape(path))
+	output, exitCode, err := l.Ws.RunCommand(ctx, workspaceName, "cat "+shellEscape(path))
 	return output, exitCode, err
 }
 
@@ -1852,7 +1843,7 @@ func (l *Loop) handleWriteFile(ctx context.Context, workspaceName string, argsRa
 	}
 
 	cmd := "printf '%s' '" + shellEscape(content) + "' > " + shellEscape(path)
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, cmd)
+	output, exitCode, err := l.Ws.RunCommand(ctx, workspaceName, cmd)
 	return output, exitCode, err
 }
 
@@ -1960,7 +1951,7 @@ func (l *Loop) handleFileDiff(ctx context.Context, workspaceName string, argsRaw
 	}
 
 	// Read the file via cat command in the workspace.
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, "cat "+shellEscape(path))
+	output, exitCode, err := l.Ws.RunCommand(ctx, workspaceName, "cat "+shellEscape(path))
 	if err != nil {
 		return "", exitCode, fmt.Errorf("file_diff read error: %w", err)
 	}
@@ -1981,7 +1972,7 @@ func (l *Loop) handleListDir(workspaceName string, argsRaw string) (string, int,
 	}
 
 	cmd := "ls -la " + shellEscape(path)
-	output, exitCode, err := l.Ws.RunCommandBySandbox(context.Background(), workspaceName, cmd)
+	output, exitCode, err := l.Ws.RunCommand(context.Background(), workspaceName, cmd)
 	return output, exitCode, err
 }
 
@@ -1998,7 +1989,7 @@ func (l *Loop) handleFindFiles(workspaceName string, argsRaw string) (string, in
 	}
 
 	cmd := "find . -name '" + pattern + "'"
-	output, exitCode, err := l.Ws.RunCommandBySandbox(context.Background(), workspaceName, cmd)
+	output, exitCode, err := l.Ws.RunCommand(context.Background(), workspaceName, cmd)
 	return output, exitCode, err
 }
 

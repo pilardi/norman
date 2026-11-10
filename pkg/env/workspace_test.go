@@ -161,8 +161,14 @@ func (m *mockWorkspace) Session() *Session {
 	return nil
 }
 
-func (m *mockWorkspace) RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error) {
-	return "", 0, nil
+func (m *mockWorkspace) SessionWorkspace(sessionId string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		return "", fmt.Errorf("session %s not found", sessionId)
+	}
+	return s.sessionId, nil
 }
 
 func (m *mockWorkspace) Create(ctx context.Context, sessionId string) (*Session, error) {
@@ -190,28 +196,14 @@ func (m *mockWorkspace) Delete(ctx context.Context, sessionId string) error {
 	return nil
 }
 
-func (m *mockWorkspace) GetSandboxName(ctx context.Context, sessionId string) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s, ok := m.sessions[sessionId]
-	if !ok {
-		return "", fmt.Errorf("session %s not found", sessionId)
-	}
-	return s.sessionId, nil
-}
-
-func (m *mockWorkspace) UpdateActivity(ctx context.Context, sessionId string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_ = sessionId // no-op in mock
-}
+func (m *mockWorkspace) UpdateActivity(ctx context.Context, sessionId string) {}
 
 func (m *mockWorkspace) Sessions() map[string]*Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	result := make(map[string]*Session, len(m.sessions))
-	for id, s := range m.sessions {
-		result[id] = s
+	for k, v := range m.sessions {
+		result[k] = v
 	}
 	return result
 }

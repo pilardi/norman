@@ -6,12 +6,9 @@ package env
 
 import (
 	"context"
-	"time"
-
-	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
-// Workspace is the interface that abstracts workspace-to-sandbox lifecycle management.
+// Workspace is the interface that abstracts workspace lifecycle management.
 // It encapsulates all operations related to creating, retrieving, checking existence,
 // and deleting workspaces backed by OpenShell sandboxes.
 //
@@ -23,7 +20,6 @@ import (
 //   - Delete() removes a workspace and its associated sandbox cleanly.
 //   - Session() returns the current session state as a read-only view.
 //   - RunCommand() executes a command string in the active sandbox, returning output/exit code.
-//   - RunCommandBySandbox() executes a command directly on a named sandbox (ephemeral tasks).
 //   - GetLogs() returns log lines for the session's sandbox.
 type Workspace interface {
 	// Create creates a new workspace-backed session. Returns an error if creation fails.
@@ -40,8 +36,8 @@ type Workspace interface {
 	// Delete removes a workspace and its associated sandbox.
 	Delete(ctx context.Context, sessionId string) error
 
-	// GetSandboxName returns the OpenShell sandbox name for a given session ID.
-	GetSandboxName(ctx context.Context, sessionId string) (string, error)
+	// SessionWorkspace returns the workspace name for a given session ID.
+	SessionWorkspace(sessionId string) (string, error)
 
 	// Session returns the current session state (read-only view).
 	Session() *Session
@@ -50,27 +46,8 @@ type Workspace interface {
 	// Returns combined stdout+stderr output, exit code, and any error.
 	RunCommand(ctx context.Context, sessionId string, command string) (string, int, error)
 
-	// RunCommandBySandbox executes a command directly on a named sandbox.
-	// Used for ephemeral task sandboxes not tied to a session.
-	RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error)
-
 	// GetLogs returns log lines for the session's sandbox.
 	GetLogs(ctx context.Context, sessionId string) ([]string, error)
-
-	// CreateSandbox creates a new ephemeral sandbox by name and returns its state.
-	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionId string) (*v1.Sandbox, error)
-
-	// WaitReady waits for a named sandbox to become ready within the timeout.
-	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
-
-	// GetSandbox retrieves the current state of a named sandbox.
-	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
-
-	// DeleteSandbox removes a named sandbox.
-	DeleteSandbox(ctx context.Context, workspace, name string) error
-
-	// KeepAlive verifies a named sandbox is still alive (heartbeat).
-	KeepAlive(ctx context.Context, sandboxName string) error
 
 	// UpdateActivity updates the last activity timestamp for a session.
 	UpdateActivity(ctx context.Context, sessionId string)

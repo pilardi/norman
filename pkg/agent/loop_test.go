@@ -861,7 +861,23 @@ func (f *FakeOpenShellClient) CapturedPrompt() string {
 	return f.capturedPrompt
 }
 
-func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error) {
+func (f *FakeOpenShellClient) RunCommand(ctx context.Context, sessionId, command string) (string, int, error) {
+	f.mu.Lock()
+	f.commands = append(f.commands, command)
+	f.capturedPrompt = command
+	f.mu.Unlock()
+
+	// Simulate output
+	output := fmt.Sprintf("Executed: %s\nOutput from workspace %s", command, sessionId)
+	return output, 0, nil
+}
+
+func (f *FakeOpenShellClient) GetLogs(ctx context.Context, workspaceID string) ([]string, error) {
+	return f.logLines, nil
+}
+
+// createSandbox creates a new sandbox entry (internal to fake client).
+func (f *FakeOpenShellClient) CreateSandbox(_ context.Context, _, name string, _ *env.ContextFile, _ string) (*v1.Sandbox, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))
@@ -869,64 +885,10 @@ func (f *FakeOpenShellClient) CreateSandbox(ctx context.Context, workspace, name
 	return &v1.Sandbox{ID: sid, Name: name}, nil
 }
 
-func (f *FakeOpenShellClient) WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error) {
-	// Simulate readiness after a short delay
-	select {
-	case <-time.After(100 * time.Millisecond):
-		return &v1.Sandbox{ID: fmt.Sprintf("sb-%s", strings.ReplaceAll(name, "-", ""))}, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-func (f *FakeOpenShellClient) GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error) {
+// keepAlive verifies a sandbox exists (internal to fake client).
+func (f *FakeOpenShellClient) KeepAlive(_ context.Context, sandboxName string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	sid, ok := f.sandboxes[name]
-	if !ok {
-		return nil, fmt.Errorf("sandbox %s not found", name)
-	}
-	return &v1.Sandbox{ID: sid}, nil
-}
-
-func (f *FakeOpenShellClient) RunCommand(ctx context.Context, sandboxName, command string) (string, int, error) {
-	f.mu.Lock()
-	f.commands = append(f.commands, command)
-	f.capturedPrompt = command
-	f.mu.Unlock()
-
-	// Simulate output
-	output := fmt.Sprintf("Executed: %s\nOutput from sandbox %s", command, sandboxName)
-	return output, 0, nil
-}
-
-func (f *FakeOpenShellClient) GetLogs(ctx context.Context, sandboxID string) ([]string, error) {
-	return f.logLines, nil
-}
-
-func (f *FakeOpenShellClient) DeleteSandbox(ctx context.Context, workspace, name string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	delete(f.sandboxes, workspace+"."+name)
-	return nil
-}
-
-func (f *FakeOpenShellClient) ListSandboxes(ctx context.Context, workspace string) ([]string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var result []string
-	for key := range f.sandboxes {
-		if strings.HasPrefix(key, workspace+".") {
-			result = append(result, key)
-		}
-	}
-	return result, nil
-}
-
-func (f *FakeOpenShellClient) KeepAlive(ctx context.Context, sandboxName string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	// Simulate keepalive by refreshing the sandbox entry timestamp (no-op in fake)
 	if _, ok := f.sandboxes[sandboxName]; !ok {
 		return fmt.Errorf("sandbox %s not found", sandboxName)
 	}
@@ -959,13 +921,29 @@ func (f *FakeOpenShellClient) Session() *env.Session {
 	return nil
 }
 
-func (f *FakeOpenShellClient) RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error) {
+func (f *FakeOpenShellClient) SessionWorkspace(sessionId string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.commands = append(f.commands, "sandbox:"+command)
-	f.capturedPrompt = "sandbox:" + command
-	output := fmt.Sprintf("Executed in sandbox %s: %s", sandboxName, command)
-	return output, 0, nil
+	if sid, ok := f.sandboxes[sessionId]; ok {
+		return sid, nil
+	}
+	return "", fmt.Errorf("session %s not found", sessionId)
+}
+
+func (f *FakeOpenShellClient) UpdateActivity(ctx context.Context, sessionId string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// no-op in fake client
+}
+
+func (f *FakeOpenShellClient) Sessions() map[string]*env.Session {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	result := make(map[string]*env.Session)
+	for id := range f.sandboxes {
+		result[id] = &env.Session{}
+	}
+	return result
 }
 
 func (f *FakeOpenShellClient) Create(ctx context.Context, sessionId string) (*env.Session, error) {
@@ -999,25 +977,6 @@ func (f *FakeOpenShellClient) GetSandboxName(ctx context.Context, sessionId stri
 		return name, nil
 	}
 	return "", fmt.Errorf("session %s not found", sessionId)
-}
-
-func (f *FakeOpenShellClient) UpdateActivity(ctx context.Context, sessionId string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if _, ok := f.sandboxes[sessionId]; ok {
-		// Simulate activity update (no-op in fake)
-		_ = ok // suppress SA4006 warning
-	}
-}
-
-func (f *FakeOpenShellClient) Sessions() map[string]*env.Session {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	result := make(map[string]*env.Session, len(f.sandboxes))
-	for id := range f.sandboxes {
-		result[id] = &env.Session{}
-	}
-	return result
 }
 
 // --- Task Cap Tests (Phase 1) ---
