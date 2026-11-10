@@ -90,13 +90,23 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 		return handleProvidersAddInteractive(ctx)
 	}
 
+	var maxTokens int
+	if cmd.IsSet("max-tokens") {
+		maxTokens = cmd.Int("max-tokens")
+		if maxTokens <= 0 {
+			maxTokens = 4096 // treat 0/negative as unset → default
+		}
+	} else {
+		maxTokens = 4096 // sensible default
+	}
+
 	req := protocol.ProviderCreateRequest{
 		Name:        name,
 		Type:        protocol.ProviderCreateRequestType(cmd.String("type")),
 		Endpoint:    cmd.String("endpoint"),
 		Model:       strPtr(cmd.String("model")),
 		Temperature: float32Ptr(cmd.Float64("temp")),
-		MaxTokens:   intPtr(cmd.Int("max-tokens")),
+		MaxTokens:   &maxTokens,
 		ApiKey:      strPtr(cmd.String("api-key")),
 	}
 
@@ -477,13 +487,28 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		os.Exit(1)
 	}
 
+	var maxTokens int
+	if maxTokensStr != "" {
+		var err error
+		maxTokens, err = strconv.Atoi(maxTokensStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", maxTokensStr, err)
+			os.Exit(1)
+		}
+		if maxTokens <= 0 {
+			maxTokens = 4096 // treat 0/negative as unset → default
+		}
+	} else {
+		maxTokens = 4096 // sensible default
+	}
+
 	reqTyped := protocol.ProviderCreateRequest{
 		Name:        name,
 		Type:        protocol.ProviderCreateRequestType(providerType),
 		Endpoint:    endpoint,
 		Model:       strPtr(model),
 		Temperature: parseFloat(tempStr),
-		MaxTokens:   parseInt(maxTokensStr),
+		MaxTokens:   &maxTokens,
 		ApiKey:      strPtr(apiKey),
 	}
 	if extra != "" {
