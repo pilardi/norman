@@ -1,9 +1,9 @@
-// Package main implements the Norman TUI client using charmbracelet/bubbletea.
+// Package tui implements the Norman TUI client using charmbracelet/bubbletea.
 //
-// This is a separate binary from `cmd/norman` that provides an interactive
+// This is a sub-package of `cmd/norman` that provides an interactive
 // terminal-based chat experience with structured rendering of RichOutput,
 // real-time event visualization, and keyboard-driven session management.
-package main
+package tui
 
 import (
 	"context"
@@ -14,8 +14,12 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
-func main() {
-	model := NewModel()
+// Main launches the TUI application with the given workspace and optional session ID.
+func Main(workspaceName, sessionID string) {
+	model := NewModel(workspaceName)
+	if sessionID != "" {
+		model.sessionID = sessionID
+	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 

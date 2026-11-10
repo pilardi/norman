@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"context"
@@ -50,16 +50,17 @@ type Model struct {
 }
 
 // NewModel creates a new application model with default settings.
-func NewModel() *Model {
+func NewModel(workspaceName string) *Model {
 	spinnerModel := spinner.New()
 	spinnerModel.Spinner = spinner.Dot
 
 	return &Model{
-		chatPanel:       NewChatPanel(),
-		eventPanel:      newEventPanel(),
-		statusBar:       NewStatusBar(),
-		spinner:         spinnerModel,
-		connectionState: "● Connecting...",
+		chatPanel:        NewChatPanel(),
+		eventPanel:       newEventPanel(),
+		statusBar:        NewStatusBar(),
+		spinner:          spinnerModel,
+		connectionState:  "● Connecting...",
+		initialWorkspace: workspaceName,
 	}
 }
 

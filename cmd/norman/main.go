@@ -12,6 +12,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/norman/norman/cmd/norman/tui"
 	"github.com/norman/norman/pkg/version"
 )
 
@@ -303,10 +304,14 @@ Pass a workspace name (e.g., 'norman sessions ls test-ws') to show only sessions
 					{
 						Name:    "open",
 						Aliases: []string{"chat"},
-						Usage:   "Open an interactive REPL chat session",
-						Description: `sessions open — Interactive REPL chat mode
+						Usage:   "Open an interactive chat session (TUI or REPL)",
+						Description: `sessions open — Interactive chat mode
 
 Usage: norman sessions open <workspace_name> [<session_id>]
+
+When run in a terminal, launches the full TUI interface with structured rendering,
+keyboard navigation, and real-time event visualization. Falls back to the
+traditional REPL chat if stdout is not a TTY.
 
 Slash-commands (prefix with /):
   /help             Show this help
@@ -322,7 +327,25 @@ Examples:
   norman sessions open my-project
   norman sessions open my-project abc12345`,
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							handleChat(cmd.Args().Slice())
+							args := cmd.Args().Slice()
+							if len(args) == 0 {
+								fmt.Fprintln(os.Stderr, "Usage: norman sessions open <workspace_name> [<session_id>]")
+								return fmt.Errorf("usage: norman sessions open <workspace_name> [<session_id>]")
+							}
+
+							workspaceName := args[0]
+							sessionID := ""
+							if len(args) > 1 {
+								sessionID = args[1]
+							}
+
+							// Auto-detect TTY: launch TUI in terminal, fallback to REPL.
+							if term.IsTerminal(int(os.Stdout.Fd())) {
+								tui.Main(workspaceName, sessionID)
+								return nil
+							}
+
+							handleChat(args)
 							return nil
 						},
 					},
