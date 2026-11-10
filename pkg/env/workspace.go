@@ -398,15 +398,6 @@ func (w *WorkspaceDefinition) AsSystemPrompt() string {
 	return strings.Join(parts, "\n")
 }
 
-// Exists checks whether a workspace has been created without side effects.
-func (m *WorkspaceManager) Exists(ctx context.Context, sessionId string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	_, ok := m.sessions[sessionId]
-	return ok
-}
-
 // Compile-time interface satisfaction check.
 var _ Workspace = (*WorkspaceManager)(nil)
 

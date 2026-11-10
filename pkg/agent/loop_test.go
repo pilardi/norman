@@ -902,13 +902,6 @@ func (f *FakeOpenShellClient) GetMTLSPaths() (certPath, keyPath string) {
 
 // --- env.Workspace interface methods ---
 
-func (f *FakeOpenShellClient) Exists(ctx context.Context, sessionId string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	_, ok := f.sandboxes[sessionId]
-	return ok
-}
-
 func (f *FakeOpenShellClient) SessionWorkspace(sessionId string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

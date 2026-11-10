@@ -15,16 +15,12 @@ import (
 // Design rationale:
 //   - Get() is non-creating — it fails if the session doesn't exist. This enforces
 //     the principle that only user-requested actions create new workspaces.
-//   - Exists() provides a read-only check without side effects (no sandbox state changes).
 //   - Delete() removes a workspace and its associated sandbox cleanly.
 //   - RunCommand() executes a command string in the active sandbox, returning output/exit code.
 //   - GetLogs() returns log lines for the session's sandbox.
 type Workspace interface {
 	// Get retrieves an existing session by ID. Returns NotFound error if non-existent.
 	Get(ctx context.Context, sessionId string) (*Session, error)
-
-	// Exists checks whether a workspace has been created without side effects.
-	Exists(ctx context.Context, sessionId string) bool
 
 	// Delete removes a workspace and its associated sandbox.
 	Delete(ctx context.Context, sessionId string) error

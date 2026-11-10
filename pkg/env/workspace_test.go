@@ -142,13 +142,6 @@ func newMockWorkspace() *mockWorkspace {
 	return &mockWorkspace{sessions: make(map[string]*Session)}
 }
 
-func (m *mockWorkspace) Exists(ctx context.Context, sessionId string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, ok := m.sessions[sessionId]
-	return ok
-}
-
 func (m *mockWorkspace) SessionWorkspace(sessionId string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -199,8 +192,8 @@ func TestWorkspaceUpdateActivity(t *testing.T) {
 	ws.UpdateActivity(ctx, "test-session-001")
 
 	// Verify the session still exists and is accessible
-	exists := ws.Exists(ctx, "test-session-001")
-	if !exists {
+	session, err := ws.Get(ctx, "test-session-001")
+	if err != nil || session == nil {
 		t.Error("expected session to still exist after UpdateActivity")
 	}
 }
