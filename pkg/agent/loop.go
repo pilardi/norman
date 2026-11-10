@@ -166,14 +166,6 @@ func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, e
 	return session, nil
 }
 
-// buildContextFile constructs a ContextFile for the given workspace.
-func (l *Loop) buildContextFile(workspaceID string) *env.ContextFile {
-	return &env.ContextFile{
-		WorkspaceID:   workspaceID,
-		WorkspaceName: workspaceID, // uses ID as name until a proper name is resolved
-	}
-}
-
 // OpenShellClient abstracts the OpenShell SDK for testing.
 type OpenShellClient interface {
 	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error)
