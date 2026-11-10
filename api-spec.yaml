@@ -145,7 +145,7 @@ paths:
   /api/workspaces/{name}/stop:
     post:
       tags: [workspace]
-      summary: Stop a workspace (free sandbox, keep data)
+      summary: Stop a workspace (free workspace, keep data)
       operationId: stopWorkspace
       parameters:
         - name: name
@@ -1044,8 +1044,8 @@ components:
           type: string
           enum: [active, stopped]
           description: >
-            Lifecycle state of the workspace. "active" = running sandbox;
-            "stopped" = sandbox freed but data preserved (via snapshot).
+            Lifecycle state of the workspace. "active" = running workspace;
+            "stopped" = workspace freed but data preserved (via snapshot).
         last_used:
           type: string
           format: date-time
@@ -1064,10 +1064,10 @@ components:
     RestoreRequest:
       type: object
       properties:
-        recreate_sandbox:
+        recreate_workspace:
           type: boolean
           default: true
-          description: Whether to recreate the OpenShell sandbox on restore
+          description: Whether to recreate the workspace on restore
 
     PurgeRequest:
       type: object

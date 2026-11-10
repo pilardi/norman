@@ -809,8 +809,8 @@ type QueryProviderModelsRequest struct {
 
 // RestoreRequest defines model for RestoreRequest.
 type RestoreRequest struct {
-	// RecreateSandbox Whether to recreate the OpenShell sandbox on restore
-	RecreateSandbox *bool `json:"recreate_sandbox,omitempty"`
+	// RecreateWorkspace Whether to recreate the workspace on restore
+	RecreateWorkspace *bool `json:"recreate_workspace,omitempty"`
 }
 
 // RichOutput defines model for RichOutput.
@@ -1230,7 +1230,7 @@ type Workspace struct {
 	// Scope Subsystems, repos, or services under this workspace
 	Scope *[]string `json:"scope,omitempty"`
 
-	// Status Lifecycle state of the workspace. "active" = running sandbox; "stopped" = sandbox freed but data preserved (via snapshot).
+	// Status Lifecycle state of the workspace. "active" = running workspace; "stopped" = workspace freed but data preserved (via snapshot).
 	Status *WorkspaceStatus `json:"status,omitempty"`
 
 	// Tags Domain keywords for skill activation matching
@@ -1238,7 +1238,7 @@ type Workspace struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
-// WorkspaceStatus Lifecycle state of the workspace. "active" = running sandbox; "stopped" = sandbox freed but data preserved (via snapshot).
+// WorkspaceStatus Lifecycle state of the workspace. "active" = running workspace; "stopped" = workspace freed but data preserved (via snapshot).
 type WorkspaceStatus string
 
 // WorkspaceConfig defines model for WorkspaceConfig.
@@ -1521,7 +1521,7 @@ type ServerInterface interface {
 	// RestoreWorkspace Restore a stopped/archived workspace to active
 	// (POST /api/workspaces/{name}/restore)
 	RestoreWorkspace(ctx echo.Context, name string) error
-	// StopWorkspace Stop a workspace (free sandbox, keep data)
+	// StopWorkspace Stop a workspace (free workspace, keep data)
 	// (POST /api/workspaces/{name}/stop)
 	StopWorkspace(ctx echo.Context, name string) error
 	// HealthCheck Health check with scheduler status

@@ -466,14 +466,14 @@ type ClientInterface interface {
 	// Corresponds with POST /api/workspaces/{name}/restore (the `RestoreWorkspace` operationId).
 	RestoreWorkspace(ctx context.Context, name string, body RestoreWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// StopWorkspaceWithBody Stop a workspace (free sandbox, keep data)
+	// StopWorkspaceWithBody Stop a workspace (free workspace, keep data)
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/workspaces/{name}/stop (the `StopWorkspace` operationId).
 	StopWorkspaceWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// StopWorkspace Stop a workspace (free sandbox, keep data)
+	// StopWorkspace Stop a workspace (free workspace, keep data)
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1472,7 +1472,7 @@ func (c *Client) RestoreWorkspace(ctx context.Context, name string, body Restore
 	return c.Client.Do(req)
 }
 
-// StopWorkspaceWithBody Stop a workspace (free sandbox, keep data)
+// StopWorkspaceWithBody Stop a workspace (free workspace, keep data)
 //
 // Takes any type of body and a specified content type.
 //
@@ -1489,7 +1489,7 @@ func (c *Client) StopWorkspaceWithBody(ctx context.Context, name string, content
 	return c.Client.Do(req)
 }
 
-// StopWorkspace Stop a workspace (free sandbox, keep data)
+// StopWorkspace Stop a workspace (free workspace, keep data)
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3814,14 +3814,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/workspaces/{name}/restore (the `RestoreWorkspace` operationId).
 	RestoreWorkspaceWithResponse(ctx context.Context, name string, body RestoreWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*RestoreWorkspaceResponse, error)
 
-	// StopWorkspaceWithBodyWithResponse Stop a workspace (free sandbox, keep data)
+	// StopWorkspaceWithBodyWithResponse Stop a workspace (free workspace, keep data)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/workspaces/{name}/stop (the `StopWorkspace` operationId).
 	StopWorkspaceWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StopWorkspaceResponse, error)
 
-	// StopWorkspaceWithResponse Stop a workspace (free sandbox, keep data)
+	// StopWorkspaceWithResponse Stop a workspace (free workspace, keep data)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -6445,7 +6445,7 @@ func (c *ClientWithResponses) RestoreWorkspaceWithResponse(ctx context.Context, 
 	return ParseRestoreWorkspaceResponse(rsp)
 }
 
-// StopWorkspaceWithBodyWithResponse Stop a workspace (free sandbox, keep data)
+// StopWorkspaceWithBodyWithResponse Stop a workspace (free workspace, keep data)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6458,7 +6458,7 @@ func (c *ClientWithResponses) StopWorkspaceWithBodyWithResponse(ctx context.Cont
 	return ParseStopWorkspaceResponse(rsp)
 }
 
-// StopWorkspaceWithResponse Stop a workspace (free sandbox, keep data)
+// StopWorkspaceWithResponse Stop a workspace (free workspace, keep data)
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

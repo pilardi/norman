@@ -1,5 +1,5 @@
 // Package agent implements the core agent loop that resolves skills,
-// executes tasks via OpenShell sandboxes, and reports progress.
+// executes tasks via the workspace, and reports progress.
 package agent
 
 import (
@@ -99,15 +99,15 @@ func (l *Loop) GetWorkspaceDefinition() *env.WorkspaceDefinition {
 	return l.workspaceDef
 }
 
-// ActivateWithSession activates a skill with dependency install inside the given workspace's sandbox.
-// Falls back to local venv if session is nil. Deploys skill files into the sandbox first.
+// ActivateWithSession activates a skill with dependency install inside the given workspace.
+// Falls back to local venv if session is nil. Deploys skill files into the workspace first.
 func (l *Loop) ActivateWithSession(name string, session *env.Session) error {
 	if l.activator != nil {
-		// Deploy skill files into sandbox before activation
+		// Deploy skill files into workspace before activation
 		if session != nil {
 			_, err := l.activator.DeployToSandbox(name, session)
 			if err != nil {
-				log.Printf("[loop] deploy to sandbox for '%s': %v", name, err)
+				log.Printf("[loop] deploy to workspace for '%s': %v", name, err)
 				// Non-fatal — continue with activation if files are already present
 			}
 		}
@@ -179,11 +179,11 @@ type OpenShellClient interface {
 	CreateSandbox(ctx context.Context, workspace, name string, ctxFile *env.ContextFile, sessionId string) (*v1.Sandbox, error)
 	WaitReady(ctx context.Context, workspace, name string, timeout time.Duration) (*v1.Sandbox, error)
 	GetSandbox(ctx context.Context, provider, name string) (*v1.Sandbox, error)
-	RunCommand(ctx context.Context, sandboxName string, command string) (string, int, error)
-	GetLogs(ctx context.Context, sandboxID string) ([]string, error)
+	RunCommand(ctx context.Context, workspaceName string, command string) (string, int, error)
+	GetLogs(ctx context.Context, workspaceID string) ([]string, error)
 	DeleteSandbox(ctx context.Context, workspace, name string) error
 	ListSandboxes(ctx context.Context, workspace string) ([]string, error)
-	KeepAlive(ctx context.Context, sandboxName string) error
+	KeepAlive(ctx context.Context, workspaceName string) error
 	GetMTLSPaths() (certPath, keyPath string)
 }
 
@@ -362,7 +362,7 @@ func (l *Loop) GetTask(taskID string) (*Task, error) {
 	return task, nil
 }
 
-// GetLogs returns the log lines for a sandbox/session by session ID.
+// GetLogs returns the log lines for a workspace/session by session ID.
 func (l *Loop) GetLogs(ctx context.Context, sessionId string) ([]string, error) {
 	return l.Ws.GetLogs(ctx, sessionId)
 }
@@ -502,7 +502,7 @@ func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]
 
 	// Warn if no workspace was resolved (the task will still be created but will fail at execution).
 	if workspaceID == "" {
-		log.Printf("[loop] WARNING: CreateTask called without workspace_id — task will fail during sandbox execution")
+		log.Printf("[loop] WARNING: CreateTask called without workspace_id — task will fail during workspace execution")
 	}
 
 	// Parse priority from config (default: "normal").
@@ -566,7 +566,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		}
 	}()
 
-	// Validate workspace — tasks without a workspace cannot execute in a sandbox.
+	// Validate workspace — tasks without a workspace cannot execute in the workspace.
 	if task.Workspace == "" {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = "no workspace resolved; cannot execute task without a workspace context"
@@ -574,11 +574,11 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		return
 	}
 
-	// No workspace configured — simulate successful completion for tests.
+	// No workspace configured — coding error, must not recover.
 	if l.Ws == nil {
-		log.Printf("[loop] no workspace configured; skipping sandbox execution")
-		task.Status = protocol.TaskStatusCompleted
-		task.Output = []byte("completed (no workspace)")
+		log.Printf("[loop] no workspace configured; task execution cannot proceed")
+		task.Status = protocol.TaskStatusFailed
+		task.Error = "no workspace configured; task execution cannot proceed"
 		l.pushCompletion(task)
 		return
 	}
@@ -627,30 +627,30 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &task.ID,
-		Message: strPtr("Creating sandbox..."),
+		Message: strPtr("Creating workspace..."),
 		Step:    intPtr(3),
 	})
 
-	sandboxName := fmt.Sprintf("norman-task-%s", task.ID[:7])
+	workspaceName := fmt.Sprintf("norman-task-%s", task.ID[:7])
 	ctxFile := l.buildContextFile(task.Workspace)
 
-	var sandboxErr error
+	var workspaceErr error
 	if l.Ws != nil {
-		_, sandboxErr = l.Ws.CreateSandbox(ctx, task.Workspace, sandboxName, ctxFile, "")
+		_, workspaceErr = l.Ws.CreateSandbox(ctx, task.Workspace, workspaceName, ctxFile, "")
 	} else {
-		// No workspace configured — simulate successful sandbox for tests.
-		log.Printf("[loop] no workspace configured; skipping sandbox creation")
+		// No workspace configured — task execution cannot proceed.
+		log.Printf("[loop] no workspace configured; skipping workspace creation")
 	}
 
-	if sandboxErr != nil {
+	if workspaceErr != nil {
 		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("sandbox creation failed: %v", sandboxErr)
-		log.Printf("agent: sandbox creation failed: %v", sandboxErr)
+		task.Error = fmt.Sprintf("workspace creation failed: %v", workspaceErr)
+		log.Printf("agent: workspace creation failed: %v", workspaceErr)
 		l.pushCompletion(task)
 		return
 	}
 
-	// Budget check after sandbox provisioning (post-provisioning re-check)
+	// Budget check after workspace provisioning (post-provisioning re-check)
 	if l.budget != nil {
 		l.checkAndCompress(ctx, task.ID)
 	}
@@ -659,21 +659,21 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &task.ID,
-		Message: strPtr("Waiting for sandbox ready..."),
+		Message: strPtr("Waiting for workspace ready..."),
 		Step:    intPtr(4),
 	})
 
-	// Wait for sandbox to be ready.
+	// Wait for workspace to be ready.
 	var waitErr error
-	_, waitErr = l.Ws.WaitReady(ctx, task.Workspace, sandboxName, 60*time.Second)
+	_, waitErr = l.Ws.WaitReady(ctx, task.Workspace, workspaceName, 60*time.Second)
 	if waitErr != nil {
 		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("sandbox not ready: %v", waitErr)
+		task.Error = fmt.Sprintf("workspace not ready: %v", waitErr)
 		l.pushCompletion(task)
 		return
 	}
 
-	// P3: Re-activate active skills with workspace session for sandbox-based dependency install.
+	// P3: Re-activate active skills with workspace session for workspace-based dependency install.
 	if l.activator != nil && len(l.activator.Active()) > 0 {
 		// Only activate if a session already exists for this task's workspace — no auto-creation.
 		if l.Ws.Exists(ctx, task.SessionId) {
@@ -692,14 +692,14 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		}
 	}
 
-	// Final sanity check: re-fetch sandbox state right before execution.
-	// This catches the case where the gateway auto-deletes sandboxes (idle timeout)
+	// Final sanity check: re-fetch workspace state right before execution.
+	// This catches the case where the gateway auto-deletes workspaces (idle timeout)
 	// between WaitReady and RunCommand.
 	var getErr error
-	_, getErr = l.Ws.GetSandbox(ctx, "default", sandboxName)
+	_, getErr = l.Ws.GetSandbox(ctx, "default", workspaceName)
 	if getErr != nil {
 		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("sandbox not found before execution: %v", getErr)
+		task.Error = fmt.Sprintf("workspace not found before execution: %v", getErr)
 		l.pushCompletion(task)
 		return
 	}
@@ -717,7 +717,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	})
 
 	// Run LLM-based multi-turn loop.
-	output, err := l.executeWithLLM(ctx, task, sandboxName)
+	output, err := l.executeWithLLM(ctx, task, workspaceName)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = err.Error()
@@ -732,18 +732,18 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		l.checkAndCompress(ctx, task.ID)
 	}
 
-	// Cleanup sandbox
+	// Cleanup workspace
 	go func() {
-		if delErr := l.Ws.DeleteSandbox(context.Background(), task.Workspace, sandboxName); delErr != nil {
-			log.Printf("agent: failed to delete sandbox %s: %v", sandboxName, delErr)
+		if delErr := l.Ws.DeleteSandbox(context.Background(), task.Workspace, workspaceName); delErr != nil {
+			log.Printf("agent: failed to delete workspace %s: %v", workspaceName, delErr)
 		}
 	}()
 }
 
 // executeWithLLM runs a multi-turn agent loop using the LLM client.
 // It builds context from session history + raw sources + skills, calls the LLM,
-// parses tool calls if present, executes them in the sandbox, and loops back.
-func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName string) ([]byte, error) {
+// parses tool calls if present, executes them in the workspace, and loops back.
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceName string) ([]byte, error) {
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
 
@@ -946,7 +946,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 		}
 
 		if len(toolCalls) > 0 {
-			// Execute tool calls in the sandbox (item #6: enhanced WS events)
+			// Execute tool calls in the workspace (item #6: enhanced WS events)
 			for _, tc := range toolCalls {
 				// Pre-execution broadcast with tool detail
 				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
@@ -964,7 +964,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 					Message:   strPtr(fmt.Sprintf("tool:%s", tc.Name)),
 				})
 
-				output, exitCode, execErr := l.dispatchToolCall(ctx, sandboxName, tc.Name, string(tc.Arguments))
+				output, exitCode, execErr := l.dispatchToolCall(ctx, workspaceName, tc.Name, string(tc.Arguments))
 				if execErr != nil {
 					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
 				} else if exitCode != 0 {
@@ -1024,8 +1024,8 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, sandboxName strin
 			}
 
 			// Keepalive heartbeat between turns (item #7) — prevents idle-timeout deletion
-			if err := l.Ws.KeepAlive(ctx, sandboxName); err != nil {
-				log.Printf("agent: keepalive failed for sandbox %s: %v", sandboxName, err)
+			if err := l.Ws.KeepAlive(ctx, workspaceName); err != nil {
+				log.Printf("agent: keepalive failed for workspace %s: %v", workspaceName, err)
 			}
 
 			continue // Loop back for another turn
@@ -1089,7 +1089,7 @@ func (l *Loop) GetTaskEvents(taskID string) []protocol.WebSocketEvent {
 }
 
 // buildTools converts active skills into llm.Tool definitions for the LLM API.
-// Generic in-sandbox tools (bash, read_file, write_file) and host-interaction
+// Generic in-workspace tools (bash, read_file, write_file) and host-interaction
 // tools (ask_user, notify) are always included; activated skills are appended.
 // emitStored records a granular event in the task's event log and broadcasts to scope=events clients.
 func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
@@ -1170,10 +1170,10 @@ func hasMarkdown(s string) bool {
 func (l *Loop) buildTools() []llm.Tool {
 	var tools []llm.Tool
 
-	// Always-available generic tools (in-sandbox I/O and command execution).
+	// Always-available generic tools (in-workspace I/O and command execution).
 	tools = append(tools, llm.Tool{
 		Name:        "bash",
-		Description: "Execute a shell command inside the sandbox environment. Returns combined stdout/stderr output.",
+		Description: "Execute a shell command inside the workspace environment. Returns combined stdout/stderr output.",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1188,7 +1188,7 @@ func (l *Loop) buildTools() []llm.Tool {
 
 	tools = append(tools, llm.Tool{
 		Name:        "read_file",
-		Description: "Read the contents of a file inside the sandbox environment. Returns the file content as a string.",
+		Description: "Read the contents of a file inside the workspace environment. Returns the file content as a string.",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1203,7 +1203,7 @@ func (l *Loop) buildTools() []llm.Tool {
 
 	tools = append(tools, llm.Tool{
 		Name:        "write_file",
-		Description: "Write content to a file inside the sandbox environment. Creates parent directories if needed.",
+		Description: "Write content to a file inside the workspace environment. Creates parent directories if needed.",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1220,10 +1220,10 @@ func (l *Loop) buildTools() []llm.Tool {
 		},
 	})
 
-	// Read-only in-sandbox filesystem tools.
+	// Read-only in-workspace filesystem tools.
 	tools = append(tools, llm.Tool{
 		Name:        "list_dir",
-		Description: "List the contents of a directory inside the sandbox environment. Returns a detailed listing (equivalent to 'ls -la').",
+		Description: "List the contents of a directory inside the workspace environment. Returns a detailed listing (equivalent to 'ls -la').",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1238,7 +1238,7 @@ func (l *Loop) buildTools() []llm.Tool {
 
 	tools = append(tools, llm.Tool{
 		Name:        "find_files",
-		Description: "Search for files matching a pattern inside the sandbox environment. Returns matched file paths.",
+		Description: "Search for files matching a pattern inside the workspace environment. Returns matched file paths.",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1302,7 +1302,7 @@ func (l *Loop) buildTools() []llm.Tool {
 					},
 					"scope": map[string]interface{}{
 						"type":        "string",
-						"description": "Optional scope/context for the action (e.g., 'sandbox', 'host')",
+						"description": "Optional scope/context for the action (e.g., 'workspace', 'host')",
 					},
 				},
 				"required": []string{"description"},
@@ -1871,39 +1871,39 @@ func contains(slice []string, val string) bool {
 // Generic tools (bash, read_file, write_file) and host-interaction tools
 // (ask_user, notify) are handled with typed execution; unknown tool names
 // fall back to raw RunCommand (for activated skill tools).
-func (l *Loop) dispatchToolCall(ctx context.Context, sandboxName string, name string, argsRaw string) (string, int, error) {
+func (l *Loop) dispatchToolCall(ctx context.Context, workspaceName string, name string, argsRaw string) (string, int, error) {
 	switch name {
 	case "bash":
-		return l.handleBash(ctx, sandboxName, argsRaw)
+		return l.handleBash(ctx, workspaceName, argsRaw)
 	case "read_file":
-		return l.handleReadFile(ctx, sandboxName, argsRaw)
+		return l.handleReadFile(ctx, workspaceName, argsRaw)
 	case "write_file":
-		return l.handleWriteFile(ctx, sandboxName, argsRaw)
+		return l.handleWriteFile(ctx, workspaceName, argsRaw)
 	case "list_dir":
-		return l.handleListDir(sandboxName, argsRaw)
+		return l.handleListDir(workspaceName, argsRaw)
 	case "find_files":
-		return l.handleFindFiles(sandboxName, argsRaw)
+		return l.handleFindFiles(workspaceName, argsRaw)
 	case "ask_user":
-		return l.handleAskUser(sandboxName, argsRaw)
+		return l.handleAskUser(workspaceName, argsRaw)
 	case "notify":
 		return l.handleNotify(argsRaw)
 	case "request_permission":
-		return l.handleRequestPermission(sandboxName, argsRaw)
+		return l.handleRequestPermission(workspaceName, argsRaw)
 	case "file_diff":
-		return l.handleFileDiff(ctx, sandboxName, argsRaw)
+		return l.handleFileDiff(ctx, workspaceName, argsRaw)
 	case "mcp_list_tools":
-		return l.handleMCPListTools(sandboxName, argsRaw)
+		return l.handleMCPListTools(workspaceName, argsRaw)
 	case "mcp_call":
-		return l.handleMCPCall(sandboxName, argsRaw)
+		return l.handleMCPCall(workspaceName, argsRaw)
 	default:
 		// Fall back to raw RunCommand for activated skill tools
-		output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, sandboxName, argsRaw)
+		output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, argsRaw)
 		return output, exitCode, err
 	}
 }
 
-// handleBash executes a shell command inside the sandbox.
-func (l *Loop) handleBash(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+// handleBash executes a shell command inside the workspace.
+func (l *Loop) handleBash(ctx context.Context, workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse bash args: %w", err)
@@ -1914,12 +1914,12 @@ func (l *Loop) handleBash(ctx context.Context, sandboxName string, argsRaw strin
 		return "", 0, fmt.Errorf("bash requires a 'command' field (string)")
 	}
 
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, sandboxName, cmd)
+	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, cmd)
 	return output, exitCode, err
 }
 
-// handleReadFile reads a file inside the sandbox and returns its content.
-func (l *Loop) handleReadFile(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+// handleReadFile reads a file inside the workspace and returns its content.
+func (l *Loop) handleReadFile(ctx context.Context, workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse read_file args: %w", err)
@@ -1930,12 +1930,12 @@ func (l *Loop) handleReadFile(ctx context.Context, sandboxName string, argsRaw s
 		return "", 0, fmt.Errorf("read_file requires a 'path' field (string)")
 	}
 
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, sandboxName, "cat "+shellEscape(path))
+	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, "cat "+shellEscape(path))
 	return output, exitCode, err
 }
 
-// handleWriteFile writes content to a file inside the sandbox.
-func (l *Loop) handleWriteFile(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+// handleWriteFile writes content to a file inside the workspace.
+func (l *Loop) handleWriteFile(ctx context.Context, workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse write_file args: %w", err)
@@ -1952,13 +1952,13 @@ func (l *Loop) handleWriteFile(ctx context.Context, sandboxName string, argsRaw 
 	}
 
 	cmd := "printf '%s' '" + shellEscape(content) + "' > " + shellEscape(path)
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, sandboxName, cmd)
+	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, cmd)
 	return output, exitCode, err
 }
 
 // handleAskUser asks the connected user a question and waits for their response.
 // Returns the user's answer as a string (or an error if no response within timeout).
-func (l *Loop) handleAskUser(sandboxName string, argsRaw string) (string, int, error) {
+func (l *Loop) handleAskUser(workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse ask_user args: %w", err)
@@ -2011,7 +2011,7 @@ func (l *Loop) handleNotify(argsRaw string) (string, int, error) {
 
 // handleRequestPermission asks the user to approve or deny a destructive action.
 // Returns "approved" or "denied" as a string response.
-func (l *Loop) handleRequestPermission(sandboxName string, argsRaw string) (string, int, error) {
+func (l *Loop) handleRequestPermission(workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse request_permission args: %w", err)
@@ -2048,7 +2048,7 @@ func (l *Loop) handleRequestPermission(sandboxName string, argsRaw string) (stri
 }
 
 // handleFileDiff reads a file and returns its current content for comparison.
-func (l *Loop) handleFileDiff(ctx context.Context, sandboxName string, argsRaw string) (string, int, error) {
+func (l *Loop) handleFileDiff(ctx context.Context, workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse file_diff args: %w", err)
@@ -2059,8 +2059,8 @@ func (l *Loop) handleFileDiff(ctx context.Context, sandboxName string, argsRaw s
 		return "", 0, fmt.Errorf("file_diff requires a 'path' field (string)")
 	}
 
-	// Read the file via cat command in the sandbox.
-	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, sandboxName, "cat "+shellEscape(path))
+	// Read the file via cat command in the workspace.
+	output, exitCode, err := l.Ws.RunCommandBySandbox(ctx, workspaceName, "cat "+shellEscape(path))
 	if err != nil {
 		return "", exitCode, fmt.Errorf("file_diff read error: %w", err)
 	}
@@ -2068,8 +2068,8 @@ func (l *Loop) handleFileDiff(ctx context.Context, sandboxName string, argsRaw s
 	return fmt.Sprintf("# File: %s\n%s", path, output), 0, nil
 }
 
-// handleListDir lists the contents of a directory inside the sandbox.
-func (l *Loop) handleListDir(sandboxName string, argsRaw string) (string, int, error) {
+// handleListDir lists the contents of a directory inside the workspace.
+func (l *Loop) handleListDir(workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse list_dir args: %w", err)
@@ -2081,12 +2081,12 @@ func (l *Loop) handleListDir(sandboxName string, argsRaw string) (string, int, e
 	}
 
 	cmd := "ls -la " + shellEscape(path)
-	output, exitCode, err := l.Ws.RunCommandBySandbox(context.Background(), sandboxName, cmd)
+	output, exitCode, err := l.Ws.RunCommandBySandbox(context.Background(), workspaceName, cmd)
 	return output, exitCode, err
 }
 
-// handleFindFiles searches for files matching a glob pattern inside the sandbox.
-func (l *Loop) handleFindFiles(sandboxName string, argsRaw string) (string, int, error) {
+// handleFindFiles searches for files matching a glob pattern inside the workspace.
+func (l *Loop) handleFindFiles(workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse find_files args: %w", err)
@@ -2098,12 +2098,12 @@ func (l *Loop) handleFindFiles(sandboxName string, argsRaw string) (string, int,
 	}
 
 	cmd := "find . -name '" + pattern + "'"
-	output, exitCode, err := l.Ws.RunCommandBySandbox(context.Background(), sandboxName, cmd)
+	output, exitCode, err := l.Ws.RunCommandBySandbox(context.Background(), workspaceName, cmd)
 	return output, exitCode, err
 }
 
 // handleMCPListTools lists available tools from the connected MCP server.
-func (l *Loop) handleMCPListTools(sandboxName string, argsRaw string) (string, int, error) {
+func (l *Loop) handleMCPListTools(workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse mcp_list_tools args: %w", err)
@@ -2128,7 +2128,7 @@ func (l *Loop) handleMCPListTools(sandboxName string, argsRaw string) (string, i
 }
 
 // handleMCPCall invokes a tool on the connected MCP server by name with typed arguments.
-func (l *Loop) handleMCPCall(sandboxName string, argsRaw string) (string, int, error) {
+func (l *Loop) handleMCPCall(workspaceName string, argsRaw string) (string, int, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(argsRaw), &args); err != nil {
 		return "", 0, fmt.Errorf("parse mcp_call args: %w", err)
