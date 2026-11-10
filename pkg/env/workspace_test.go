@@ -149,18 +149,6 @@ func (m *mockWorkspace) Exists(ctx context.Context, sessionId string) bool {
 	return ok
 }
 
-func (m *mockWorkspace) Session() *Session {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if len(m.sessions) == 0 {
-		return nil
-	}
-	for range m.sessions {
-		return &Session{}
-	}
-	return nil
-}
-
 func (m *mockWorkspace) SessionWorkspace(sessionId string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

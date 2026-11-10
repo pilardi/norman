@@ -407,21 +407,6 @@ func (m *WorkspaceManager) Exists(ctx context.Context, sessionId string) bool {
 	return ok
 }
 
-// Session returns the current session state as a read-only view.
-func (m *WorkspaceManager) Session() *Session {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if len(m.sessions) == 0 {
-		return nil
-	}
-	// Return the first (and typically only) session for this workspace manager instance.
-	for _, s := range m.sessions {
-		return s
-	}
-	return nil
-}
-
 // Compile-time interface satisfaction check.
 var _ Workspace = (*WorkspaceManager)(nil)
 

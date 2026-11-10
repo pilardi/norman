@@ -18,7 +18,6 @@ import (
 //   - Create() is the sole path for new workspace creation. No shortcuts or auto-creation.
 //   - Exists() provides a read-only check without side effects (no sandbox state changes).
 //   - Delete() removes a workspace and its associated sandbox cleanly.
-//   - Session() returns the current session state as a read-only view.
 //   - RunCommand() executes a command string in the active sandbox, returning output/exit code.
 //   - GetLogs() returns log lines for the session's sandbox.
 type Workspace interface {
@@ -38,9 +37,6 @@ type Workspace interface {
 
 	// SessionWorkspace returns the workspace name for a given session ID.
 	SessionWorkspace(sessionId string) (string, error)
-
-	// Session returns the current session state (read-only view).
-	Session() *Session
 
 	// RunCommand executes a command string in the active sandbox.
 	// Returns combined stdout+stderr output, exit code, and any error.

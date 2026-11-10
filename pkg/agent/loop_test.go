@@ -909,18 +909,6 @@ func (f *FakeOpenShellClient) Exists(ctx context.Context, sessionId string) bool
 	return ok
 }
 
-func (f *FakeOpenShellClient) Session() *env.Session {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if len(f.sandboxes) == 0 {
-		return nil
-	}
-	for range f.sandboxes {
-		return &env.Session{} // minimal mock session for read-only view
-	}
-	return nil
-}
-
 func (f *FakeOpenShellClient) SessionWorkspace(sessionId string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
