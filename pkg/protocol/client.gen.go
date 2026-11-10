@@ -195,6 +195,11 @@ type ClientInterface interface {
 	// Corresponds with GET /api/providers/{name}/models (the `ListProviderModels` operationId).
 	ListProviderModels(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// VerifyProvider Verify a configured provider by testing connectivity and running a quick completion
+	//
+	// Corresponds with POST /api/providers/{name}/verify (the `VerifyProvider` operationId).
+	VerifyProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSessions List active sessions
 	//
 	// Corresponds with GET /api/sessions (the `ListSessions` operationId).
@@ -761,6 +766,21 @@ func (c *Client) UpdateProvider(ctx context.Context, name string, body UpdatePro
 // Corresponds with GET /api/providers/{name}/models (the `ListProviderModels` operationId).
 func (c *Client) ListProviderModels(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListProviderModelsRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyProvider Verify a configured provider by testing connectivity and running a quick completion
+//
+// Corresponds with POST /api/providers/{name}/verify (the `VerifyProvider` operationId).
+func (c *Client) VerifyProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyProviderRequest(c.Server, name)
 	if err != nil {
 		return nil, err
 	}
@@ -1995,6 +2015,40 @@ func NewListProviderModelsRequest(server string, name string) (*http.Request, er
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewVerifyProviderRequest constructs an http.Request for the VerifyProvider method
+func NewVerifyProviderRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/providers/%s/verify", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3513,6 +3567,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/providers/{name}/models (the `ListProviderModels` operationId).
 	ListProviderModelsWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*ListProviderModelsResponse, error)
 
+	// VerifyProviderWithResponse Verify a configured provider by testing connectivity and running a quick completion
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/providers/{name}/verify (the `VerifyProvider` operationId).
+	VerifyProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*VerifyProviderResponse, error)
+
 	// ListSessionsWithResponse List active sessions
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4323,6 +4384,47 @@ func (r ListProviderModelsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListProviderModelsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type VerifyProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VerifyResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r VerifyProviderResponse) GetJSON200() *VerifyResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r VerifyProviderResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VerifyProviderResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5886,6 +5988,19 @@ func (c *ClientWithResponses) ListProviderModelsWithResponse(ctx context.Context
 	return ParseListProviderModelsResponse(rsp)
 }
 
+// VerifyProviderWithResponse Verify a configured provider by testing connectivity and running a quick completion
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/providers/{name}/verify (the `VerifyProvider` operationId).
+func (c *ClientWithResponses) VerifyProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*VerifyProviderResponse, error) {
+	rsp, err := c.VerifyProvider(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyProviderResponse(rsp)
+}
+
 // ListSessionsWithResponse List active sessions
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6816,6 +6931,35 @@ func ParseListProviderModelsResponse(rsp *http.Response) (*ListProviderModelsRes
 		break // No content-type
 
 	case rsp.StatusCode == 500:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseVerifyProviderResponse parses an HTTP response from a VerifyProviderWithResponse call
+func ParseVerifyProviderResponse(rsp *http.Response) (*VerifyProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VerifyResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 404:
 		break // No content-type
 
 	}

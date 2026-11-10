@@ -963,6 +963,27 @@ paths:
         "500":
           description: Failed to query provider's model list endpoint
 
+  /api/providers/{name}/verify:
+    post:
+      tags: [provider]
+      summary: Verify a configured provider by testing connectivity and running a quick completion
+      operationId: verifyProvider
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verification result (model list + completion test)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        "404":
+          description: Provider not found
+
 components:
   schemas:
     WorkspaceCreateRequest:
@@ -1961,3 +1982,48 @@ components:
         provider_name:
           type: string
           description: Name of the provider queried
+
+    VerifyResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, failed]
+          description: Overall verification status
+        model_list_status:
+          type: string
+          enum: [success, failure, skipped]
+          description: Result of the model list query
+        model_list_error:
+          type: string
+          nullable: true
+          description: Error message if model list failed
+        model_count:
+          type: integer
+          nullable: true
+          description: Number of models found (if successful)
+        completion_status:
+          type: string
+          enum: [success, failure, skipped]
+          description: Result of the completion test
+        completion_error:
+          type: string
+          nullable: true
+          description: Error message if completion failed
+        tokens_used:
+          type: integer
+          nullable: true
+          description: Tokens consumed by the completion test
+
+    VerifyResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, failed]
+          description: Overall verification result
+        details:
+          $ref: "#/components/schemas/VerifyResult"
+        provider_name:
+          type: string
+          description: Name of the verified provider

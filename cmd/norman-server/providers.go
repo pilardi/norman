@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -494,6 +496,83 @@ func fetchOllamaModels(endpoint string) ([]protocol.AvailableModelEntry, error) 
 	}
 
 	return entries, nil
+}
+
+// VerifyProvider tests connectivity and runs a quick completion against the provider's API.
+func (s *server) VerifyProvider(c echo.Context, name string) error {
+	prov := findProviderByName(s.cfg.System, name)
+	if prov == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": "provider not found",
+		})
+	}
+
+	result := &protocol.VerifyResult{}
+
+	// Step 1: Query available models (tests connectivity).
+	models, err := queryProviderModels(prov)
+	if err != nil {
+		s := protocol.VerifyResultStatus("failed")
+		m := protocol.VerifyResultModelListStatus("failure")
+		cst := protocol.VerifyResultCompletionStatus("skipped")
+		result.Status = &s
+		result.ModelListStatus = &m
+		result.ModelListError = strPtr(err.Error())
+		result.CompletionStatus = &cst
+	} else {
+		s := protocol.VerifyResultStatus("ok")
+		m := protocol.VerifyResultModelListStatus("success")
+		result.Status = &s
+		result.ModelListStatus = &m
+		modelCount := len(models)
+		result.ModelCount = &modelCount
+	}
+
+	// Step 2: Quick completion test (only if model list succeeded).
+	if result.ModelListStatus != nil && *result.ModelListStatus == "success" && prov.Model != "" {
+		comp, compErr := quickCompletion(prov)
+		if compErr != nil {
+			cst := protocol.VerifyResultCompletionStatus("failure")
+			result.CompletionStatus = &cst
+			result.CompletionError = strPtr(compErr.Error())
+			if result.Status != nil && *result.Status == "ok" {
+				f := protocol.VerifyResultStatus("failed")
+				result.Status = &f
+			}
+		} else {
+			cst := protocol.VerifyResultCompletionStatus("success")
+			result.CompletionStatus = &cst
+			tokens := comp.Usage.TotalTokens
+			result.TokensUsed = &tokens
+		}
+	}
+
+	statusStr := ""
+	if result.Status != nil {
+		statusStr = string(*result.Status)
+	}
+	return c.JSON(http.StatusOK, protocol.VerifyResponse{
+		Status:       (*protocol.VerifyResponseStatus)(strPtr(statusStr)),
+		Details:      result,
+		ProviderName: strPtr(prov.Name),
+	})
+}
+
+// quickCompletion sends a minimal completion request to test the provider's inference.
+func quickCompletion(p *config.ProviderConfig) (*llm.CompletionResponse, error) {
+	client := llm.NewClientWithProvider(p)
+	resp, err := client.Complete(context.Background(), llm.CompletionRequest{
+		Messages: []llm.Message{
+			{Role: "system", Content: "You are a helpful assistant. Reply with exactly 'OK' and nothing else."},
+			{Role: "user", Content: "Say OK"},
+		},
+		Temperature: 0.1,
+		MaxTokens:   10,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("completion failed: %w", err)
+	}
+	return resp, nil
 }
 
 // --- Helper functions for safe pointer dereferencing ---

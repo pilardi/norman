@@ -412,6 +412,84 @@ func (e TaskCreateRequestPriority) Valid() bool {
 	}
 }
 
+// Defines values for VerifyResponseStatus.
+const (
+	VerifyResponseStatusFailed VerifyResponseStatus = "failed"
+	VerifyResponseStatusOk     VerifyResponseStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResponseStatus enum.
+func (e VerifyResponseStatus) Valid() bool {
+	switch e {
+	case VerifyResponseStatusFailed:
+		return true
+	case VerifyResponseStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifyResultCompletionStatus.
+const (
+	VerifyResultCompletionStatusFailure VerifyResultCompletionStatus = "failure"
+	VerifyResultCompletionStatusSkipped VerifyResultCompletionStatus = "skipped"
+	VerifyResultCompletionStatusSuccess VerifyResultCompletionStatus = "success"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResultCompletionStatus enum.
+func (e VerifyResultCompletionStatus) Valid() bool {
+	switch e {
+	case VerifyResultCompletionStatusFailure:
+		return true
+	case VerifyResultCompletionStatusSkipped:
+		return true
+	case VerifyResultCompletionStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifyResultModelListStatus.
+const (
+	VerifyResultModelListStatusFailure VerifyResultModelListStatus = "failure"
+	VerifyResultModelListStatusSkipped VerifyResultModelListStatus = "skipped"
+	VerifyResultModelListStatusSuccess VerifyResultModelListStatus = "success"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResultModelListStatus enum.
+func (e VerifyResultModelListStatus) Valid() bool {
+	switch e {
+	case VerifyResultModelListStatusFailure:
+		return true
+	case VerifyResultModelListStatusSkipped:
+		return true
+	case VerifyResultModelListStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifyResultStatus.
+const (
+	VerifyResultStatusFailed VerifyResultStatus = "failed"
+	VerifyResultStatusOk     VerifyResultStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResultStatus enum.
+func (e VerifyResultStatus) Valid() bool {
+	switch e {
+	case VerifyResultStatusFailed:
+		return true
+	case VerifyResultStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WebSocketEventEvent.
 const (
 	ContextBudgetWarning WebSocketEventEvent = "context_budget_warning"
@@ -1190,6 +1268,53 @@ type TokenUsage struct {
 	TotalTokens      *int `json:"total_tokens,omitempty"`
 }
 
+// VerifyResponse defines model for VerifyResponse.
+type VerifyResponse struct {
+	Details *VerifyResult `json:"details,omitempty"`
+
+	// ProviderName Name of the verified provider
+	ProviderName *string `json:"provider_name,omitempty"`
+
+	// Status Overall verification result
+	Status *VerifyResponseStatus `json:"status,omitempty"`
+}
+
+// VerifyResponseStatus Overall verification result
+type VerifyResponseStatus string
+
+// VerifyResult defines model for VerifyResult.
+type VerifyResult struct {
+	// CompletionError Error message if completion failed
+	CompletionError *string `json:"completion_error,omitempty"`
+
+	// CompletionStatus Result of the completion test
+	CompletionStatus *VerifyResultCompletionStatus `json:"completion_status,omitempty"`
+
+	// ModelCount Number of models found (if successful)
+	ModelCount *int `json:"model_count,omitempty"`
+
+	// ModelListError Error message if model list failed
+	ModelListError *string `json:"model_list_error,omitempty"`
+
+	// ModelListStatus Result of the model list query
+	ModelListStatus *VerifyResultModelListStatus `json:"model_list_status,omitempty"`
+
+	// Status Overall verification status
+	Status *VerifyResultStatus `json:"status,omitempty"`
+
+	// TokensUsed Tokens consumed by the completion test
+	TokensUsed *int `json:"tokens_used,omitempty"`
+}
+
+// VerifyResultCompletionStatus Result of the completion test
+type VerifyResultCompletionStatus string
+
+// VerifyResultModelListStatus Result of the model list query
+type VerifyResultModelListStatus string
+
+// VerifyResultStatus Overall verification status
+type VerifyResultStatus string
+
 // WebSocketEvent defines model for WebSocketEvent.
 type WebSocketEvent struct {
 	Channel         *string                 `json:"channel,omitempty"`
@@ -1434,6 +1559,9 @@ type ServerInterface interface {
 	// ListProviderModels List available models for a provider (queries the provider's API)
 	// (GET /api/providers/{name}/models)
 	ListProviderModels(ctx echo.Context, name string) error
+	// VerifyProvider Verify a configured provider by testing connectivity and running a quick completion
+	// (POST /api/providers/{name}/verify)
+	VerifyProvider(ctx echo.Context, name string) error
 	// ListSessions List active sessions
 	// (GET /api/sessions)
 	ListSessions(ctx echo.Context) error
@@ -1689,6 +1817,22 @@ func (w *ServerInterfaceWrapper) ListProviderModels(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ListProviderModels(ctx, name)
+	return err
+}
+
+// VerifyProvider converts echo context to params.
+func (w *ServerInterfaceWrapper) VerifyProvider(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", ctx.Param("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter name: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.VerifyProvider(ctx, name)
 	return err
 }
 
@@ -2252,5 +2396,6 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.PUT(options.BaseURL+"/api/providers/:name", wrapper.UpdateProvider, options.OperationMiddlewares["updateProvider"]...)
 	router.GET(options.BaseURL+"/api/providers/:name/models", wrapper.ListProviderModels, options.OperationMiddlewares["listProviderModels"]...)
 	router.POST(options.BaseURL+"/api/providers/models/query", wrapper.QueryProviderModels, options.OperationMiddlewares["queryProviderModels"]...)
+	router.POST(options.BaseURL+"/api/providers/:name/verify", wrapper.VerifyProvider, options.OperationMiddlewares["verifyProvider"]...)
 
 }

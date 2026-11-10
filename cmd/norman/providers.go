@@ -700,3 +700,87 @@ func printprovidersSummaryTyped(p *protocol.ProviderResponse) {
 		fmt.Printf("    api_key:    (masked)\n")
 	}
 }
+
+// handleProvidersVerify tests a provider's connectivity and runs a quick completion test.
+func handleProvidersVerify(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.Args().First()
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "Error: usage: norman providers verify <name>")
+		return fmt.Errorf("usage: norman providers verify <name>")
+	}
+
+	client, err := getProtocolClient()
+	if err != nil {
+		return fmt.Errorf("failed to create API client: %w", err)
+	}
+
+	resp, err := client.VerifyProvider(ctx, urlPathEscape(name))
+	if err != nil {
+		return fmt.Errorf("error verifying provider '%s': %w", name, err)
+	}
+
+	parsed, err := protocol.ParseVerifyProviderResponse(resp)
+	if err != nil {
+		return fmt.Errorf("error parsing response: %w", err)
+	}
+
+	result := parsed.GetJSON200()
+	if result == nil || result.Details == nil {
+		fmt.Fprintf(os.Stderr, "Error: unexpected empty response for provider '%s' (raw body: %q)\n", name, string(parsed.Body))
+		return fmt.Errorf("unexpected empty response")
+	}
+
+	details := result.Details
+	fmt.Printf("\n=== Provider Verification: %s ===\n\n", strVal(result.ProviderName))
+
+	// Model list status
+	if details.ModelListStatus != nil {
+		status := string(*details.ModelListStatus)
+		switch status {
+		case "success":
+			fmt.Printf("  [✓] Model list:   %d models found\n", intPtrVal(details.ModelCount))
+		case "failure":
+			fmt.Printf("  [✗] Model list:   failed — %s\n", strPtrVal(details.ModelListError))
+		case "skipped":
+			fmt.Printf("  [ ] Model list:   skipped\n")
+		default:
+			fmt.Printf("  [?] Model list:   %s\n", status)
+		}
+	}
+
+	// Completion status
+	if details.CompletionStatus != nil {
+		status := string(*details.CompletionStatus)
+		switch status {
+		case "success":
+			tokens := intPtrVal(details.TokensUsed)
+			fmt.Printf("  [✓] Completion:   OK (%d tokens)\n", tokens)
+		case "failure":
+			fmt.Printf("  [✗] Completion:   failed — %s\n", strPtrVal(details.CompletionError))
+		case "skipped":
+			fmt.Printf("  [ ] Completion:   skipped (no model configured or model list failed)\n")
+		default:
+			fmt.Printf("  [?] Completion:   %s\n", status)
+		}
+	}
+
+	// Overall status
+	if result.Status != nil {
+		overall := string(*result.Status)
+		if overall == "ok" {
+			fmt.Printf("\n  ✅ Provider '%s' is healthy.\n", strVal(result.ProviderName))
+		} else {
+			fmt.Printf("\n  ❌ Provider '%s' verification FAILED.\n", strVal(result.ProviderName))
+		}
+	}
+
+	return nil
+}
+
+// --- Helper for int pointer dereference ---
+func intPtrVal(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
