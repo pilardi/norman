@@ -198,7 +198,7 @@ func handleChat(args []string) {
 		foundID := ""
 		for _, w := range *workspaces {
 			name := strVal(w.Name)
-			if name == workspaceName {
+			if name == workspaceName || strings.EqualFold(name, workspaceName) {
 				foundID = w.Id.String()
 				break
 			}

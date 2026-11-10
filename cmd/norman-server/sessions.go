@@ -109,6 +109,10 @@ func (s *server) CreateSession(c echo.Context) error {
 	// Validate the workspace exists before ensuring its sandbox.
 	found := false
 	for _, ws := range s.workspaces {
+		if ws.Id != nil && ws.Id.String() == req.WorkspaceId {
+			found = true
+			break
+		}
 		if ws.Name != nil && *ws.Name == req.WorkspaceId {
 			found = true
 			break
