@@ -624,7 +624,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	})
 
 	// Run LLM-based multi-turn loop against the existing workspace.
-	output, err := l.executeWithLLM(ctx, task, task.Workspace)
+	output, err := l.executeWithLLM(ctx, task)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = err.Error()
@@ -643,7 +643,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 // executeWithLLM runs a multi-turn agent loop using the LLM client.
 // It builds context from session history + raw sources + skills, calls the LLM,
 // parses tool calls if present, executes them in the workspace, and loops back.
-func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceID string) ([]byte, error) {
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
 
@@ -864,7 +864,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceID strin
 					Message:   strPtr(fmt.Sprintf("tool:%s", tc.Name)),
 				})
 
-				output, exitCode, execErr := l.dispatchToolCall(ctx, workspaceID, tc.Name, string(tc.Arguments))
+				output, exitCode, execErr := l.dispatchToolCall(ctx, task.Workspace, tc.Name, string(tc.Arguments))
 				if execErr != nil {
 					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
 				} else if exitCode != 0 {
@@ -924,8 +924,8 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceID strin
 			}
 
 			// Keepalive heartbeat between turns (item #7) — prevents idle-timeout deletion
-			if err := l.Ws.KeepAlive(ctx, workspaceID); err != nil {
-				log.Printf("agent: keepalive failed for workspace %s: %v", workspaceID, err)
+			if err := l.Ws.KeepAlive(ctx, task.Workspace); err != nil {
+				log.Printf("agent: keepalive failed for workspace %s: %v", task.Workspace, err)
 			}
 
 			continue // Loop back for another turn
