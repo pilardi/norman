@@ -585,7 +585,12 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 
 	fmt.Printf("Valid types: %s\n", strings.Join(validProviderTypes, ", "))
 
-	providerTypeStr := promptWithCurrent("Provider type", strPtrVal(current.Type))
+	// Type selection: show numbered menu with current type highlighted.
+	currentType := ""
+	if current.Type != nil {
+		currentType = string(*current.Type)
+	}
+	providerTypeStr := selectMenuWithDefault(validProviderTypes, "Provider type", currentType)
 	endpoint := promptWithCurrent("Endpoint URL", strPtrVal(current.Endpoint))
 
 	var model string
