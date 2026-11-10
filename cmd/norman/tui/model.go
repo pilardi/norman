@@ -48,6 +48,9 @@ type Model struct {
 	helpOverlay     helpOverlay
 	sessionSwitcher sessionSwitcher
 	commandMode     bool
+
+	// WebSocket message channel for persistent event streaming.
+	wsMsg chan WSMessageEvent
 }
 
 // NewModel creates a new application model with default settings.
@@ -71,16 +74,16 @@ func (m *Model) Init() tea.Cmd {
 		m.spinner.Tick,
 		createSessionCmd(m),
 		initializeClient(context.Background(), m),
-		connectWebSocket(m),
+		startWebSocket(m),
 	)
 }
 
 // createSessionCmd creates a new session and sets the sessionID on the model.
 func createSessionCmd(model *Model) tea.Cmd {
 	return func() tea.Msg {
-		sessID := client.CreateNewSession(model.initialWorkspace)
-		if sessID == "" {
-			return WSMessageEvent{Event: "error", Message: "Failed to create session"}
+		sessID, err := client.CreateNewSession(model.initialWorkspace)
+		if err != nil {
+			return WSMessageEvent{Event: "error", Message: err.Error()}
 		}
 		model.sessionID = sessID
 		return WSMessageEvent{Event: "session_created", Message: model.initialWorkspace}
@@ -192,6 +195,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case WSMessageEvent:
 			m.handleWSMessage(msg)
 		}
+
+		// Handle persistent WebSocket messages via channel.
+		select {
+		case msg, ok := <-m.wsMsg:
+			if !ok {
+				// Channel closed = connection dropped.
+				m.statusBar.SetConnection("✗ WebSocket disconnected")
+				return m, nil
+			}
+			m.handleWSMessage(msg)
+		default:
+		}
 	}
 
 	return m, nil
@@ -216,6 +231,10 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		m.statusBar.SetConnection(fmt.Sprintf("✗ Session closed: %s", truncate(msg.Message, 20)))
 	case "session_compressed":
 		m.statusBar.SetConnection("⚠ Session compressed — context trimmed")
+	case "error":
+		m.statusBar.SetConnection("✗ " + msg.Message)
+	case "connection_error":
+		m.statusBar.SetConnection("✗ " + msg.Message)
 	case "task_progress":
 		m.events = append(m.events, EventItem{
 			Type:      "progress",

@@ -23,8 +23,9 @@ type WSMessageEvent struct {
 	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
-// connectWebSocket establishes a WebSocket connection to the server for the current session.
-func connectWebSocket(model *Model) tea.Cmd {
+// startWebSocket connects to the server's WebSocket endpoint and streams events
+// back via the model's wsMsg channel. It runs as a long-lived goroutine.
+func startWebSocket(model *Model) tea.Cmd {
 	return func() tea.Msg {
 		client, err := getProtocolClient()
 		if err != nil {
@@ -39,7 +40,6 @@ func connectWebSocket(model *Model) tea.Cmd {
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("WebSocket connection failed: %v", err)}
 		}
-		defer resp.Body.Close()
 
 		// Upgrade the HTTP response to a WebSocket connection.
 		dialURL := resp.Request.URL.String()
@@ -58,39 +58,51 @@ func connectWebSocket(model *Model) tea.Cmd {
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("WebSocket dial failed: %v", err)}
 		}
-		defer func() { _ = conn.Close() }()
 
-		for {
-			_, msg, err := conn.ReadMessage()
-			if err != nil {
-				return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Connection closed: %v", err)}
-			}
+		// Start a goroutine that continuously reads messages and sends them
+		// back via the model's wsMsg channel. The connection stays open
+		// until an error occurs.
+		go func() {
+			defer func() { _ = conn.Close() }()
+			for {
+				_, msg, err := conn.ReadMessage()
+				if err != nil {
+					model.wsMsg <- WSMessageEvent{Event: "connection_error", Message: fmt.Sprintf("Connection closed: %v", err)}
+					return
+				}
 
-			var event map[string]interface{}
-			if err := json.Unmarshal(msg, &event); err != nil {
-				continue
-			}
+				var event map[string]interface{}
+				if err := json.Unmarshal(msg, &event); err != nil {
+					continue
+				}
 
-			// Parse into typed WSMessageEvent.
-			wsEvt := WSMessageEvent{}
-			if ev, ok := event["event"].(string); ok {
-				wsEvt.Event = ev
-			}
-			if msg, ok := event["message"].(string); ok {
-				wsEvt.Message = msg
-			}
-			if sid, ok := event["session_id"].(string); ok {
-				wsEvt.SessionID = sid
-			}
-			if tid, ok := event["task_id"].(string); ok {
-				wsEvt.TaskID = tid
-			}
-			if step, ok := event["step"].(float64); ok {
-				wsEvt.Step = int(step)
-			}
+				wsEvt := WSMessageEvent{}
+				if ev, ok := event["event"].(string); ok {
+					wsEvt.Event = ev
+				}
+				if msg, ok := event["message"].(string); ok {
+					wsEvt.Message = msg
+				}
+				if sid, ok := event["session_id"].(string); ok {
+					wsEvt.SessionID = sid
+				}
+				if tid, ok := event["task_id"].(string); ok {
+					wsEvt.TaskID = tid
+				}
+				if step, ok := event["step"].(float64); ok {
+					wsEvt.Step = int(step)
+				}
 
-			return wsEvt
-		}
+				// Non-blocking send to avoid goroutine blocking if channel is full.
+				select {
+				case model.wsMsg <- wsEvt:
+				default:
+					// Channel full — drop message to avoid blocking.
+				}
+			}
+		}()
+
+		return nil // No immediate message; connection is now streaming.
 	}
 }
 

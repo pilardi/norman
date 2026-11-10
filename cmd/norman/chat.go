@@ -17,7 +17,7 @@ const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /clos
 
 // CreateNewSession creates a new session for the given workspace and returns its ID.
 // Used by both REPL and TUI.
-func CreateNewSession(workspaceName string) string {
+func CreateNewSession(workspaceName string) (string, error) {
 	return client.CreateNewSession(workspaceName)
 }
 

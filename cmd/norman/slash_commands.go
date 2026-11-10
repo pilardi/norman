@@ -34,7 +34,12 @@ func dispatchSlashCommand(cmd string, args []string, sessionID string, workspace
 		fmt.Println("Closing session...")
 	case "new":
 		fmt.Printf("Creating new session for workspace '%s'...\n", workspaceName)
-		return CreateNewSession(workspaceName), true
+		sessID, err := CreateNewSession(workspaceName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return sessionID, true
+		}
+		return sessID, true
 	case "history":
 		showHistory(sessionID, args)
 	case "sessions":

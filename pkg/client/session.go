@@ -10,7 +10,8 @@ import (
 )
 
 // CreateNewSession creates a new session for the given workspace and returns its ID.
-func CreateNewSession(workspaceName string) string {
+// Returns the session ID and an optional error message on failure.
+func CreateNewSession(workspaceName string) (string, error) {
 	cfg, err := config.LoadDefault()
 	var url string
 	if err != nil || cfg == nil || cfg.System == nil {
@@ -23,20 +24,17 @@ func CreateNewSession(workspaceName string) string {
 
 	client, err := protocol.NewClient(url)
 	if err != nil {
-		fmt.Fprintf(nil, "Failed to create client: %v\n", err)
-		return ""
+		return "", fmt.Errorf("failed to create client: %w", err)
 	}
 
 	// Resolve workspace name to ID.
 	wsRsp, err := client.ListWorkspaces(context.Background(), nil)
 	if err != nil {
-		fmt.Fprintf(nil, "Failed to list workspaces: %v\n", err)
-		return ""
+		return "", fmt.Errorf("failed to list workspaces: %w", err)
 	}
 	parsedWS, err := protocol.ParseListWorkspacesResponse(wsRsp)
 	if err != nil {
-		fmt.Fprintf(nil, "Error parsing workspaces: %v\n", err)
-		return ""
+		return "", fmt.Errorf("error parsing workspaces: %w", err)
 	}
 
 	foundID := ""
@@ -48,8 +46,7 @@ func CreateNewSession(workspaceName string) string {
 		}
 	}
 	if foundID == "" {
-		fmt.Fprintf(nil, "Workspace '%s' not found. Run 'norman workspaces list'.\n", workspaceName)
-		return ""
+		return "", fmt.Errorf("workspace %q not found — run norman workspaces list", workspaceName)
 	}
 
 	ct := protocol.Cli
@@ -60,13 +57,11 @@ func CreateNewSession(workspaceName string) string {
 
 	sessRsp, err := client.CreateSession(context.Background(), body)
 	if err != nil {
-		fmt.Fprintf(nil, "Failed to create session: %v\n", err)
-		return ""
+		return "", fmt.Errorf("failed to create session: %w", err)
 	}
 	parsedSess, err := protocol.ParseCreateSessionResponse(sessRsp)
 	if err != nil {
-		fmt.Fprintf(nil, "Error parsing session response: %v\n", err)
-		return ""
+		return "", fmt.Errorf("error parsing session response: %w", err)
 	}
 
 	sess := parsedSess.GetJSON201()
@@ -75,12 +70,11 @@ func CreateNewSession(workspaceName string) string {
 		if bodyStr == "" {
 			bodyStr = parsedSess.Status()
 		}
-		fmt.Fprintf(nil, "Session creation failed: %s\n", bodyStr)
-		return ""
+		return "", fmt.Errorf("session creation failed: %s", bodyStr)
 	}
 
 	fmt.Printf("New session '%s' created.\n", strVal(sess.Name))
-	return sess.Id.String()
+	return sess.Id.String(), nil
 }
 
 // strVal returns the dereferenced value of s, or empty string if nil.
