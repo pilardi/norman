@@ -623,101 +623,16 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 		})
 	}
 
-	// Phase 2: Sandbox creation (session-aware)
-	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &task.ID,
-		Message: strPtr("Creating workspace..."),
-		Step:    intPtr(3),
-	})
-
-	workspaceName := fmt.Sprintf("norman-task-%s", task.ID[:7])
-	ctxFile := l.buildContextFile(task.Workspace)
-
-	var workspaceErr error
-	if l.Ws != nil {
-		_, workspaceErr = l.Ws.CreateSandbox(ctx, task.Workspace, workspaceName, ctxFile, "")
-	} else {
-		// No workspace configured — task execution cannot proceed.
-		log.Printf("[loop] no workspace configured; skipping workspace creation")
-	}
-
-	if workspaceErr != nil {
-		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("workspace creation failed: %v", workspaceErr)
-		log.Printf("agent: workspace creation failed: %v", workspaceErr)
-		l.pushCompletion(task)
-		return
-	}
-
-	// Budget check after workspace provisioning (post-provisioning re-check)
-	if l.budget != nil {
-		l.checkAndCompress(ctx, task.ID)
-	}
-
-	// Phase 3: Wait for ready (session-aware)
-	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &task.ID,
-		Message: strPtr("Waiting for workspace ready..."),
-		Step:    intPtr(4),
-	})
-
-	// Wait for workspace to be ready.
-	var waitErr error
-	_, waitErr = l.Ws.WaitReady(ctx, task.Workspace, workspaceName, 60*time.Second)
-	if waitErr != nil {
-		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("workspace not ready: %v", waitErr)
-		l.pushCompletion(task)
-		return
-	}
-
-	// P3: Re-activate active skills with workspace session for workspace-based dependency install.
-	if l.activator != nil && len(l.activator.Active()) > 0 {
-		// Only activate if a session already exists for this task's workspace — no auto-creation.
-		if l.Ws.Exists(ctx, task.SessionId) {
-			wsSession, err := l.Ws.Get(ctx, task.SessionId)
-			if err != nil {
-				log.Printf("[loop] get session for workspace '%s': %v", task.Workspace, err)
-			} else {
-				for _, name := range l.activator.Active() {
-					if err := l.ActivateWithSession(name, wsSession); err != nil {
-						log.Printf("[loop] activate with session for '%s': %v", name, err)
-					}
-				}
-			}
-		} else {
-			log.Printf("[loop] no existing session for workspace '%s', skipping skill activation", task.Workspace)
-		}
-	}
-
-	// Final sanity check: re-fetch workspace state right before execution.
-	// This catches the case where the gateway auto-deletes workspaces (idle timeout)
-	// between WaitReady and RunCommand.
-	var getErr error
-	_, getErr = l.Ws.GetSandbox(ctx, "default", workspaceName)
-	if getErr != nil {
-		task.Status = protocol.TaskStatusFailed
-		task.Error = fmt.Sprintf("workspace not found before execution: %v", getErr)
-		l.pushCompletion(task)
-		return
-	}
-
-	// Phase 4: Execute — multi-turn agent loop with LLM if available.
-	l.mu.Lock()
-	task.Status = protocol.TaskStatusRunning
-	l.mu.Unlock()
-
+	// Phase 2: Execute — multi-turn agent loop with LLM using existing workspace.
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
 		TaskId:  &task.ID,
 		Message: strPtr("Executing task..."),
-		Step:    intPtr(5),
+		Step:    intPtr(3),
 	})
 
-	// Run LLM-based multi-turn loop.
-	output, err := l.executeWithLLM(ctx, task, workspaceName)
+	// Run LLM-based multi-turn loop against the existing workspace.
+	output, err := l.executeWithLLM(ctx, task, task.Workspace)
 	if err != nil {
 		task.Status = protocol.TaskStatusFailed
 		task.Error = err.Error()
@@ -731,19 +646,12 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 	if l.budget != nil {
 		l.checkAndCompress(ctx, task.ID)
 	}
-
-	// Cleanup workspace
-	go func() {
-		if delErr := l.Ws.DeleteSandbox(context.Background(), task.Workspace, workspaceName); delErr != nil {
-			log.Printf("agent: failed to delete workspace %s: %v", workspaceName, delErr)
-		}
-	}()
 }
 
 // executeWithLLM runs a multi-turn agent loop using the LLM client.
 // It builds context from session history + raw sources + skills, calls the LLM,
 // parses tool calls if present, executes them in the workspace, and loops back.
-func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceName string) ([]byte, error) {
+func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceID string) ([]byte, error) {
 	// Build conversation messages from session history + raw sources + skills
 	messages, _, _ := l.buildMessages(task)
 
@@ -964,7 +872,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceName str
 					Message:   strPtr(fmt.Sprintf("tool:%s", tc.Name)),
 				})
 
-				output, exitCode, execErr := l.dispatchToolCall(ctx, workspaceName, tc.Name, string(tc.Arguments))
+				output, exitCode, execErr := l.dispatchToolCall(ctx, workspaceID, tc.Name, string(tc.Arguments))
 				if execErr != nil {
 					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
 				} else if exitCode != 0 {
@@ -1024,8 +932,8 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task, workspaceName str
 			}
 
 			// Keepalive heartbeat between turns (item #7) — prevents idle-timeout deletion
-			if err := l.Ws.KeepAlive(ctx, workspaceName); err != nil {
-				log.Printf("agent: keepalive failed for workspace %s: %v", workspaceName, err)
+			if err := l.Ws.KeepAlive(ctx, workspaceID); err != nil {
+				log.Printf("agent: keepalive failed for workspace %s: %v", workspaceID, err)
 			}
 
 			continue // Loop back for another turn
