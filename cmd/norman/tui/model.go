@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -68,9 +69,50 @@ func NewModel(workspaceName string) *Model {
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
+		createSessionCmd(m),
 		initializeClient(context.Background(), m),
 		connectWebSocket(m),
 	)
+}
+
+// createSessionCmd creates a new session and sets the sessionID on the model.
+func createSessionCmd(model *Model) tea.Cmd {
+	return func() tea.Msg {
+		cfg, err := config.LoadDefault()
+		var url string
+		if err != nil || cfg == nil || cfg.System == nil {
+			url = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+		} else if cfg.System.ServerURL != "" {
+			url = cfg.System.ServerURL
+		} else {
+			url = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+		}
+
+		client, err := protocol.NewClient(url)
+		if err != nil {
+			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Failed to connect to server: %v", err)}
+		}
+
+		ct := protocol.Cli
+		body := protocol.SessionCreateRequest{ClientType: &ct}
+		resp, err := client.CreateSession(context.Background(), body)
+		if err != nil {
+			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Failed to create session: %v", err)}
+		}
+
+		parsed, err := protocol.ParseCreateSessionResponse(resp)
+		if err != nil {
+			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Failed to parse session response: %v", err)}
+		}
+
+		sess := parsed.GetJSON201()
+		if sess == nil {
+			return WSMessageEvent{Event: "error", Message: "No session created"}
+		}
+
+		model.sessionID = sess.Id.String()
+		return WSMessageEvent{Event: "session_created", Message: strVal(sess.Name)}
+	}
 }
 
 // Update handles incoming messages and updates the model state.
