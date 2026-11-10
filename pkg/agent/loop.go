@@ -165,13 +165,6 @@ func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, e
 	return session, nil
 }
 
-// OpenShellClient abstracts the OpenShell SDK for testing.
-type OpenShellClient interface {
-	RunCommand(ctx context.Context, sessionId string, command string) (string, int, error)
-	GetLogs(ctx context.Context, workspaceID string) ([]string, error)
-	GetMTLSPaths() (certPath, keyPath string)
-}
-
 // WSHubPublisher sends WebSocket push events.
 type WSHubPublisher interface {
 	BroadcastEvent(event protocol.WebSocketEvent)

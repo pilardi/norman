@@ -835,9 +835,9 @@ func TestBuildMessagesNoWorkspaceDefinition(t *testing.T) {
 	}
 }
 
-// --- Fake OpenShellClient for testing ---
+// --- Fake client for testing ---
 
-// FakeOpenShellClient is a mock implementation of OpenShellClient.
+// FakeOpenShellClient is a test double that implements the same methods as the real SDK adapter.
 type FakeOpenShellClient struct {
 	mu             sync.Mutex
 	sandboxes      map[string]string // workspace.name -> sandboxID

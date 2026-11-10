@@ -1,6 +1,5 @@
 // Package env provides an adapter that wraps the real OpenShell SDK client
-// and adapts its method signatures to match the OpenShellClient interface
-// used by the agent loop.
+// for use by the agent loop's workspace layer.
 package env
 
 import (
@@ -12,8 +11,7 @@ import (
 	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
-// SDKAdapter wraps *Client and adapts its methods to match the
-// OpenShellClient interface defined in pkg/agent/loop.go.
+// SDKAdapter wraps *Client and adapts its methods for the workspace layer.
 type SDKAdapter struct {
 	client *Client
 }
