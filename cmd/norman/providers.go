@@ -441,7 +441,9 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 			fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", maxTokensStr, err)
 			os.Exit(1)
 		}
-		req["max_tokens"] = tokensVal
+		if tokensVal > 0 {
+			req["max_tokens"] = tokensVal
+		}
 	}
 	if apiKey != "" {
 		req["api_key"] = apiKey

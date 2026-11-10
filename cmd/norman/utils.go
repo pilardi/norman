@@ -112,13 +112,16 @@ func parseFloat(s string) *float32 {
 	return &v32
 }
 
-// parseInt parses a string to int, returning nil on failure.
+// parseInt parses a string to int, returning nil on failure or if value <= 0.
 func parseInt(s string) *int {
 	if s == "" {
 		return nil
 	}
 	v, err := strconv.Atoi(s)
 	if err != nil {
+		return nil
+	}
+	if v <= 0 {
 		return nil
 	}
 	return &v
