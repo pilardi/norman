@@ -2,14 +2,13 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -79,49 +78,12 @@ func (m *Model) Init() tea.Cmd {
 // createSessionCmd creates a new session and sets the sessionID on the model.
 func createSessionCmd(model *Model) tea.Cmd {
 	return func() tea.Msg {
-		cfg, err := config.LoadDefault()
-		var url string
-		if err != nil || cfg == nil || cfg.System == nil {
-			url = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-		} else if cfg.System.ServerURL != "" {
-			url = cfg.System.ServerURL
-		} else {
-			url = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+		sessID := client.CreateNewSession(model.initialWorkspace)
+		if sessID == "" {
+			return WSMessageEvent{Event: "error", Message: "Failed to create session"}
 		}
-
-		client, err := protocol.NewClient(url)
-		if err != nil {
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Failed to connect to server: %v", err)}
-		}
-
-		ct := protocol.Cli
-		body := protocol.SessionCreateRequest{ClientType: &ct}
-		resp, err := client.CreateSession(context.Background(), body)
-		if err != nil {
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Failed to create session: %v", err)}
-		}
-
-		parsed, err := protocol.ParseCreateSessionResponse(resp)
-		if err != nil {
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Failed to parse session response: %v", err)}
-		}
-
-		sess := parsed.GetJSON201()
-		if sess == nil {
-			// Extract error message from raw body if available.
-			bodyBytes := parsed.GetBody()
-			msg := "No session created"
-			if len(bodyBytes) > 0 {
-				var errResp struct{ Error string }
-				if json.Unmarshal(bodyBytes, &errResp) == nil && errResp.Error != "" {
-					msg = errResp.Error
-				}
-			}
-			return WSMessageEvent{Event: "error", Message: msg}
-		}
-
-		model.sessionID = sess.Id.String()
-		return WSMessageEvent{Event: "session_created", Message: strVal(sess.Name)}
+		model.sessionID = sessID
+		return WSMessageEvent{Event: "session_created", Message: model.initialWorkspace}
 	}
 }
 

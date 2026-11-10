@@ -24,7 +24,7 @@ func parseSlashCommand(line string) (string, []string, bool) {
 // Returns (newSessionID, handled). If handled is false, the caller should
 // treat the line as a normal message. If newSessionID differs from the input,
 // the session has been switched or a new one created.
-func dispatchSlashCommand(cmd string, args []string, sessionID string) (string, bool) {
+func dispatchSlashCommand(cmd string, args []string, sessionID string, workspaceName string) (string, bool) {
 	switch cmd {
 	case "help":
 		fmt.Fprintln(os.Stderr, chatHelpText)
@@ -33,8 +33,8 @@ func dispatchSlashCommand(cmd string, args []string, sessionID string) (string, 
 	case "close":
 		fmt.Println("Closing session...")
 	case "new":
-		fmt.Printf("Creating new session...\n")
-		return createNewSession(), true
+		fmt.Printf("Creating new session for workspace '%s'...\n", workspaceName)
+		return CreateNewSession(workspaceName), true
 	case "history":
 		showHistory(sessionID, args)
 	case "sessions":

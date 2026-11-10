@@ -9,39 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
 
 const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)"
 
-// createNewSession creates a new session and returns its ID.
-// Used by both REPL and TUI slash-command dispatch.
-func createNewSession() string {
-	client, err := getProtocolClient()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create client: %v\n", err)
-		return ""
-	}
-
-	ct := protocol.Cli
-	body := protocol.SessionCreateRequest{
-		ClientType: &ct,
-	}
-
-	newSessRsp, err := client.CreateSession(context.Background(), body)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create new session: %v\n", err)
-		return ""
-	}
-	parsedNewSess, err := protocol.ParseCreateSessionResponse(newSessRsp)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing new session response: %v\n", err)
-		return ""
-	}
-
-	newSess := parsedNewSess.GetJSON201()
-	fmt.Printf("New session '%s' created.\n", strVal(newSess.Name))
-	return newSess.Id.String()
+// CreateNewSession creates a new session for the given workspace and returns its ID.
+// Used by both REPL and TUI.
+func CreateNewSession(workspaceName string) string {
+	return client.CreateNewSession(workspaceName)
 }
 
 // displayResponseTyped formats and prints the agent's typed response.
@@ -207,7 +184,7 @@ func handleChat(args []string) {
 		cmd, cmdArgs, isSlash := parseSlashCommand(line)
 
 		if isSlash {
-			newSessionID, handled := dispatchSlashCommand(cmd, cmdArgs, sessionID)
+			newSessionID, handled := dispatchSlashCommand(cmd, cmdArgs, sessionID, workspaceName)
 			if !handled {
 				// Fall through to normal message handling.
 			} else {
