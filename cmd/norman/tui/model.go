@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -107,7 +108,16 @@ func createSessionCmd(model *Model) tea.Cmd {
 
 		sess := parsed.GetJSON201()
 		if sess == nil {
-			return WSMessageEvent{Event: "error", Message: "No session created"}
+			// Extract error message from raw body if available.
+			bodyBytes := parsed.GetBody()
+			msg := "No session created"
+			if len(bodyBytes) > 0 {
+				var errResp struct{ Error string }
+				if json.Unmarshal(bodyBytes, &errResp) == nil && errResp.Error != "" {
+					msg = errResp.Error
+				}
+			}
+			return WSMessageEvent{Event: "error", Message: msg}
 		}
 
 		model.sessionID = sess.Id.String()
