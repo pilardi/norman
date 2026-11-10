@@ -435,16 +435,21 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		}
 		req["temperature"] = tempVal
 	}
+	var tokensVal int
 	if maxTokensStr != "" {
-		tokensVal, err := strconv.Atoi(maxTokensStr)
+		var err error
+		tokensVal, err = strconv.Atoi(maxTokensStr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: invalid max_tokens '%s': %v\n", maxTokensStr, err)
 			os.Exit(1)
 		}
-		if tokensVal > 0 {
-			req["max_tokens"] = tokensVal
+		if tokensVal <= 0 {
+			tokensVal = 4096 // treat 0/negative as "unset" → default
 		}
+	} else {
+		tokensVal = 4096 // sensible default
 	}
+	req["max_tokens"] = tokensVal
 	if apiKey != "" {
 		req["api_key"] = apiKey
 	}
