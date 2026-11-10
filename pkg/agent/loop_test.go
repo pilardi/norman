@@ -934,14 +934,6 @@ func (f *FakeOpenShellClient) Sessions() map[string]*env.Session {
 	return result
 }
 
-func (f *FakeOpenShellClient) Create(ctx context.Context, sessionId string) (*env.Session, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(sessionId, "-", ""))
-	f.sandboxes[sessionId] = sid
-	return &env.Session{}, nil
-}
-
 func (f *FakeOpenShellClient) Get(ctx context.Context, sessionId string) (*env.Session, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -159,14 +159,6 @@ func (m *mockWorkspace) SessionWorkspace(sessionId string) (string, error) {
 	return s.sessionId, nil
 }
 
-func (m *mockWorkspace) Create(ctx context.Context, sessionId string) (*Session, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := &Session{sessionId: sessionId}
-	m.sessions[sessionId] = s
-	return s, nil
-}
-
 func (m *mockWorkspace) Get(ctx context.Context, sessionId string) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -200,14 +192,8 @@ func TestWorkspaceUpdateActivity(t *testing.T) {
 	ws := newMockWorkspace()
 	ctx := context.Background()
 
-	// Create a session
-	session, err := ws.Create(ctx, "test-session-001")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	if session == nil {
-		t.Fatal("expected non-nil session")
-	}
+	// Pre-populate a session (Create is internal-only for setup)
+	ws.sessions["test-session-001"] = &Session{sessionId: "test-session-001"}
 
 	// UpdateActivity should not panic or error for a valid session ID
 	ws.UpdateActivity(ctx, "test-session-001")
@@ -223,13 +209,10 @@ func TestWorkspaceSessions(t *testing.T) {
 	ws := newMockWorkspace()
 	ctx := context.Background()
 
-	// Create multiple sessions
+	// Pre-populate sessions (Create is internal-only for setup)
 	for i := 1; i <= 3; i++ {
 		sid := fmt.Sprintf("session-%03d", i)
-		_, err := ws.Create(ctx, sid)
-		if err != nil {
-			t.Fatalf("create session %s: %v", sid, err)
-		}
+		ws.sessions[sid] = &Session{sessionId: sid}
 	}
 
 	// Sessions() should return all created sessions
