@@ -366,7 +366,7 @@ func handleProvidersAddInteractive(ctx context.Context, name string) error {
 	}
 
 	fmt.Printf("Valid types: %s\n", strings.Join(validProviderTypes, ", "))
-	providerType := prompt("Provider type")
+	providerType := selectMenu(validProviderTypes, "Provider type")
 	if providerType == "" {
 		fmt.Fprintln(os.Stderr, "Error: type is required")
 		os.Exit(1)
