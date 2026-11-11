@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -31,10 +30,7 @@ func (s *sessionSwitcher) View() string {
 	if !s.showing {
 		return ""
 	}
-	var sb strings.Builder
-	sb.WriteString("Sessions\n")
-	sb.WriteString(s.list.View())
-	return sb.String()
+	return s.list.View()
 }
 
 // showModal renders the session switcher modal (alias for View).

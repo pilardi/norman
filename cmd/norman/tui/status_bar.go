@@ -27,28 +27,23 @@ func (s *StatusBar) SetConnection(state string) {
 
 // Render returns the status bar view with session and workspace info.
 func (s *StatusBar) Render(workspaceName, sessionID string) string {
-	var parts []string
-
 	// Connection state indicator
 	connStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4a9eff"))
-	if strings.HasPrefix(s.connection, "✗") || strings.HasPrefix(s.connection, "⚠") {
+	if s.connection != "" && (strings.HasPrefix(s.connection, "✗") || strings.HasPrefix(s.connection, "⚠")) {
 		connStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff6b6b"))
 	}
-	parts = append(parts, connStyle.Render(s.connection))
 
-	// Workspace name
+	bar := lipgloss.JoinHorizontal(lipgloss.Left, connStyle.Render(s.connection))
+
 	if workspaceName != "" {
 		wsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#a0a0a0")).Bold(true)
-		parts = append(parts, wsStyle.Render("workspace: "+workspaceName))
+		bar = lipgloss.JoinHorizontal(lipgloss.Left, bar, wsStyle.Render("workspace: "+workspaceName))
 	}
 
-	// Session ID (truncated)
 	if sessionID != "" {
-		short := truncate(sessionID, 8)
 		sidStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666"))
-		parts = append(parts, sidStyle.Render("session: "+short))
+		bar = lipgloss.JoinHorizontal(lipgloss.Left, bar, sidStyle.Render("session: "+shortID(sessionID)))
 	}
 
-	bar := strings.Join(parts, " │ ")
 	return lipgloss.NewStyle().Width(s.width).Height(1).Foreground(lipgloss.Color("#aaaaaa")).Render(bar)
 }

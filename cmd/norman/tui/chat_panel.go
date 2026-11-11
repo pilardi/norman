@@ -37,6 +37,16 @@ func NewChatPanel() ChatPanel {
 	}
 }
 
+// updateViewportHeight adjusts the viewport to leave room for the header and input.
+func (p *ChatPanel) updateViewportHeight() {
+	// Reserve 1 line for header + 1 line for text input
+	maxH := p.height - 2
+	if maxH < 1 {
+		maxH = 1
+	}
+	p.viewport.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858")).MaxHeight(maxH)
+}
+
 // AppendMessage adds a message to the chat stream and updates the viewport.
 func (p *ChatPanel) AppendMessage(msg ChatMessage) {
 	p.messages = append(p.messages, msg)
@@ -114,16 +124,17 @@ func joinLines(lines []string) string {
 
 // Render returns the chat panel view.
 func (p *ChatPanel) Render() string {
+	var header string
 	if p.focused {
-		return lipgloss.JoinVertical(lipgloss.Left,
-			lipgloss.NewStyle().Bold(true).PaddingTop(1).PaddingLeft(2).Render("Chat"),
-			p.viewport.View(),
-			p.textInput.View(),
-		)
+		header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#4a9eff")).PaddingTop(1).PaddingLeft(2).Render("[focused] Chat")
+	} else {
+		header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#888888")).PaddingTop(1).PaddingLeft(2).Render("Chat")
 	}
+
 	return lipgloss.JoinVertical(lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).PaddingTop(1).PaddingLeft(2).Render("Chat"),
+		header,
 		p.viewport.View(),
+		p.textInput.View(),
 	)
 }
 

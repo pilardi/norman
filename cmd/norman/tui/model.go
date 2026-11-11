@@ -91,8 +91,9 @@ func createSessionCmd(model *Model) tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.chatPanel.width = msg.Width - 30 // reserve space for event panel
-		m.chatPanel.height = msg.Height - 12
+		m.chatPanel.width = msg.Width - 30   // reserve space for event panel
+		m.chatPanel.height = msg.Height - 14 // leave room for status bar + input line + padding
+		m.chatPanel.updateViewportHeight()
 
 	case tea.KeyMsg:
 		// Phase 3: help overlay dismissal (always handled first)
