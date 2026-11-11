@@ -337,12 +337,12 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 		})
 
 		// Deploy to sandbox and register in global registry
-		if entry, err := s.activator.DeployToSandbox(req.Name, session); err != nil {
-			log.Printf("[server] DeployToSandbox for '%s' in workspace '%s': %v", req.Name, wsName, err)
+		if entry, err := s.activator.DeployToWorkspace(req.Name, session); err != nil {
+			log.Printf("[server] DeployToWorkspace for '%s' in workspace '%s': %v", req.Name, wsName, err)
 		} else if entry != nil {
 			s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 				Event:   protocol.TaskProgress,
-				Message: strPtr("Deployed '" + entry.Name + "' to sandbox"),
+				Message: strPtr("Deployed '" + entry.Name + "' to workspace"),
 			})
 
 			// Register in global persistent registry
@@ -360,7 +360,7 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 			})
 		}
 
-		// Fallback if DeployToSandbox failed
+		// Fallback if DeployToWorkspace failed
 		return c.JSON(http.StatusCreated, map[string]interface{}{
 			"installed": true,
 			"path":      skillDir,
@@ -401,13 +401,13 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 		Message: strPtr("Skill '" + req.Name + "' uploaded to workspace '" + wsName + "'"),
 	})
 
-	// Deploy to sandbox and register in global registry
-	if entry, err := s.activator.DeployToSandbox(req.Name, session); err != nil {
-		log.Printf("[server] DeployToSandbox for '%s' in workspace '%s': %v", req.Name, wsName, err)
+	// Deploy to workspace and register in global registry
+	if entry, err := s.activator.DeployToWorkspace(req.Name, session); err != nil {
+		log.Printf("[server] DeployToWorkspace for '%s' in workspace '%s': %v", req.Name, wsName, err)
 	} else if entry != nil {
 		s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 			Event:   protocol.TaskProgress,
-			Message: strPtr("Deployed '" + entry.Name + "' to sandbox"),
+			Message: strPtr("Deployed '" + entry.Name + "' to workspace"),
 		})
 
 		// Register in global persistent registry
@@ -425,7 +425,7 @@ func (s *server) InstallSkillToWorkspace(c echo.Context) error {
 		})
 	}
 
-	// Fallback if DeployToSandbox failed (files present but SKILL.md unreadable)
+	// Fallback if DeployToWorkspace failed (files present but SKILL.md unreadable)
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"installed": true,
 		"path":      skillDir,

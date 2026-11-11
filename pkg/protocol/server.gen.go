@@ -812,6 +812,9 @@ type ProviderCreateRequestType string
 
 // ProviderResponse defines model for ProviderResponse.
 type ProviderResponse struct {
+	// ApiKey The provider's API key (returned in full for update flows)
+	ApiKey *string `json:"api_key,omitempty"`
+
 	// ApiKeyMasked true if api_key is non-empty (never returns raw key in GET responses)
 	ApiKeyMasked *bool `json:"api_key_masked,omitempty"`
 

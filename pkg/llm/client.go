@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ type Client struct {
 	Temperature  float64
 	MaxTokens    int
 	ProviderName string // configured provider name (e.g. "local-llamacpp", "unsloth")
+	path         string // full API path for this provider type (e.g. "/v1/chat/completions" or "/completions")
 	HTTPClient   *http.Client
 	Timeout      time.Duration
 }
@@ -46,6 +48,13 @@ func NewClient(cfg *config.SystemConfig) *Client {
 
 // NewClientWithProvider creates a client configured from a specific provider config.
 func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
+	var path string
+	switch provCfg.Type {
+	case "llamacpp":
+		path = "/completions"
+	default: // openai and others
+		path = "/v1/chat/completions"
+	}
 	return &Client{
 		BaseURL:      provCfg.Endpoint,
 		Model:        provCfg.Model,
@@ -53,6 +62,7 @@ func NewClientWithProvider(provCfg *config.ProviderConfig) *Client {
 		MaxTokens:    provCfg.MaxTokens,
 		APIKey:       provCfg.ApiKey,
 		ProviderName: provCfg.Name,
+		path:         path,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -79,15 +89,23 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (*Completi
 		c.HTTPClient = &http.Client{Timeout: c.Timeout}
 	}
 
+	// Use client's default model if not set in the request.
+	if req.Model == "" && c.Model != "" {
+		req.Model = c.Model
+	}
 	requestBody := buildRequestBody(req)
 	payload, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	url := c.BaseURL + "/v1/chat/completions"
+	baseURL, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("parse base URL: %w", err))
+	}
+	urlPath := baseURL.JoinPath(c.path)
 
-	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", urlPath.String(), bytes.NewReader(payload))
 	if err != nil {
 		return nil, wrapError(ErrProviderDown, fmt.Errorf("create request: %w", err))
 	}
@@ -101,7 +119,7 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (*Completi
 	if err != nil {
 		return nil, wrapError(ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -138,9 +156,13 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	url := c.BaseURL + "/v1/chat/completions"
+	baseURL, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return nil, wrapError(ErrProviderDown, fmt.Errorf("parse base URL: %w", err))
+	}
+	urlPath := baseURL.JoinPath(c.path)
 
-	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+	reqHTTP, err := http.NewRequestWithContext(ctx, "POST", urlPath.String(), bytes.NewReader(payload))
 	if err != nil {
 		return nil, wrapError(ErrProviderDown, fmt.Errorf("create request: %w", err))
 	}
@@ -391,7 +413,7 @@ func mapHTTPError(statusCode int, body string) error {
 	case http.StatusBadGateway:
 		fallthrough
 	case http.StatusServiceUnavailable:
-		return ErrProviderDown
+		return wrapError(ErrProviderDown, fmt.Errorf("%s", body))
 
 	default:
 		return fmt.Errorf("HTTP %d: %s", statusCode, body)
@@ -482,4 +504,140 @@ func ParseResponseText(resp *CompletionResponse) string {
 // ParseUsage returns token usage from a completion response.
 func ParseUsage(resp *CompletionResponse) Usage {
 	return resp.Usage
+}
+
+// QueryProviderModels fetches available models for the given provider config.
+func QueryProviderModels(provCfg *config.ProviderConfig) ([]protocol.AvailableModelEntry, error) {
+	var entries []protocol.AvailableModelEntry
+	switch strings.ToLower(provCfg.Type) {
+	case "openai", "gemini":
+		models, err := fetchOpenAIModels(provCfg.Endpoint, provCfg.ApiKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch models from %s: %w", provCfg.Endpoint, err)
+		}
+		entries = models
+	case "ollama":
+		models, err := fetchOllamaModels(provCfg.Endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch models from %s: %w", provCfg.Endpoint, err)
+		}
+		entries = models
+	case "llamacpp":
+		models, err := fetchOpenAIModels(provCfg.Endpoint, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch models from %s: %w", provCfg.Endpoint, err)
+		}
+		entries = models
+	default:
+		return nil, fmt.Errorf("unsupported provider type %q for model discovery", provCfg.Type)
+	}
+	return entries, nil
+}
+
+// fetchOpenAIModels queries an OpenAI-compatible endpoint's /v1/models.
+func fetchOpenAIModels(endpoint, apiKey string) ([]protocol.AvailableModelEntry, error) {
+	baseURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("parse base URL: %w", err)
+	}
+	modelsURL := baseURL.JoinPath("/v1/models")
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, modelsURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	// OpenAI API returns {"object":"list","data":[...]}, not {"models":[...]}.
+	var openaiResp struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(body, &openaiResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	var entries []protocol.AvailableModelEntry
+	for _, m := range openaiResp.Data {
+		entry := protocol.AvailableModelEntry{}
+		if id, ok := m["id"].(string); ok {
+			idStr := id
+			entry.Id = &idStr
+		}
+		if name, ok := m["name"].(string); ok {
+			nameStr := name
+			entry.Name = &nameStr
+		}
+		if ownedBy, ok := m["owned_by"].(string); ok {
+			obStr := ownedBy
+			entry.OwnedBy = &obStr
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+// fetchOllamaModels queries an Ollama endpoint's /api/tags.
+func fetchOllamaModels(endpoint string) ([]protocol.AvailableModelEntry, error) {
+	baseURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("parse base URL: %w", err)
+	}
+	tagsURL := baseURL.JoinPath("/api/tags")
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, tagsURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ollamaResp struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	var entries []protocol.AvailableModelEntry
+	for _, m := range ollamaResp.Models {
+		entry := protocol.AvailableModelEntry{}
+		if name, ok := m["name"].(string); ok {
+			n := name
+			entry.Id = &n
+			nameStr := n
+			entry.Name = &nameStr
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
 }

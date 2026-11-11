@@ -104,7 +104,7 @@ func (l *Loop) ActivateWithSession(name string, session *env.Session) error {
 	if l.activator != nil {
 		// Deploy skill files into workspace before activation
 		if session != nil {
-			_, err := l.activator.DeployToSandbox(name, session)
+			_, err := l.activator.DeployToWorkspace(name, session)
 			if err != nil {
 				log.Printf("[loop] deploy to workspace for '%s': %v", name, err)
 				// Non-fatal — continue with activation if files are already present

@@ -165,9 +165,38 @@ func handleChat(args []string) {
 		os.Exit(1)
 	}
 
-	// If only workspace provided (no session ID), resolve/create one.
+	// Fetch existing session data if a session ID was provided.
 	var sess *protocol.Session
-	if workspaceName != "" && sessionID == "" {
+	if sessionID != "" {
+		rsp, err := client.GetSession(context.Background(), urlPathEscape(sessionID))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching session '%s': %v\n", sessionID, err)
+			os.Exit(1)
+		}
+		parsedSess, err := protocol.ParseGetSessionResponse(rsp)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing session data: %v\n", err)
+			os.Exit(1)
+		}
+		detail := parsedSess.GetJSON200()
+		if detail == nil {
+			body := string(parsedSess.GetBody())
+			if body == "" {
+				body = parsedSess.Status()
+			}
+			fmt.Fprintf(os.Stderr, "Error: session '%s' not found (status %d): %s\n", sessionID, parsedSess.StatusCode(), body)
+			os.Exit(1)
+		}
+		// Convert SessionDetail to Session for display.
+		sess = &protocol.Session{
+			Id:        detail.Id,
+			Name:      detail.Name,
+			CreatedAt: detail.CreatedAt,
+		}
+	}
+
+	// If only workspace provided (no session ID), resolve/create one.
+	if sess == nil {
 		// Fetch server version info for diagnostic output.
 		client, err := getProtocolClient()
 		if err == nil {

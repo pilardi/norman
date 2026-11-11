@@ -1936,6 +1936,9 @@ components:
         max_tokens:
           type: integer
           description: Provider default max tokens per call
+        api_key:
+          type: string
+          description: The provider's API key (returned in full for update flows)
         api_key_masked:
           type: boolean
           description: true if api_key is non-empty (never returns raw key in GET responses)
