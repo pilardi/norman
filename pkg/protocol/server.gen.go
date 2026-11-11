@@ -412,6 +412,84 @@ func (e TaskCreateRequestPriority) Valid() bool {
 	}
 }
 
+// Defines values for VerifyResponseStatus.
+const (
+	VerifyResponseStatusFailed VerifyResponseStatus = "failed"
+	VerifyResponseStatusOk     VerifyResponseStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResponseStatus enum.
+func (e VerifyResponseStatus) Valid() bool {
+	switch e {
+	case VerifyResponseStatusFailed:
+		return true
+	case VerifyResponseStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifyResultCompletionStatus.
+const (
+	VerifyResultCompletionStatusFailure VerifyResultCompletionStatus = "failure"
+	VerifyResultCompletionStatusSkipped VerifyResultCompletionStatus = "skipped"
+	VerifyResultCompletionStatusSuccess VerifyResultCompletionStatus = "success"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResultCompletionStatus enum.
+func (e VerifyResultCompletionStatus) Valid() bool {
+	switch e {
+	case VerifyResultCompletionStatusFailure:
+		return true
+	case VerifyResultCompletionStatusSkipped:
+		return true
+	case VerifyResultCompletionStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifyResultModelListStatus.
+const (
+	VerifyResultModelListStatusFailure VerifyResultModelListStatus = "failure"
+	VerifyResultModelListStatusSkipped VerifyResultModelListStatus = "skipped"
+	VerifyResultModelListStatusSuccess VerifyResultModelListStatus = "success"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResultModelListStatus enum.
+func (e VerifyResultModelListStatus) Valid() bool {
+	switch e {
+	case VerifyResultModelListStatusFailure:
+		return true
+	case VerifyResultModelListStatusSkipped:
+		return true
+	case VerifyResultModelListStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VerifyResultStatus.
+const (
+	VerifyResultStatusFailed VerifyResultStatus = "failed"
+	VerifyResultStatusOk     VerifyResultStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the VerifyResultStatus enum.
+func (e VerifyResultStatus) Valid() bool {
+	switch e {
+	case VerifyResultStatusFailed:
+		return true
+	case VerifyResultStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WebSocketEventEvent.
 const (
 	ContextBudgetWarning WebSocketEventEvent = "context_budget_warning"
@@ -734,6 +812,9 @@ type ProviderCreateRequestType string
 
 // ProviderResponse defines model for ProviderResponse.
 type ProviderResponse struct {
+	// ApiKey The provider's API key (returned in full for update flows)
+	ApiKey *string `json:"api_key,omitempty"`
+
 	// ApiKeyMasked true if api_key is non-empty (never returns raw key in GET responses)
 	ApiKeyMasked *bool `json:"api_key_masked,omitempty"`
 
@@ -809,8 +890,8 @@ type QueryProviderModelsRequest struct {
 
 // RestoreRequest defines model for RestoreRequest.
 type RestoreRequest struct {
-	// RecreateSandbox Whether to recreate the OpenShell sandbox on restore
-	RecreateSandbox *bool `json:"recreate_sandbox,omitempty"`
+	// RecreateWorkspace Whether to recreate the workspace on restore
+	RecreateWorkspace *bool `json:"recreate_workspace,omitempty"`
 }
 
 // RichOutput defines model for RichOutput.
@@ -1190,6 +1271,53 @@ type TokenUsage struct {
 	TotalTokens      *int `json:"total_tokens,omitempty"`
 }
 
+// VerifyResponse defines model for VerifyResponse.
+type VerifyResponse struct {
+	Details *VerifyResult `json:"details,omitempty"`
+
+	// ProviderName Name of the verified provider
+	ProviderName *string `json:"provider_name,omitempty"`
+
+	// Status Overall verification result
+	Status *VerifyResponseStatus `json:"status,omitempty"`
+}
+
+// VerifyResponseStatus Overall verification result
+type VerifyResponseStatus string
+
+// VerifyResult defines model for VerifyResult.
+type VerifyResult struct {
+	// CompletionError Error message if completion failed
+	CompletionError *string `json:"completion_error,omitempty"`
+
+	// CompletionStatus Result of the completion test
+	CompletionStatus *VerifyResultCompletionStatus `json:"completion_status,omitempty"`
+
+	// ModelCount Number of models found (if successful)
+	ModelCount *int `json:"model_count,omitempty"`
+
+	// ModelListError Error message if model list failed
+	ModelListError *string `json:"model_list_error,omitempty"`
+
+	// ModelListStatus Result of the model list query
+	ModelListStatus *VerifyResultModelListStatus `json:"model_list_status,omitempty"`
+
+	// Status Overall verification status
+	Status *VerifyResultStatus `json:"status,omitempty"`
+
+	// TokensUsed Tokens consumed by the completion test
+	TokensUsed *int `json:"tokens_used,omitempty"`
+}
+
+// VerifyResultCompletionStatus Result of the completion test
+type VerifyResultCompletionStatus string
+
+// VerifyResultModelListStatus Result of the model list query
+type VerifyResultModelListStatus string
+
+// VerifyResultStatus Overall verification status
+type VerifyResultStatus string
+
 // WebSocketEvent defines model for WebSocketEvent.
 type WebSocketEvent struct {
 	Channel         *string                 `json:"channel,omitempty"`
@@ -1230,7 +1358,7 @@ type Workspace struct {
 	// Scope Subsystems, repos, or services under this workspace
 	Scope *[]string `json:"scope,omitempty"`
 
-	// Status Lifecycle state of the workspace. "active" = running sandbox; "stopped" = sandbox freed but data preserved (via snapshot).
+	// Status Lifecycle state of the workspace. "active" = running workspace; "stopped" = workspace freed but data preserved (via snapshot).
 	Status *WorkspaceStatus `json:"status,omitempty"`
 
 	// Tags Domain keywords for skill activation matching
@@ -1238,7 +1366,7 @@ type Workspace struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
-// WorkspaceStatus Lifecycle state of the workspace. "active" = running sandbox; "stopped" = sandbox freed but data preserved (via snapshot).
+// WorkspaceStatus Lifecycle state of the workspace. "active" = running workspace; "stopped" = workspace freed but data preserved (via snapshot).
 type WorkspaceStatus string
 
 // WorkspaceConfig defines model for WorkspaceConfig.
@@ -1434,6 +1562,9 @@ type ServerInterface interface {
 	// ListProviderModels List available models for a provider (queries the provider's API)
 	// (GET /api/providers/{name}/models)
 	ListProviderModels(ctx echo.Context, name string) error
+	// VerifyProvider Verify a configured provider by testing connectivity and running a quick completion
+	// (POST /api/providers/{name}/verify)
+	VerifyProvider(ctx echo.Context, name string) error
 	// ListSessions List active sessions
 	// (GET /api/sessions)
 	ListSessions(ctx echo.Context) error
@@ -1521,7 +1652,7 @@ type ServerInterface interface {
 	// RestoreWorkspace Restore a stopped/archived workspace to active
 	// (POST /api/workspaces/{name}/restore)
 	RestoreWorkspace(ctx echo.Context, name string) error
-	// StopWorkspace Stop a workspace (free sandbox, keep data)
+	// StopWorkspace Stop a workspace (free workspace, keep data)
 	// (POST /api/workspaces/{name}/stop)
 	StopWorkspace(ctx echo.Context, name string) error
 	// HealthCheck Health check with scheduler status
@@ -1689,6 +1820,22 @@ func (w *ServerInterfaceWrapper) ListProviderModels(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ListProviderModels(ctx, name)
+	return err
+}
+
+// VerifyProvider converts echo context to params.
+func (w *ServerInterfaceWrapper) VerifyProvider(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", ctx.Param("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter name: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.VerifyProvider(ctx, name)
 	return err
 }
 
@@ -2252,5 +2399,6 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.PUT(options.BaseURL+"/api/providers/:name", wrapper.UpdateProvider, options.OperationMiddlewares["updateProvider"]...)
 	router.GET(options.BaseURL+"/api/providers/:name/models", wrapper.ListProviderModels, options.OperationMiddlewares["listProviderModels"]...)
 	router.POST(options.BaseURL+"/api/providers/models/query", wrapper.QueryProviderModels, options.OperationMiddlewares["queryProviderModels"]...)
+	router.POST(options.BaseURL+"/api/providers/:name/verify", wrapper.VerifyProvider, options.OperationMiddlewares["verifyProvider"]...)
 
 }

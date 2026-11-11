@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/urfave/cli/v3"
 )
@@ -105,6 +107,20 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 		req.Extra = &extraMap
 	}
 
+	// Pre-create verification: test the proposed config before persisting it.
+	provCfg := &config.ProviderConfig{
+		Name:        name,
+		Type:        cmd.String("type"),
+		Endpoint:    cmd.String("endpoint"),
+		Model:       cmd.String("model"),
+		Temperature: cmd.Float64("temp"),
+		MaxTokens:   cmd.Int("max-tokens"),
+		ApiKey:      cmd.String("api-key"),
+	}
+	if err := verifyConfig(ctx, provCfg); err != nil {
+		return fmt.Errorf("provider verification failed — %w", err)
+	}
+
 	client, err := getProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
@@ -118,6 +134,15 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 	parsed, err := protocol.ParseCreateProviderResponse(resp)
 	if err != nil {
 		return fmt.Errorf("error parsing response: %w", err)
+	}
+
+	if parsed.JSON201 == nil {
+		// Non-201 response (e.g. 400 validation error). Show the server's error message.
+		errMsg := string(parsed.Body)
+		if errMsg == "" {
+			return fmt.Errorf("provider creation failed with HTTP %d", resp.StatusCode)
+		}
+		return fmt.Errorf("provider creation failed — %s", strings.TrimSpace(errMsg))
 	}
 
 	fmt.Printf("Provider '%s' created successfully.\n", name)
@@ -228,6 +253,56 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
+	// Pre-update verification: merge old config with new values and test.
+	existingResp, err := client.GetProvider(ctx, urlPathEscape(name))
+	if err != nil {
+		return fmt.Errorf("error fetching provider '%s': %w", name, err)
+	}
+	existingParsed, err := protocol.ParseGetProviderResponse(existingResp)
+	if err != nil {
+		return fmt.Errorf("error parsing provider response: %w", err)
+	}
+	if existingParsed.JSON200 == nil {
+		return fmt.Errorf("provider '%s' not found", name)
+	}
+
+	old := existingParsed.JSON200
+	var temp float64
+	if old.Temperature != nil {
+		temp = float64(*old.Temperature)
+	}
+	newCfg := &config.ProviderConfig{
+		Name:        strVal(old.Name),
+		Type:        strPtrVal(old.Type),
+		Endpoint:    strVal(old.Endpoint),
+		Model:       strPtrVal(old.Model),
+		Temperature: temp,
+		MaxTokens:   intPtrVal(old.MaxTokens),
+	}
+
+	if v := cmd.String("type"); v != "" {
+		newCfg.Type = v
+	}
+	if v := cmd.String("endpoint"); v != "" {
+		newCfg.Endpoint = v
+	}
+	if v := cmd.String("model"); v != "" {
+		newCfg.Model = v
+	}
+	if cmd.IsSet("temp") {
+		newCfg.Temperature = cmd.Float64("temp")
+	}
+	if cmd.IsSet("max-tokens") {
+		newCfg.MaxTokens = cmd.Int("max-tokens")
+	}
+	if cmd.IsSet("api-key") {
+		newCfg.ApiKey = cmd.String("api-key")
+	}
+
+	if err := verifyConfig(ctx, newCfg); err != nil {
+		return fmt.Errorf("provider verification failed — %w", err)
+	}
+
 	resp, err := client.UpdateProvider(ctx, urlPathEscape(name), req)
 	if err != nil {
 		return fmt.Errorf("error updating provider '%s': %w", name, err)
@@ -236,6 +311,14 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 	parsed, err := protocol.ParseUpdateProviderResponse(resp)
 	if err != nil {
 		return fmt.Errorf("error parsing response: %w", err)
+	}
+
+	if parsed.JSON200 == nil {
+		errMsg := string(parsed.Body)
+		if errMsg == "" {
+			return fmt.Errorf("provider update failed with HTTP %d", resp.StatusCode)
+		}
+		return fmt.Errorf("provider update failed — %s", strings.TrimSpace(errMsg))
 	}
 
 	fmt.Printf("Provider '%s' updated successfully.\n", name)
@@ -477,6 +560,32 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		reqTyped.Extra = &extraMap
 	}
 
+	// Pre-create verification: test the proposed config before persisting it.
+	provCfg := &config.ProviderConfig{
+		Name:     name,
+		Type:     providerType,
+		Endpoint: endpoint,
+		Model:    model,
+		ApiKey:   apiKey,
+	}
+	if tempStr != "" {
+		v, err := strconv.ParseFloat(tempStr, 64)
+		if err != nil {
+			return fmt.Errorf("invalid temperature '%s': %w", tempStr, err)
+		}
+		provCfg.Temperature = v
+	}
+	if maxTokensStr != "" {
+		v, err := strconv.Atoi(maxTokensStr)
+		if err != nil {
+			return fmt.Errorf("invalid max_tokens '%s': %w", maxTokensStr, err)
+		}
+		provCfg.MaxTokens = v
+	}
+	if err := verifyConfig(ctx, provCfg); err != nil {
+		return fmt.Errorf("provider verification failed — %w", err)
+	}
+
 	resp, err = client.CreateProvider(ctx, reqTyped)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating provider: %v\n", err)
@@ -487,6 +596,14 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing response: %v\n", err)
 		os.Exit(1)
+	}
+
+	if parsed.JSON201 == nil {
+		errMsg := string(parsed.Body)
+		if errMsg == "" {
+			return fmt.Errorf("provider creation failed with HTTP %d", resp.StatusCode)
+		}
+		return fmt.Errorf("provider creation failed — %s", strings.TrimSpace(errMsg))
 	}
 
 	fmt.Printf("\nProvider '%s' created successfully.\n", name)
@@ -639,6 +756,36 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 		return nil
 	}
 
+	// Pre-update verification: test the proposed config before persisting it.
+	provCfg := &config.ProviderConfig{
+		Name:     name,
+		Type:     effectiveType,
+		Endpoint: effectiveEndpoint,
+		Model:    model,
+	}
+	if apiKey != "" {
+		provCfg.ApiKey = apiKey
+	} else if current.ApiKey != nil && *current.ApiKey != "" {
+		provCfg.ApiKey = *current.ApiKey
+	}
+	if tempStr != "" {
+		v, err := strconv.ParseFloat(tempStr, 64)
+		if err != nil {
+			return fmt.Errorf("invalid temperature '%s': %w", tempStr, err)
+		}
+		provCfg.Temperature = v
+	}
+	if maxTokensStr != "" {
+		v, err := strconv.Atoi(maxTokensStr)
+		if err != nil {
+			return fmt.Errorf("invalid max_tokens '%s': %w", maxTokensStr, err)
+		}
+		provCfg.MaxTokens = v
+	}
+	if err := verifyConfig(ctx, provCfg); err != nil {
+		return fmt.Errorf("provider verification failed — %w", err)
+	}
+
 	// Show summary for confirmation
 	fmt.Println("\n--- Update Summary ---")
 	for k, v := range map[string]interface{}{
@@ -671,6 +818,14 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 		return fmt.Errorf("error parsing response: %w", err)
 	}
 
+	if updateParsed.JSON200 == nil {
+		errMsg := string(updateParsed.Body)
+		if errMsg == "" {
+			return fmt.Errorf("provider update failed with HTTP %d", resp.StatusCode)
+		}
+		return fmt.Errorf("provider update failed — %s", strings.TrimSpace(errMsg))
+	}
+
 	fmt.Printf("\nProvider '%s' updated successfully.\n", name)
 	printprovidersSummaryTyped(updateParsed.JSON200)
 	return nil
@@ -699,4 +854,120 @@ func printprovidersSummaryTyped(p *protocol.ProviderResponse) {
 	if p.ApiKeyMasked != nil && *p.ApiKeyMasked {
 		fmt.Printf("    api_key:    (masked)\n")
 	}
+}
+
+// verifyConfig builds a client from the given ProviderConfig and tests
+// both model-list connectivity and a quick completion call. Returns nil on success.
+func verifyConfig(ctx context.Context, provCfg *config.ProviderConfig) error {
+	// Step 1: model list connectivity test
+	models, err := llm.QueryProviderModels(provCfg)
+	if err != nil {
+		return fmt.Errorf("model list failed — %w", err)
+	}
+
+	// Step 2: quick completion test
+	client := llm.NewClientWithProvider(provCfg)
+	resp, err := client.Complete(ctx, llm.CompletionRequest{
+		Messages:    []llm.Message{{Role: "user", Content: "Say OK"}},
+		Temperature: 0.1,
+		MaxTokens:   5,
+	})
+	if err != nil {
+		return fmt.Errorf("completion failed — %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return fmt.Errorf("completion returned no choices")
+	}
+
+	fmt.Printf("  [✓] Model list:   %d models found\n", len(models))
+	fmt.Printf("  [✓] Completion:   OK (%d tokens)\n", resp.Usage.TotalTokens)
+	return nil
+}
+
+// handleProvidersVerify tests a provider's connectivity and runs a quick completion test.
+func handleProvidersVerify(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.Args().First()
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "Error: usage: norman providers verify <name>")
+		return fmt.Errorf("usage: norman providers verify <name>")
+	}
+
+	client, err := getProtocolClient()
+	if err != nil {
+		return fmt.Errorf("failed to create API client: %w", err)
+	}
+
+	resp, err := client.VerifyProvider(ctx, urlPathEscape(name))
+	if err != nil {
+		return fmt.Errorf("error verifying provider '%s': %w", name, err)
+	}
+
+	parsed, err := protocol.ParseVerifyProviderResponse(resp)
+	if err != nil {
+		return fmt.Errorf("error parsing response: %w", err)
+	}
+
+	result := parsed.GetJSON200()
+	if result == nil || result.Details == nil {
+		errMsg := strings.TrimSpace(string(parsed.Body))
+		if errMsg != "" {
+			return fmt.Errorf("verify failed for provider '%s' — %s", name, errMsg)
+		}
+		fmt.Fprintf(os.Stderr, "Error: unexpected empty response for provider '%s' (raw body: %q)\n", name, string(parsed.Body))
+		return fmt.Errorf("unexpected empty response")
+	}
+
+	details := result.Details
+	fmt.Printf("\n=== Provider Verification: %s ===\n\n", strVal(result.ProviderName))
+
+	// Model list status
+	if details.ModelListStatus != nil {
+		status := string(*details.ModelListStatus)
+		switch status {
+		case "success":
+			fmt.Printf("  [✓] Model list:   %d models found\n", intPtrVal(details.ModelCount))
+		case "failure":
+			fmt.Printf("  [✗] Model list:   failed — %s\n", strPtrVal(details.ModelListError))
+		case "skipped":
+			fmt.Printf("  [ ] Model list:   skipped\n")
+		default:
+			fmt.Printf("  [?] Model list:   %s\n", status)
+		}
+	}
+
+	// Completion status
+	if details.CompletionStatus != nil {
+		status := string(*details.CompletionStatus)
+		switch status {
+		case "success":
+			tokens := intPtrVal(details.TokensUsed)
+			fmt.Printf("  [✓] Completion:   OK (%d tokens)\n", tokens)
+		case "failure":
+			fmt.Printf("  [✗] Completion:   failed — %s\n", strPtrVal(details.CompletionError))
+		case "skipped":
+			fmt.Printf("  [ ] Completion:   skipped (no model configured or model list failed)\n")
+		default:
+			fmt.Printf("  [?] Completion:   %s\n", status)
+		}
+	}
+
+	// Overall status
+	if result.Status != nil {
+		overall := string(*result.Status)
+		if overall == "ok" {
+			fmt.Printf("\n  ✅ Provider '%s' is healthy.\n", strVal(result.ProviderName))
+		} else {
+			fmt.Printf("\n  ❌ Provider '%s' verification FAILED.\n", strVal(result.ProviderName))
+		}
+	}
+
+	return nil
+}
+
+// --- Helper for int pointer dereference ---
+func intPtrVal(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

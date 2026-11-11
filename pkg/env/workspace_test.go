@@ -142,35 +142,14 @@ func newMockWorkspace() *mockWorkspace {
 	return &mockWorkspace{sessions: make(map[string]*Session)}
 }
 
-func (m *mockWorkspace) Exists(ctx context.Context, sessionId string) bool {
+func (m *mockWorkspace) SessionWorkspace(sessionId string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, ok := m.sessions[sessionId]
-	return ok
-}
-
-func (m *mockWorkspace) Session() *Session {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if len(m.sessions) == 0 {
-		return nil
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		return "", fmt.Errorf("session %s not found", sessionId)
 	}
-	for range m.sessions {
-		return &Session{}
-	}
-	return nil
-}
-
-func (m *mockWorkspace) RunCommandBySandbox(ctx context.Context, sandboxName string, command string) (string, int, error) {
-	return "", 0, nil
-}
-
-func (m *mockWorkspace) Create(ctx context.Context, sessionId string) (*Session, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := &Session{sessionId: sessionId}
-	m.sessions[sessionId] = s
-	return s, nil
+	return s.sessionId, nil
 }
 
 func (m *mockWorkspace) Get(ctx context.Context, sessionId string) (*Session, error) {
@@ -190,28 +169,14 @@ func (m *mockWorkspace) Delete(ctx context.Context, sessionId string) error {
 	return nil
 }
 
-func (m *mockWorkspace) GetSandboxName(ctx context.Context, sessionId string) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s, ok := m.sessions[sessionId]
-	if !ok {
-		return "", fmt.Errorf("session %s not found", sessionId)
-	}
-	return s.sessionId, nil
-}
-
-func (m *mockWorkspace) UpdateActivity(ctx context.Context, sessionId string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_ = sessionId // no-op in mock
-}
+func (m *mockWorkspace) UpdateActivity(ctx context.Context, sessionId string) {}
 
 func (m *mockWorkspace) Sessions() map[string]*Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	result := make(map[string]*Session, len(m.sessions))
-	for id, s := range m.sessions {
-		result[id] = s
+	for k, v := range m.sessions {
+		result[k] = v
 	}
 	return result
 }
@@ -220,21 +185,15 @@ func TestWorkspaceUpdateActivity(t *testing.T) {
 	ws := newMockWorkspace()
 	ctx := context.Background()
 
-	// Create a session
-	session, err := ws.Create(ctx, "test-session-001")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	if session == nil {
-		t.Fatal("expected non-nil session")
-	}
+	// Pre-populate a session (Create is internal-only for setup)
+	ws.sessions["test-session-001"] = &Session{sessionId: "test-session-001"}
 
 	// UpdateActivity should not panic or error for a valid session ID
 	ws.UpdateActivity(ctx, "test-session-001")
 
 	// Verify the session still exists and is accessible
-	exists := ws.Exists(ctx, "test-session-001")
-	if !exists {
+	session, err := ws.Get(ctx, "test-session-001")
+	if err != nil || session == nil {
 		t.Error("expected session to still exist after UpdateActivity")
 	}
 }
@@ -243,13 +202,10 @@ func TestWorkspaceSessions(t *testing.T) {
 	ws := newMockWorkspace()
 	ctx := context.Background()
 
-	// Create multiple sessions
+	// Pre-populate sessions (Create is internal-only for setup)
 	for i := 1; i <= 3; i++ {
 		sid := fmt.Sprintf("session-%03d", i)
-		_, err := ws.Create(ctx, sid)
-		if err != nil {
-			t.Fatalf("create session %s: %v", sid, err)
-		}
+		ws.sessions[sid] = &Session{sessionId: sid}
 	}
 
 	// Sessions() should return all created sessions

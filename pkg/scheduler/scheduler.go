@@ -81,7 +81,7 @@ type TaskResult struct {
 }
 
 // RunCommandFunc is a function type for executing commands.
-type RunCommandFunc func(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error)
+type RunCommandFunc func(ctx context.Context, provider, workspace string, cmd []string) (*v1.ExecResult, error)
 
 // Scheduler manages registered tasks and dispatches them on schedule.
 type Scheduler struct {
@@ -319,7 +319,7 @@ func (s *Scheduler) executeTask(entry *TaskEntry) TaskResult {
 	cmd := []string{"bash", "-c", entry.Command}
 
 	if s.runCommand != nil {
-		// Use OpenShell Exec() for sandbox execution
+		// Use OpenShell Exec() for workspace execution
 		result, execErr := s.runCommand(context.Background(), "default", "", cmd)
 		if execErr != nil {
 			err = fmt.Errorf("exec: %w", execErr)

@@ -1,17 +1,16 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -70,6 +69,7 @@ func toProviderResponse(p *config.ProviderConfig) *protocol.ProviderResponse {
 		Model:        strPtr(p.Model),
 		Temperature:  float32Ptr(p.Temperature),
 		MaxTokens:    intPtr(p.MaxTokens),
+		ApiKey:       strPtr(p.ApiKey),
 		ApiKeyMasked: boolPtr(maskApiKey(p.ApiKey)),
 	}
 	if len(p.Extra) > 0 {
@@ -301,7 +301,7 @@ func (s *server) ListProviderModels(c echo.Context, name string) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found: " + name})
 	}
 
-	models, err := queryProviderModels(prov)
+	models, err := llm.QueryProviderModels(prov)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to query provider models: " + err.Error(),
@@ -342,7 +342,7 @@ func (s *server) QueryProviderModels(c echo.Context) error {
 		Model:    "",
 	}
 
-	models, err := queryProviderModels(tmpProv)
+	models, err := llm.QueryProviderModels(tmpProv)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to query provider models: " + err.Error(),
@@ -356,144 +356,88 @@ func (s *server) QueryProviderModels(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-// queryProviderModels queries the provider's API endpoint to list available models.
-func queryProviderModels(p *config.ProviderConfig) ([]protocol.AvailableModelEntry, error) {
-	var entries []protocol.AvailableModelEntry
-
-	switch strings.ToLower(p.Type) {
-	case string(protocol.ProviderConfigTypeOpenai), string(protocol.ProviderConfigTypeGemini):
-		// OpenAI-compatible: GET /v1/models
-		models, err := fetchOpenAIModels(p.Endpoint, p.ApiKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch models from %s: %w", p.Endpoint, err)
-		}
-		entries = models
-
-	case string(protocol.ProviderConfigTypeOllama):
-		// Ollama: GET /api/tags
-		models, err := fetchOllamaModels(p.Endpoint)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch models from %s: %w", p.Endpoint, err)
-		}
-		entries = models
-
-	case string(protocol.ProviderConfigTypeLlamacpp):
-		// llama.cpp exposes an OpenAI-compatible /v1/models endpoint.
-		models, err := fetchOpenAIModels(p.Endpoint, "")
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch models from %s: %w", p.Endpoint, err)
-		}
-		entries = models
-
-	default:
-		return nil, fmt.Errorf("unsupported provider type %q for model discovery", p.Type)
+// VerifyProvider tests connectivity and runs a quick completion against the provider's API.
+func (s *server) VerifyProvider(c echo.Context, name string) error {
+	prov := findProviderByName(s.cfg.System, name)
+	if prov == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": "provider not found",
+		})
 	}
 
-	return entries, nil
+	result := &protocol.VerifyResult{}
+
+	// Step 1: Query available models (tests connectivity).
+	models, err := llm.QueryProviderModels(prov)
+	if err != nil {
+		s := protocol.VerifyResultStatus("failed")
+		m := protocol.VerifyResultModelListStatus("failure")
+		cst := protocol.VerifyResultCompletionStatus("skipped")
+		result.Status = &s
+		result.ModelListStatus = &m
+		result.ModelListError = strPtr(err.Error())
+		result.CompletionStatus = &cst
+	} else {
+		s := protocol.VerifyResultStatus("ok")
+		m := protocol.VerifyResultModelListStatus("success")
+		result.Status = &s
+		result.ModelListStatus = &m
+		modelCount := len(models)
+		result.ModelCount = &modelCount
+	}
+
+	// Step 2: Quick completion test (only if model list succeeded).
+	if result.ModelListStatus != nil && *result.ModelListStatus == "success" && prov.Model != "" {
+		comp, compErr := quickCompletion(prov)
+		if compErr != nil {
+			cst := protocol.VerifyResultCompletionStatus("failure")
+			result.CompletionStatus = &cst
+			result.CompletionError = strPtr(compErr.Error())
+			if result.Status != nil && *result.Status == "ok" {
+				f := protocol.VerifyResultStatus("failed")
+				result.Status = &f
+			}
+		} else {
+			cst := protocol.VerifyResultCompletionStatus("success")
+			result.CompletionStatus = &cst
+			tokens := comp.Usage.TotalTokens
+			result.TokensUsed = &tokens
+		}
+	}
+
+	statusStr := ""
+	if result.Status != nil {
+		statusStr = string(*result.Status)
+	}
+
+	var httpStatus int
+	if statusStr == "failed" {
+		httpStatus = http.StatusInternalServerError
+	} else {
+		httpStatus = http.StatusOK
+	}
+	return c.JSON(httpStatus, protocol.VerifyResponse{
+		Status:       (*protocol.VerifyResponseStatus)(strPtr(statusStr)),
+		Details:      result,
+		ProviderName: strPtr(prov.Name),
+	})
 }
 
-// fetchOpenAIModels queries an OpenAI-compatible endpoint's /v1/models.
-func fetchOpenAIModels(endpoint, apiKey string) ([]protocol.AvailableModelEntry, error) {
-	url := endpoint
-	if !strings.HasSuffix(url, "/v1") {
-		url = strings.TrimSuffix(url, "/") + "/v1"
-	}
-	url += "/models"
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
+// quickCompletion sends a minimal completion request to test the provider's inference.
+func quickCompletion(p *config.ProviderConfig) (*llm.CompletionResponse, error) {
+	client := llm.NewClientWithProvider(p)
+	resp, err := client.Complete(context.Background(), llm.CompletionRequest{
+		Messages: []llm.Message{
+			{Role: "system", Content: "You are a helpful assistant. Reply with exactly 'OK' and nothing else."},
+			{Role: "user", Content: "Say OK"},
+		},
+		Temperature: 0.1,
+		MaxTokens:   10,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+		return nil, fmt.Errorf("completion failed: %w", err)
 	}
-	req.Header.Set("Accept", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse OpenAI-compatible response: {"object":"list","data":[{"id":"gpt-4o",...},...]}
-	var openaiResp struct {
-		Object string           `json:"object"`
-		Data   []map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
-	}
-
-	var entries []protocol.AvailableModelEntry
-	for _, m := range openaiResp.Data {
-		entry := protocol.AvailableModelEntry{}
-		if id, ok := m["id"].(string); ok {
-			entry.Id = &id
-		}
-		if ownedBy, ok := m["owned_by"].(string); ok {
-			entry.OwnedBy = &ownedBy
-		}
-		// Use id as name if no separate display name exists
-		var name string
-		if n, ok := m["name"].(string); ok {
-			name = n
-		} else if entry.Id != nil {
-			name = *entry.Id
-		}
-		entry.Name = &name
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
-}
-
-// fetchOllamaModels queries Ollama's /api/tags endpoint.
-func fetchOllamaModels(endpoint string) ([]protocol.AvailableModelEntry, error) {
-	url := strings.TrimSuffix(endpoint, "/") + "/api/tags"
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	_ = resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Ollama format: {"models":[{"name":"llama3.1:8b","size":...},...]}
-	var ollamaResp struct {
-		Models []map[string]any `json:"models"`
-	}
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
-	}
-
-	var entries []protocol.AvailableModelEntry
-	for _, m := range ollamaResp.Models {
-		entry := protocol.AvailableModelEntry{}
-		if name, ok := m["name"].(string); ok {
-			entry.Id = &name
-			entry.Name = strPtr(name)
-		}
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
+	return resp, nil
 }
 
 // --- Helper functions for safe pointer dereferencing ---

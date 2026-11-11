@@ -211,7 +211,7 @@ func handleWorkspaceRestore(ctx context.Context, args []string) error {
 	}
 
 	body := protocol.RestoreWorkspaceJSONRequestBody{
-		RecreateSandbox: &recreateSandbox,
+		RecreateWorkspace: &recreateSandbox,
 	}
 
 	rsp, err := client.RestoreWorkspace(ctx, name, body)
