@@ -4,6 +4,8 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/protocol"
@@ -83,4 +85,70 @@ func strVal(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// GetSession fetches session detail by ID. Returns (*protocol.SessionDetail, error).
+func GetSession(sessionID string) (*protocol.SessionDetail, error) {
+	cfg, err := config.LoadDefault()
+	var urlStr string
+	if err != nil || cfg == nil || cfg.System == nil {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	} else if cfg.System.ServerURL != "" {
+		urlStr = cfg.System.ServerURL
+	} else {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+
+	client, err := protocol.NewClientWithResponses(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	// Escape the session ID for use in URL path.
+	escapedID := url.PathEscape(sessionID)
+	rsp, err := client.GetSessionWithResponse(context.Background(), escapedID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch session: %w", err)
+	}
+
+	detail := rsp.GetJSON200()
+	if detail == nil {
+		bodyStr := string(rsp.GetBody())
+		if bodyStr == "" {
+			bodyStr = rsp.Status()
+		}
+		return nil, fmt.Errorf("session '%s' not found (status %d): %s", sessionID, rsp.StatusCode(), strings.TrimSpace(bodyStr))
+	}
+
+	return detail, nil
+}
+
+// GetVersion returns the server version info. Returns (*protocol.ServerVersion, error).
+func GetVersion() (*protocol.ServerVersion, error) {
+	cfg, err := config.LoadDefault()
+	var urlStr string
+	if err != nil || cfg == nil || cfg.System == nil {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	} else if cfg.System.ServerURL != "" {
+		urlStr = cfg.System.ServerURL
+	} else {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+
+	client, err := protocol.NewClientWithResponses(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	rsp, err := client.GetVersionWithResponse(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch version: %w", err)
+	}
+
+	v := rsp.GetJSON200()
+	if v == nil {
+		return nil, fmt.Errorf("no version info returned")
+	}
+
+	return v, nil
 }

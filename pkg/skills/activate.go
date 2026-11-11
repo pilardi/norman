@@ -82,14 +82,14 @@ func (a *Activator) Activate(name string, session *env.Session) (string, error) 
 	return formatToolInjection(entry), nil
 }
 
-// DeployToSandbox ensures a skill's files are present inside the given OpenShell sandbox.
-// If the skill is already deployed in this sandbox, it is a no-op (idempotent).
+// DeployToWorkspace ensures a skill's files are present inside the given OpenShell sandbox.
+// If the skill is already deployed in this workspace, it is a no-op (idempotent).
 // For git-based skills: clones into /workspace/<ws-id>/skills/<name>/ and runs install.sh.
 // For binary skills (BinaryPath set): copies the host binary to ~/.local/bin/<name>.
 // Returns the deployed SkillEntry or an error.
-func (a *Activator) DeployToSandbox(name string, session *env.Session) (*SkillEntry, error) {
+func (a *Activator) DeployToWorkspace(name string, session *env.Session) (*SkillEntry, error) {
 	if session == nil {
-		return nil, fmt.Errorf("DeployToSandbox requires a non-nil session")
+		return nil, fmt.Errorf("DeployToWorkspace requires a non-nil session")
 	}
 
 	sandboxName := session.SessionID()

@@ -110,8 +110,8 @@ Secrets are stored as ${secret:...} placeholders and resolved by OpenShell.`,
 			// --- providers subcommand ---
 			{
 				Name:  "providers",
-				Usage: "Manage LLM providers (add, list, get, update, delete)",
-				Description: `provider — Manage LLM providers (add, list, get, update, delete)
+				Usage: "Manage LLM providers (add, list, get, update, delete, verify)",
+				Description: `provider — Manage LLM providers (add, list, get, update, delete, verify)
 
 Examples:
   norman providers add local --type ollama --endpoint http://localhost:11434 --model llama3
@@ -121,7 +121,8 @@ Examples:
   norman providers update local --temp 0.5
   norman providers delete old-provider
   norman providers set-default local
-  norman providers list-models local`,
+  norman providers list-models local
+  norman providers verify local`,
 				Commands: []*cli.Command{
 					{
 						Name:  "add",
@@ -253,6 +254,31 @@ Examples:
 								return fmt.Errorf("usage: norman providers list-models <name>")
 							}
 							err := handleProvidersListModels(ctx, cmd)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return err
+							}
+							return nil
+						},
+					},
+					{
+						Name:    "verify",
+						Aliases: []string{"test"},
+						Usage:   "Verify a provider's connectivity and run a quick completion test",
+						Description: `providers verify — Test a provider's API connectivity and run a minimal completion
+
+Tests both model listing and a quick chat completion against the provider's endpoint.
+Reports connectivity status, model count, and completion result with token usage.
+
+Examples:
+  norman providers verify local-llamacpp
+  norman providers verify unsloth`,
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman providers verify <name>\n")
+								return fmt.Errorf("usage: norman providers verify <name>")
+							}
+							err := handleProvidersVerify(ctx, cmd)
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 								return err

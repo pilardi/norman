@@ -43,7 +43,7 @@ type SkillEntry struct {
 	Version string `json:"version,omitempty"`
 
 	// BinaryPath is the host-side path to a pre-built binary for this skill.
-	// If set, DeployToSandbox copies the file instead of cloning a git repo.
+	// If set, DeployToWorkspace copies the file instead of cloning a git repo.
 	BinaryPath string `json:"binary_path,omitempty"`
 }
 

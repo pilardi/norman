@@ -144,8 +144,8 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 	sched := scheduler.NewScheduler(resultsCh)
 
 	// Wire OpenShell Exec() into the scheduler's runCommand adapter
-	sched.WithRunCommand(func(ctx context.Context, provider, sandbox string, cmd []string) (*v1.ExecResult, error) {
-		return openShellClient.RunCommand(ctx, provider, sandbox, cmd)
+	sched.WithRunCommand(func(ctx context.Context, provider, workspace string, cmd []string) (*v1.ExecResult, error) {
+		return openShellClient.RunCommand(ctx, provider, workspace, cmd)
 	})
 
 	// Wire OutputHandler to push WS events for real-time progress updates.

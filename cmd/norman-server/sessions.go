@@ -113,6 +113,10 @@ func (s *server) CreateSession(c echo.Context) error {
 			found = true
 			break
 		}
+		if ws.Name != nil && *ws.Name == req.WorkspaceId {
+			found = true
+			break
+		}
 	}
 	if !found {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found: " + req.WorkspaceId})
