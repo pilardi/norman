@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/norman/norman/pkg/protocol"
@@ -21,9 +22,33 @@ func Main(workspaceName, sessionID string) {
 		model.sessionID = sessionID
 	}
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	// Pre-check server connectivity before starting the TUI.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, err := getProtocolClient()
+	if err != nil || client == nil {
+		model.statusBar.SetConnection("✗ Server not reachable")
+		p := tea.NewProgram(model, tea.WithAltScreen())
+		if _, err = p.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
-	_, err := p.Run()
+	// Test a quick RPC call to confirm the server is actually responding.
+	if _, err = client.GetVersion(ctx); err != nil {
+		model.statusBar.SetConnection("✗ Server error: " + err.Error())
+		p := tea.NewProgram(model, tea.WithAltScreen())
+		if _, err = p.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	p := tea.NewProgram(model, tea.WithAltScreen())
+	_, err = p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 		os.Exit(1)
@@ -37,26 +62,26 @@ func initializeClient(ctx context.Context, model *Model) tea.Cmd {
 	client, err := getProtocolClient()
 	if err != nil {
 		model.statusBar.SetConnection("✗ Connection failed: " + err.Error())
-		return nil
+		return func() tea.Msg { return WSMessageEvent{Event: "error", Message: "Server not reachable"} }
 	}
 
 	// Fetch workspaces to auto-select one.
 	rsp, err := client.ListWorkspaces(ctx, nil)
 	if err != nil {
-		model.statusBar.SetConnection("✗ Failed to list workspaces")
-		return nil
+		model.statusBar.SetConnection("✗ Failed to list workspaces: " + err.Error())
+		return func() tea.Msg { return WSMessageEvent{Event: "error", Message: "Failed to list workspaces"} }
 	}
 
 	parsed, err := protocol.ParseListWorkspacesResponse(rsp)
 	if err != nil {
 		model.statusBar.SetConnection("✗ Parse error: " + err.Error())
-		return nil
+		return func() tea.Msg { return WSMessageEvent{Event: "error", Message: "Parse error"} }
 	}
 
 	workspaces := parsed.GetJSON200()
 	if workspaces == nil || len(*workspaces) == 0 {
 		model.statusBar.SetConnection("⚠ No workspaces found")
-		return nil
+		return func() tea.Msg { return WSMessageEvent{Event: "error", Message: "No workspaces available"} }
 	}
 
 	// Select the first workspace (or the one matching args).

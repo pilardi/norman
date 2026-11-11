@@ -70,12 +70,19 @@ func NewModel(workspaceName string) *Model {
 
 // Init is the bubbletea initialization hook.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(
-		m.spinner.Tick,
-		createSessionCmd(m),
-		initializeClient(context.Background(), m),
-		startWebSocket(m),
-	)
+	cmds := []tea.Cmd{m.spinner.Tick}
+
+	// Only auto-create a session if no sessionID was provided.
+	if m.sessionID == "" {
+		cmds = append(cmds, createSessionCmd(m))
+	} else {
+		cmds = append(cmds, func() tea.Msg {
+			return WSMessageEvent{Event: "session_created", Message: shortID(m.sessionID)}
+		})
+	}
+
+	cmds = append(cmds, initializeClient(context.Background(), m), startWebSocket(m))
+	return tea.Batch(cmds...)
 }
 
 // createSessionCmd creates a new session and sets the sessionID on the model.
@@ -233,6 +240,7 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		m.statusBar.SetConnection("⚠ Session compressed — context trimmed")
 	case "error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
+		m.done = true // TUI will quit after current view render.
 	case "connection_error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
 	case "task_progress":
