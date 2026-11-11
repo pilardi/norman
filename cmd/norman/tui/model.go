@@ -78,7 +78,7 @@ func (m *Model) Init() tea.Cmd {
 		cmds = append(cmds, createSessionCmd(m))
 	} else {
 		cmds = append(cmds, func() tea.Msg {
-			return WSMessageEvent{Event: "session_created", Message: shortID(m.sessionID)}
+			return WSMessageEvent{Event: "session_created", SessionID: m.sessionID}
 		})
 	}
 
@@ -234,12 +234,21 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		m.sessionID = msg.SessionID
 		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", shortID(msg.SessionID)))
 	case "session_created":
-		m.statusBar.SetConnection(fmt.Sprintf("✓ New session: %s", truncate(msg.Message, 20)))
-		m.chatPanel.AppendMessage(ChatMessage{
-			Role:      "system",
-			Content:   "Session created — you can start chatting now.",
-			Timestamp: time.Now(),
-		})
+		if msg.SessionID != "" {
+			m.statusBar.SetConnection(fmt.Sprintf("✓ Using session %s", truncate(msg.SessionID, 12)))
+			m.chatPanel.AppendMessage(ChatMessage{
+				Role:      "system",
+				Content:   fmt.Sprintf("Using existing session in workspace %s — type a message to start.", m.workspaceName),
+				Timestamp: time.Now(),
+			})
+		} else {
+			m.statusBar.SetConnection("✓ New session created")
+			m.chatPanel.AppendMessage(ChatMessage{
+				Role:      "system",
+				Content:   fmt.Sprintf("New session created in workspace %s — type a message to start.", msg.Message),
+				Timestamp: time.Now(),
+			})
+		}
 	case "session_closed":
 		m.statusBar.SetConnection(fmt.Sprintf("✗ Session closed: %s", truncate(msg.Message, 20)))
 	case "session_compressed":

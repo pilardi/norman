@@ -53,7 +53,11 @@ func RenderEventPanel(items []EventItem) string {
 	sb.WriteString("\n")
 
 	if len(items) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render("No events yet..."))
+		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render(
+			"Events will appear here as the session progresses.\n\n" +
+				"Press Ctrl+S to switch sessions, or / for command mode.",
+		)
+		sb.WriteString(hint)
 	} else {
 		for _, item := range items {
 			sb.WriteString(RenderEventItem(item))
@@ -63,7 +67,6 @@ func RenderEventPanel(items []EventItem) string {
 
 	return lipgloss.NewStyle().
 		Width(30).
-		MaxHeight(20).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#585858")).
 		Render(sb.String())

@@ -54,7 +54,11 @@ func (p *ChatPanel) Render() string {
 	sb.WriteString("\n")
 
 	if len(p.messages) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render("No messages yet. Type a message below..."))
+		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#aaaaaa")).Render(
+			"Type a message below to start chatting.\n\n" +
+				"Keyboard: Tab = toggle focus | Ctrl+L = clear | Ctrl+H = help | Ctrl+S = sessions | / = command mode",
+		)
+		sb.WriteString(hint)
 	} else {
 		for i, msg := range p.messages {
 			speaker := "Assistant"
@@ -91,7 +95,6 @@ func (p *ChatPanel) Render() string {
 
 	return lipgloss.NewStyle().
 		Width(p.width).
-		MaxHeight(p.height).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#585858")).
 		Render(sb.String())
