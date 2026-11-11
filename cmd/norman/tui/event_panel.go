@@ -63,7 +63,7 @@ func RenderEventPanel(items []EventItem) string {
 
 	return lipgloss.NewStyle().
 		Width(30).
-		Height(20).
+		MaxHeight(20).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#585858")).
 		Render(sb.String())

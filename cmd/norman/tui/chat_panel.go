@@ -92,7 +92,7 @@ func (p *ChatPanel) Render() string {
 
 	return lipgloss.NewStyle().
 		Width(p.width).
-		Height(p.height).
+		MaxHeight(p.height).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#585858")).
 		Render(sb.String())
