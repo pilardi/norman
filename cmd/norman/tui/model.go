@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
@@ -351,11 +352,12 @@ func (m *Model) View() string {
 	// Status bar at top
 	out += m.statusBar.Render(m.workspaceName, m.sessionID) + "\n"
 
-	// Chat panel (left, ~70%)
-	out += m.chatPanel.Render()
-
-	// Event panel (right, ~30%)
-	out += "\n" + RenderEventPanel(m.events)
+	// Two-column layout: chat on left (~70%), events on right (~30%)
+	eventView := RenderEventPanel(m.events)
+	out += lipgloss.JoinHorizontal(lipgloss.Left,
+		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.7)).Render(m.chatPanel.Render()),
+		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.3)).Render(eventView),
+	)
 
 	// Phase 3: help overlay on top
 	if m.helpOverlay.IsShowing() {

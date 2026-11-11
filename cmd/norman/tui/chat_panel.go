@@ -44,14 +44,13 @@ func (p *ChatPanel) Clear() {
 func (p *ChatPanel) Render() string {
 	var sb strings.Builder
 
-	// Panel border header
-	borderStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#585858")).
+	// Panel header (no inner border — outer box handles framing)
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
 		PaddingTop(1).
 		PaddingLeft(2)
 
-	sb.WriteString(borderStyle.Render("Chat"))
+	sb.WriteString(headerStyle.Render("Chat"))
 	sb.WriteString("\n")
 
 	if len(p.messages) == 0 {
