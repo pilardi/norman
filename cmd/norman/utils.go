@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -148,50 +146,4 @@ func derefFloat32(f *float32) float64 {
 		return 0
 	}
 	return float64(*f)
-}
-
-// selectMenu shows a numbered list and returns the selected item's value,
-// or an empty string if the user presses Enter without selecting.
-func selectMenu(items []string, label string) string {
-	scanner := bufio.NewScanner(os.Stdin)
-	for i, item := range items {
-		fmt.Printf("  %d. %s\n", i+1, item)
-	}
-	fmt.Print(label + " (number): ")
-	scanner.Scan()
-	input := strings.TrimSpace(scanner.Text())
-	if input == "" {
-		return ""
-	}
-	n, err := strconv.Atoi(input)
-	if err != nil || n < 1 || n > len(items) {
-		fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", input)
-		os.Exit(1)
-	}
-	return items[n-1]
-}
-
-// selectMenuWithDefault shows a numbered list with the current value highlighted in brackets,
-// and returns the selected item's value (or empty string if user presses Enter).
-func selectMenuWithDefault(items []string, label string, currentValue string) string {
-	scanner := bufio.NewScanner(os.Stdin)
-	for i, item := range items {
-		if item == currentValue {
-			fmt.Printf("  %d. [%s]\n", i+1, item)
-		} else {
-			fmt.Printf("  %d. %s\n", i+1, item)
-		}
-	}
-	fmt.Print(label + " (number): ")
-	scanner.Scan()
-	input := strings.TrimSpace(scanner.Text())
-	if input == "" {
-		return currentValue
-	}
-	n, err := strconv.Atoi(input)
-	if err != nil || n < 1 || n > len(items) {
-		fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", input)
-		os.Exit(1)
-	}
-	return items[n-1]
 }

@@ -84,23 +84,13 @@ func handleChat(args []string) {
 	// Fetch existing session data if a session ID was provided.
 	var sess *protocol.Session
 	if sessionID != "" {
-		rsp, err := client.GetSession(context.Background(), urlPathEscape(sessionID))
+		detail, err := client.GetSession(urlPathEscape(sessionID))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching session '%s': %v\n", sessionID, err)
 			os.Exit(1)
 		}
-		parsedSess, err := protocol.ParseGetSessionResponse(rsp)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing session data: %v\n", err)
-			os.Exit(1)
-		}
-		detail := parsedSess.GetJSON200()
 		if detail == nil {
-			body := string(parsedSess.GetBody())
-			if body == "" {
-				body = parsedSess.Status()
-			}
-			fmt.Fprintf(os.Stderr, "Error: session '%s' not found (status %d): %s\n", sessionID, parsedSess.StatusCode(), body)
+			fmt.Fprintf(os.Stderr, "Error: session '%s' not found\n", sessionID)
 			os.Exit(1)
 		}
 		// Convert SessionDetail to Session for display.
