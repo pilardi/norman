@@ -1,10 +1,11 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -14,88 +15,119 @@ type ChatPanel struct {
 	width     int
 	height    int
 	messages  []ChatMessage
+	viewport  viewport.Model
 	textInput textinput.Model
 }
 
-// NewChatPanel creates a new chat panel with default styling.
+// NewChatPanel creates a new chat panel with default settings.
 func NewChatPanel() ChatPanel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.CharLimit = 10000
 	ti.Width = 78
+
+	viewportModel := viewport.New(78, 30)
+	viewportModel.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858"))
+
 	return ChatPanel{
 		width:     80,
 		height:    30,
 		textInput: ti,
+		viewport:  viewportModel,
 	}
 }
 
-// AppendMessage adds a message to the chat stream.
+// AppendMessage adds a message to the chat stream and updates the viewport.
 func (p *ChatPanel) AppendMessage(msg ChatMessage) {
 	p.messages = append(p.messages, msg)
+	p.updateViewport()
 }
 
 // Clear removes all messages from the panel.
 func (p *ChatPanel) Clear() {
 	p.messages = nil
+	p.viewport.SetContent("")
 }
 
-// Render returns the lipgloss-styled chat panel view.
-func (p *ChatPanel) Render() string {
-	var sb strings.Builder
+// Init implements tea.Model interface.
+func (p *ChatPanel) Init() tea.Cmd { return nil }
 
-	// Panel header (no inner border — outer box handles framing)
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		PaddingTop(1).
-		PaddingLeft(2)
+// Update handles messages for this panel.
+func (p *ChatPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 
-	sb.WriteString(headerStyle.Render("Chat"))
-	sb.WriteString("\n")
+	if p.focused {
+		p.textInput, cmd = p.textInput.Update(msg)
+		return p, cmd
+	}
 
+	// Pass mouse/key events to viewport when not focused on input
+	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		p.viewport, cmd = p.viewport.Update(msg)
+		return p, cmd
+	default:
+		p.viewport, cmd = p.viewport.Update(msg)
+		return p, cmd
+	}
+}
+
+func (p *ChatPanel) updateViewport() {
+	var lines []string
 	if len(p.messages) == 0 {
-		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("#aaaaaa")).Render(
-			"Type a message below to start chatting.\n\n" +
-				"Keyboard: Tab = toggle focus | Ctrl+L = clear | Ctrl+H = help | Ctrl+S = sessions | / = command mode",
-		)
-		sb.WriteString(hint)
+		lines = append(lines, "Type a message below to start chatting.")
+		lines = append(lines, "")
+		lines = append(lines, "Keyboard: Tab = toggle focus | Ctrl+L = clear | Ctrl+H = help | Ctrl+S = sessions | / = command mode")
 	} else {
-		for i, msg := range p.messages {
+		for _, msg := range p.messages {
 			speaker := "Assistant"
-			color := lipgloss.Color("#4a9eff") // blue for assistant
 			if msg.Role == "user" {
 				speaker = "You"
-				color = lipgloss.Color("#ff9e64") // orange for user
 			}
-
 			ts := msg.Timestamp.Format("15:04:05")
-			header := fmt.Sprintf("[%s] %s:", ts, speaker)
-			sb.WriteString(lipgloss.NewStyle().Foreground(color).Render(header))
-			sb.WriteString("\n")
+			lines = append(lines, "["+ts+"] "+speaker+":")
 
-			// RichOutput rendering (Phase 2)
-			var content string
+			// Handle RichOutput rendering
 			if msg.RichOutput != nil {
-				content = renderRichOutput(msg.RichOutput)
+				lines = append(lines, renderRichOutput(msg.RichOutput))
 			} else {
-				// Truncate long messages for display
-				content = msg.Content
+				content := msg.Content
 				if len(content) > p.width-20 {
 					content = content[:p.width-23] + "..."
 				}
+				lines = append(lines, "  "+content)
 			}
-			sb.WriteString("  " + content + "\n\n")
-
-			// Add separator between messages (but not after the last one)
-			if i < len(p.messages)-1 {
-				sb.WriteString(lipgloss.NewStyle().Width(p.width).Height(1).BorderForeground(lipgloss.Color("#333333")).Render(strings.Repeat("─", p.width-2)) + "\n")
-			}
+			lines = append(lines, "")
 		}
 	}
+	p.viewport.SetContent(joinLines(lines))
+}
 
-	return lipgloss.NewStyle().
-		Width(p.width).
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#585858")).
-		Render(sb.String())
+func joinLines(lines []string) string {
+	var sb strings.Builder
+	for _, l := range lines {
+		sb.WriteString(l)
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
+// Render returns the chat panel view.
+func (p *ChatPanel) Render() string {
+	if p.focused {
+		return lipgloss.JoinVertical(lipgloss.Left,
+			lipgloss.NewStyle().Bold(true).PaddingTop(1).PaddingLeft(2).Render("Chat"),
+			p.viewport.View(),
+			p.textInput.View(),
+		)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		lipgloss.NewStyle().Bold(true).PaddingTop(1).PaddingLeft(2).Render("Chat"),
+		p.viewport.View(),
+	)
+}
+
+// View implements tea.Model interface.
+func (p *ChatPanel) View() string {
+	return p.Render()
 }

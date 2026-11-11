@@ -21,17 +21,6 @@ type ChatMessage struct {
 	Timestamp  time.Time
 }
 
-// EventItem represents an item in the event/task panel list.
-type EventItem struct {
-	Type      string
-	Message   string
-	Timestamp time.Time
-}
-
-func (e EventItem) Title() string       { return e.Type }
-func (e EventItem) Description() string { return e.Message }
-func (e EventItem) FilterValue() string { return e.Type + " " + e.Message }
-
 // Model is the main application state for the TUI client.
 type Model struct {
 	chatPanel        ChatPanel
