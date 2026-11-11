@@ -39,12 +39,15 @@ func NewChatPanel() ChatPanel {
 
 // updateViewportHeight adjusts the viewport to leave room for the header and input.
 func (p *ChatPanel) updateViewportHeight() {
-	// Reserve 1 line for header + 1 line for text input
-	maxH := p.height - 2
-	if maxH < 1 {
-		maxH = 1
+	// Reserve 1 line for header + 2 lines for text input (prompt + cursor line)
+	vh := p.height - 3
+	if vh < 1 {
+		vh = 1
 	}
-	p.viewport.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858")).MaxHeight(maxH)
+	p.viewport.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858")).MaxHeight(vh)
+	// Also set a fixed height so the viewport always takes exactly this much space,
+	// guaranteeing the text input is visible below it.
+	p.viewport.Height = vh
 }
 
 // AppendMessage adds a message to the chat stream and updates the viewport.
@@ -102,8 +105,12 @@ func (p *ChatPanel) updateViewport() {
 				lines = append(lines, renderRichOutput(msg.RichOutput))
 			} else {
 				content := msg.Content
-				if len(content) > p.width-20 {
-					content = content[:p.width-23] + "..."
+				maxWidth := p.width - 23
+				if maxWidth < 0 {
+					maxWidth = 0
+				}
+				if len(content) > p.width-20 && maxWidth > 0 {
+					content = content[:maxWidth] + "..."
 				}
 				lines = append(lines, "  "+content)
 			}
