@@ -234,6 +234,11 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", shortID(msg.SessionID)))
 	case "session_created":
 		m.statusBar.SetConnection(fmt.Sprintf("✓ New session: %s", truncate(msg.Message, 20)))
+		m.chatPanel.AppendMessage(ChatMessage{
+			Role:      "system",
+			Content:   "Session created — you can start chatting now.",
+			Timestamp: time.Now(),
+		})
 	case "session_closed":
 		m.statusBar.SetConnection(fmt.Sprintf("✗ Session closed: %s", truncate(msg.Message, 20)))
 	case "session_compressed":
