@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gorilla/websocket"
@@ -132,8 +133,13 @@ func sendChatMessage(model *Model, sessionID, message string) {
 
 	result := parsedMsg.GetJSON200()
 	if result != nil && result.Response != nil {
-		fmt.Printf("[DEBUG] sendChatMessage: got response='%s', sending via channel\n", *result.Response)
-		model.wsMsg <- WSMessageEvent{Event: "assistant_response", Message: *result.Response}
+		fmt.Printf("[DEBUG] sendChatMessage: got response='%s'\n", *result.Response)
+		// Directly append to chat panel so it appears immediately (no frame delay).
+		model.chatPanel.AppendMessage(ChatMessage{
+			Role:      "assistant",
+			Content:   *result.Response,
+			Timestamp: time.Now(),
+		})
 		return
 	}
 
