@@ -270,6 +270,10 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Timestamp: time.Now(),
 		})
 		m.done = true // TUI will quit after current view render.
+	case "chat_updated":
+		// Trigger re-render after assistant response was appended.
+		m.chatPanel.updateViewport()
+
 	case "assistant_response":
 		m.chatPanel.AppendMessage(ChatMessage{
 			Role:      "assistant",

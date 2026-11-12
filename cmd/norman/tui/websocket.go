@@ -139,6 +139,8 @@ func sendChatMessage(model *Model, sessionID, message string) {
 			Content:   *result.Response,
 			Timestamp: time.Now(),
 		})
+		// Send trigger event so Update re-renders without waiting for a key press.
+		model.wsMsg <- WSMessageEvent{Event: "chat_updated"}
 		return
 	}
 
