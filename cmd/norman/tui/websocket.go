@@ -132,7 +132,7 @@ func sendChatMessage(model *Model, sessionID, message string) {
 
 	result := parsedMsg.GetJSON200()
 	if result != nil && result.Response != nil {
-		fmt.Printf("[DEBUG] sendChatMessage: got response, sending via channel\n")
+		fmt.Printf("[DEBUG] sendChatMessage: got response='%s', sending via channel\n", *result.Response)
 		model.wsMsg <- WSMessageEvent{Event: "assistant_response", Message: *result.Response}
 		return
 	}

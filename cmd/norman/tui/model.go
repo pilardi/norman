@@ -220,6 +220,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusBar.SetConnection("✗ WebSocket disconnected")
 					return m, nil
 				}
+				fmt.Printf("[DEBUG] drain: processing event=%s\n", msg.Event)
 				m.handleWSMessage(msg)
 			default:
 				return m, nil
