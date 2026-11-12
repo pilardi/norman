@@ -139,8 +139,8 @@ func sendChatMessage(model *Model, sessionID, message string) {
 			Content:   *result.Response,
 			Timestamp: time.Now(),
 		})
-		// Signal Update to re-render by setting the flag.
-		model.reRender = true
+		// Force immediate re-render by sending a trigger event.
+		model.wsMsg <- WSMessageEvent{Event: "render_now"}
 		return
 	}
 
