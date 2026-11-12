@@ -132,6 +132,7 @@ func sendChatMessage(model *Model, sessionID, message string) {
 
 	result := parsedMsg.GetJSON200()
 	if result != nil && result.Response != nil {
+		fmt.Printf("[DEBUG] sendChatMessage: got response, sending via channel\n")
 		model.wsMsg <- WSMessageEvent{Event: "assistant_response", Message: *result.Response}
 		return
 	}
@@ -147,5 +148,6 @@ func sendChatMessage(model *Model, sessionID, message string) {
 			bodyBytes = e
 		}
 	}
+	fmt.Printf("[DEBUG] sendChatMessage: sending error via channel (status %d)\n", parsedMsg.StatusCode())
 	model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("message failed (status %d): %s", parsedMsg.StatusCode(), bodyBytes)}
 }

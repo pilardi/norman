@@ -42,6 +42,7 @@ type Model struct {
 
 	// WebSocket message channel for persistent event streaming.
 	wsMsg chan WSMessageEvent
+	// Buffered to prevent blocking on channel send (max 100 pending events).
 }
 
 // NewModel creates a new application model with default settings.
@@ -56,6 +57,7 @@ func NewModel(workspaceName string) *Model {
 		spinner:          spinnerModel,
 		connectionState:  "● Connecting...",
 		initialWorkspace: workspaceName,
+		wsMsg:            make(chan WSMessageEvent, 100),
 	}
 }
 
@@ -267,6 +269,7 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		})
 		m.done = true // TUI will quit after current view render.
 	case "assistant_response":
+		fmt.Printf("[DEBUG] handleWSMessage: assistant_response received (%d chars)\n", len(msg.Message))
 		m.chatPanel.AppendMessage(ChatMessage{
 			Role:      "assistant",
 			Content:   msg.Message,
