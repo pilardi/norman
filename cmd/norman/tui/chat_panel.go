@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -64,6 +65,7 @@ func (p *ChatPanel) updateViewportHeight() {
 
 // AppendMessage adds a message to the chat stream and updates the viewport.
 func (p *ChatPanel) AppendMessage(msg ChatMessage) {
+	fmt.Printf("[DEBUG] AppendMessage: role=%s content_len=%d\n", msg.Role, len(msg.Content))
 	p.messages = append(p.messages, msg)
 	p.updateViewport()
 }
@@ -130,7 +132,8 @@ func (p *ChatPanel) updateViewport() {
 		}
 	}
 	p.viewport.SetContent(joinLines(lines))
-	p.viewport.GotoBottom()
+	// Force scroll to bottom of new content.
+	p.viewport.YOffset = max(0, len(lines)-p.height)
 }
 
 func joinLines(lines []string) string {
