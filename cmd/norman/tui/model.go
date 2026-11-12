@@ -219,7 +219,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusBar.SetConnection("✗ WebSocket disconnected")
 					return m, nil
 				}
-				fmt.Printf("[DEBUG] drain: processing event=%s\n", msg.Event)
 				m.handleWSMessage(msg)
 			default:
 				return m, nil
@@ -272,7 +271,6 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		})
 		m.done = true // TUI will quit after current view render.
 	case "assistant_response":
-		fmt.Printf("[DEBUG] handleWSMessage: assistant_response received (%d chars)\n", len(msg.Message))
 		m.chatPanel.AppendMessage(ChatMessage{
 			Role:      "assistant",
 			Content:   msg.Message,

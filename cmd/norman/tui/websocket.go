@@ -133,7 +133,6 @@ func sendChatMessage(model *Model, sessionID, message string) {
 
 	result := parsedMsg.GetJSON200()
 	if result != nil && result.Response != nil {
-		fmt.Printf("[DEBUG] sendChatMessage: got response='%s'\n", *result.Response)
 		// Directly append to chat panel so it appears immediately (no frame delay).
 		model.chatPanel.AppendMessage(ChatMessage{
 			Role:      "assistant",
@@ -154,6 +153,5 @@ func sendChatMessage(model *Model, sessionID, message string) {
 			bodyBytes = e
 		}
 	}
-	fmt.Printf("[DEBUG] sendChatMessage: sending error via channel (status %d)\n", parsedMsg.StatusCode())
 	model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("message failed (status %d): %s", parsedMsg.StatusCode(), bodyBytes)}
 }
