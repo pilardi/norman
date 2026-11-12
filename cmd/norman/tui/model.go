@@ -211,7 +211,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.handleWSMessage(msg)
 		}
 
-		// Drain all pending messages from the channel before returning.
+		// Drain only "assistant_response" and "error" events immediately.
+		// Other events (task_progress, notification) continue to arrive incrementally.
 		for {
 			select {
 			case msg, ok := <-m.wsMsg:
@@ -220,8 +221,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusBar.SetConnection("✗ WebSocket disconnected")
 					return m, nil
 				}
-				fmt.Printf("[DEBUG] drain: processing event=%s\n", msg.Event)
-				m.handleWSMessage(msg)
+				if msg.Event == "assistant_response" || msg.Event == "error" {
+					fmt.Printf("[DEBUG] drain: processing event=%s\n", msg.Event)
+					m.handleWSMessage(msg)
+				} else {
+					// Push back other events for next-frame processing.
+					select {
+					case m.wsMsg <- msg:
+					default:
+						// Channel full — drop to avoid blocking.
+					}
+					return m, nil
+				}
 			default:
 				return m, nil
 			}
