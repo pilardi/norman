@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -107,10 +106,11 @@ func startWebSocket(model *Model) tea.Cmd {
 }
 
 // sendChatMessage sends a chat message to the current session via HTTP POST.
-func sendChatMessage(sessionID, message string) {
+// The assistant response is sent back via model.wsMsg channel.
+func sendChatMessage(model *Model, sessionID, message string) {
 	c, err := client.GetProtocolClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating client: %v\n", err)
+		model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
 		return
 	}
 
@@ -120,23 +120,23 @@ func sendChatMessage(sessionID, message string) {
 
 	msgRsp, err := c.SendMessage(context.Background(), sessionID, body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", client.ShortID(sessionID), err)
+		model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("send message to session %s: %v", client.ShortID(sessionID), err)}
 		return
 	}
 
 	parsedMsg, err := protocol.ParseSendMessageResponse(msgRsp)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing message response: %v\n", err)
+		model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("Error parsing message response: %v", err)}
 		return
 	}
 
 	result := parsedMsg.GetJSON200()
 	if result != nil && result.Response != nil {
-		fmt.Printf("\n[assistant] %s\n", *result.Response)
+		model.wsMsg <- WSMessageEvent{Event: "assistant_response", Message: *result.Response}
 		return
 	}
 
-	// Non-200 response: print the error body so the user sees what went wrong.
+	// Non-200 response: send error body via channel so user sees what went wrong.
 	bodyBytes := string(parsedMsg.GetBody())
 	if bodyBytes == "" {
 		bodyBytes = parsedMsg.Status()
@@ -147,5 +147,5 @@ func sendChatMessage(sessionID, message string) {
 			bodyBytes = e
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Error: message failed (status %d): %s\n", parsedMsg.StatusCode(), bodyBytes)
+	model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("message failed (status %d): %s", parsedMsg.StatusCode(), bodyBytes)}
 }

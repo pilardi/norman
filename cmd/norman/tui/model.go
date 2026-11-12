@@ -160,7 +160,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			m.chatPanel.textInput.SetValue("")
 			m.statusBar.SetConnection("● Sending...")
-			go sendChatMessage(m.sessionID, input)
+			go sendChatMessage(m, m.sessionID, input)
 			return m, nil
 
 		case "ctrl+l":
@@ -266,6 +266,12 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Timestamp: time.Now(),
 		})
 		m.done = true // TUI will quit after current view render.
+	case "assistant_response":
+		m.chatPanel.AppendMessage(ChatMessage{
+			Role:      "assistant",
+			Content:   msg.Message,
+			Timestamp: time.Now(),
+		})
 	case "connection_error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
 	case "task_progress":
