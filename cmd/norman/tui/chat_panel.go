@@ -75,7 +75,11 @@ func (p *ChatPanel) Clear() {
 }
 
 // Init implements tea.Model interface.
-func (p *ChatPanel) Init() tea.Cmd { return nil }
+func (p *ChatPanel) Init() tea.Cmd {
+	// Set initial empty-state content and adjust height to avoid visibleLines panic.
+	p.updateViewport()
+	return nil
+}
 
 // Update handles messages for this panel.
 func (p *ChatPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -130,6 +134,10 @@ func (p *ChatPanel) updateViewport() {
 		}
 	}
 	p.viewport.SetContent(joinLines(lines))
+	// Adjust viewport height to match content length to avoid visibleLines panic.
+	if len(lines) > 0 && p.height > len(lines) {
+		p.viewport.Height = len(lines)
+	}
 	// Force scroll to bottom of new content.
 	p.viewport.YOffset = max(0, len(lines)-p.height)
 }
