@@ -130,6 +130,7 @@ func (p *ChatPanel) updateViewport() {
 		}
 	}
 	p.viewport.SetContent(joinLines(lines))
+	p.viewport.GotoBottom()
 }
 
 func joinLines(lines []string) string {
