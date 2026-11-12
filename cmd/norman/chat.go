@@ -253,6 +253,20 @@ func handleChat(args []string) {
 		responseText := ""
 		if result != nil && result.Response != nil {
 			responseText = *result.Response
+		} else {
+			// Non-200 response: print the error body so the user sees what went wrong.
+			bodyBytes := string(parsedMsg.GetBody())
+			if bodyBytes == "" {
+				bodyBytes = parsedMsg.Status()
+			}
+			var errResp map[string]any
+			if json.Unmarshal([]byte(bodyBytes), &errResp) == nil {
+				if e, ok := errResp["error"].(string); ok {
+					bodyBytes = e
+				}
+			}
+			fmt.Fprintf(os.Stderr, "Error: message failed (status %d): %s\n", parsedMsg.StatusCode(), bodyBytes)
+			continue
 		}
 
 		// Track turn for transcript persistence.
