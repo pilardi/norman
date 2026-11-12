@@ -23,7 +23,6 @@ func (k tuiKeyMap) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys("ctrl+h"), key.WithHelp("ctrl+h", "Show help")),
 		key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "Sessions")),
 		key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "Command mode")),
-		key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "Close overlay")),
 	}
 }
 
@@ -42,6 +41,8 @@ func (k tuiKeyMap) FullHelp() [][]key.Binding {
 	}
 }
 
+func (k tuiKeyMap) ShortFull() bool { return true }
+
 // newHelpOverlay creates a new help overlay with the given content.
 func newHelpOverlay(content string) helpOverlay {
 	h := help.New()
@@ -59,7 +60,14 @@ func (h *helpOverlay) View() string {
 	if !h.showing {
 		return ""
 	}
+	// Force full help grid layout for better readability
+	h.help.ShowAll = true
 	return h.help.View(tuiKeyMap{})
+}
+
+// ToggleHelp toggles between short and full help view.
+func (h *helpOverlay) ToggleHelp() {
+	h.help.ShowAll = !h.help.ShowAll
 }
 
 // IsShowing returns whether the overlay is currently visible.

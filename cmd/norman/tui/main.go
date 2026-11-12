@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -25,8 +26,8 @@ func Main(workspaceName, sessionID string) {
 	// Pre-check server connectivity before starting the TUI.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	client, err := getProtocolClient()
-	if err != nil || client == nil {
+	c, err := client.GetProtocolClient()
+	if err != nil || c == nil {
 		model.statusBar.SetConnection("✗ Server not reachable")
 		p := tea.NewProgram(model, tea.WithAltScreen())
 		if _, err = p.Run(); err != nil {
@@ -37,7 +38,7 @@ func Main(workspaceName, sessionID string) {
 	}
 
 	// Test a quick RPC call to confirm the server is actually responding.
-	if _, err = client.GetVersion(ctx); err != nil {
+	if _, err = c.GetVersion(ctx); err != nil {
 		model.statusBar.SetConnection("✗ Server error: " + err.Error())
 		p := tea.NewProgram(model, tea.WithAltScreen())
 		if _, err = p.Run(); err != nil {
@@ -59,14 +60,14 @@ func Main(workspaceName, sessionID string) {
 func initializeClient(ctx context.Context, model *Model) tea.Cmd {
 	model.statusBar.SetConnection("● Connecting...")
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		model.statusBar.SetConnection("✗ Connection failed: " + err.Error())
 		return func() tea.Msg { return WSMessageEvent{Event: "error", Message: "Server not reachable"} }
 	}
 
 	// Fetch workspaces to auto-select one.
-	rsp, err := client.ListWorkspaces(ctx, nil)
+	rsp, err := c.ListWorkspaces(ctx, nil)
 	if err != nil {
 		model.statusBar.SetConnection("✗ Failed to list workspaces: " + err.Error())
 		return func() tea.Msg { return WSMessageEvent{Event: "error", Message: "Failed to list workspaces"} }
@@ -88,7 +89,7 @@ func initializeClient(ctx context.Context, model *Model) tea.Cmd {
 	var ws *protocol.Workspace
 	for i := range *workspaces {
 		w := &(*workspaces)[i]
-		if model.initialWorkspace != "" && strVal(w.Name) == model.initialWorkspace {
+		if model.initialWorkspace != "" && client.StrVal(w.Name) == model.initialWorkspace {
 			ws = w
 			break
 		}
@@ -97,7 +98,7 @@ func initializeClient(ctx context.Context, model *Model) tea.Cmd {
 		ws = &(*workspaces)[0]
 	}
 
-	model.workspaceName = strVal(ws.Name)
+	model.workspaceName = client.StrVal(ws.Name)
 	model.statusBar.SetConnection("● Connected")
 	return nil
 }

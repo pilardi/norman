@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -45,7 +46,7 @@ func openSessionSwitcher(m *Model) tea.Cmd {
 func createNewSession(m *Model) tea.Cmd {
 	m.statusBar.SetConnection("● Creating session...")
 	return func() tea.Msg {
-		client, err := getProtocolClient()
+		c, err := client.GetProtocolClient()
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
 		}
@@ -55,7 +56,7 @@ func createNewSession(m *Model) tea.Cmd {
 			ClientType: &cliType,
 		}
 
-		resp, err := client.CreateSession(context.Background(), body)
+		resp, err := c.CreateSession(context.Background(), body)
 		if err != nil {
 			m.statusBar.SetConnection("✗ Failed to create session")
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Create session failed: %v", err)}
@@ -75,8 +76,8 @@ func createNewSession(m *Model) tea.Cmd {
 
 		newID := result.Id.String()
 		m.sessionID = newID
-		m.statusBar.SetConnection(fmt.Sprintf("● New session created: %s", shortID(newID)))
-		return WSMessageEvent{Event: "session_created", Message: fmt.Sprintf("Created session %s", shortID(newID))}
+		m.statusBar.SetConnection(fmt.Sprintf("● New session created: %s", client.ShortID(newID)))
+		return WSMessageEvent{Event: "session_created", Message: fmt.Sprintf("Created session %s", client.ShortID(newID))}
 	}
 }
 
@@ -90,12 +91,12 @@ func focusEventPanel(m *Model) tea.Cmd {
 func closeSession(m *Model) tea.Cmd {
 	m.statusBar.SetConnection("● Closing session...")
 	return func() tea.Msg {
-		client, err := getProtocolClient()
+		c, err := client.GetProtocolClient()
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
 		}
 
-		resp, err := client.ArchiveSessionByID(context.Background(), m.sessionID)
+		resp, err := c.ArchiveSessionByID(context.Background(), m.sessionID)
 		if err != nil {
 			m.statusBar.SetConnection("✗ Failed to close session")
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Archive session failed: %v", err)}
@@ -108,8 +109,8 @@ func closeSession(m *Model) tea.Cmd {
 		}
 
 		if parsed.HTTPResponse != nil && parsed.HTTPResponse.StatusCode == 204 {
-			m.statusBar.SetConnection(fmt.Sprintf("✓ Session closed: %s", shortID(m.sessionID)))
-			return WSMessageEvent{Event: "session_closed", Message: fmt.Sprintf("Closed session %s", shortID(m.sessionID))}
+			m.statusBar.SetConnection(fmt.Sprintf("✓ Session closed: %s", client.ShortID(m.sessionID)))
+			return WSMessageEvent{Event: "session_closed", Message: fmt.Sprintf("Closed session %s", client.ShortID(m.sessionID))}
 		}
 
 		return WSMessageEvent{Event: "error", Message: "Unexpected response from archive"}
@@ -130,12 +131,12 @@ func enterCommandMode(m *Model) tea.Cmd {
 // loadSessionsList fetches available sessions and opens the session switcher.
 func loadSessionsList(m *Model) tea.Cmd {
 	return func() tea.Msg {
-		client, err := getProtocolClient()
+		c, err := client.GetProtocolClient()
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
 		}
 
-		resp, err := client.ListSessions(context.Background())
+		resp, err := c.ListSessions(context.Background())
 		if err != nil {
 			m.statusBar.SetConnection("✗ Failed to list sessions")
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("List sessions failed: %v", err)}
@@ -160,7 +161,7 @@ func loadSessionsList(m *Model) tea.Cmd {
 				name = *s.Name
 			}
 			if name == "" {
-				name = "Session " + shortID(s.Id.String())
+				name = "Session " + client.ShortID(s.Id.String())
 			}
 			status := "active"
 			if s.SessionStatus != nil {
@@ -188,7 +189,7 @@ type SessionItem struct {
 
 func (s SessionItem) Title() string { return s.Name }
 func (s SessionItem) Description() string {
-	return fmt.Sprintf("ID: %s | Status: %s", shortID(s.ID), s.Status)
+	return fmt.Sprintf("ID: %s | Status: %s", client.ShortID(s.ID), s.Status)
 }
 func (s SessionItem) FilterValue() string { return s.Name + " " + s.Status }
 

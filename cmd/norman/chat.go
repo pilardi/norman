@@ -38,7 +38,7 @@ func handleChat(args []string) {
 	workspaceName := ""
 	sessionID := ""
 
-	_, err := getProtocolClient()
+	_, err := client.GetProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
 		os.Exit(1)
@@ -84,7 +84,7 @@ func handleChat(args []string) {
 	// Fetch existing session data if a session ID was provided.
 	var sess *protocol.Session
 	if sessionID != "" {
-		detail, err := client.GetSession(urlPathEscape(sessionID))
+		detail, err := client.GetSession(client.UrlPathEscape(sessionID))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching session '%s': %v\n", sessionID, err)
 			os.Exit(1)
@@ -104,13 +104,13 @@ func handleChat(args []string) {
 	// If only workspace provided (no session ID), resolve/create one.
 	if sess == nil {
 		// Fetch server version info for diagnostic output.
-		client, err := getProtocolClient()
+		c, err := client.GetProtocolClient()
 		if err == nil {
-			rsp, err := client.GetVersion(context.Background())
+			rsp, err := c.GetVersion(context.Background())
 			if err == nil {
 				parsed, _ := protocol.ParseGetVersionResponse(rsp)
 				v := parsed.GetJSON200()
-				u := client.Server
+				u := c.Server
 				fmt.Printf("Connected to %s (%s %s)\n", u, v.Version, v.BuildDate)
 			}
 		}
@@ -118,7 +118,13 @@ func handleChat(args []string) {
 		fmt.Printf("Resolving workspace '%s'...\n", workspaceName)
 
 		// Resolve workspace name to ID using typed client methods.
-		rsp, err := client.ListWorkspaces(context.Background(), nil)
+		cli, err := client.GetProtocolClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating API client: %v\n", err)
+			os.Exit(1)
+		}
+
+		rsp, err := cli.ListWorkspaces(context.Background(), nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching workspaces: %v\n", err)
 			os.Exit(1)
@@ -132,7 +138,7 @@ func handleChat(args []string) {
 
 		foundID := ""
 		for _, w := range *workspaces {
-			name := strVal(w.Name)
+			name := client.StrVal(w.Name)
 			if name == workspaceName || strings.EqualFold(name, workspaceName) {
 				foundID = w.Id.String()
 				break
@@ -151,7 +157,7 @@ func handleChat(args []string) {
 			ClientType:  &ct,
 		}
 
-		sessRsp, err := client.CreateSession(context.Background(), body)
+		sessRsp, err := cli.CreateSession(context.Background(), body)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
 			os.Exit(1)
@@ -222,18 +228,18 @@ func handleChat(args []string) {
 			Message: line,
 		}
 		if selectedProvider != "" {
-			body.Provider = strPtr(selectedProvider)
+			body.Provider = client.StrPtr(selectedProvider)
 		}
 
-		client, err := getProtocolClient()
+		cli, err := client.GetProtocolClient()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating client: %v\n", err)
 			continue
 		}
 
-		msgRsp, err := client.SendMessage(context.Background(), sessionID, body)
+		msgRsp, err := cli.SendMessage(context.Background(), sessionID, body)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", shortID(sessionID), err)
+			fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", client.ShortID(sessionID), err)
 			continue
 		}
 

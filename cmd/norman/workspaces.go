@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/urfave/cli/v3"
 )
@@ -16,7 +17,7 @@ func handleWorkspacesCreate(ctx context.Context, args []string, purpose string, 
 
 	name := args[0]
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -32,7 +33,7 @@ func handleWorkspacesCreate(ctx context.Context, args []string, purpose string, 
 		Tags:    &tags,
 	}
 
-	rsp, err := client.CreateWorkspace(ctx, body)
+	rsp, err := c.CreateWorkspace(ctx, body)
 	if err != nil {
 		return fmt.Errorf("error creating workspace: %v", err)
 	}
@@ -69,7 +70,7 @@ func handleWorkspaceUpdate(ctx context.Context, args []string, purpose string, t
 		return fmt.Errorf("at least one of --purpose or --tags must be provided")
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -84,7 +85,7 @@ func handleWorkspaceUpdate(ctx context.Context, args []string, purpose string, t
 		Tags:    &tags,
 	}
 
-	rsp, err := client.UpdateWorkspace(ctx, name, body)
+	rsp, err := c.UpdateWorkspace(ctx, name, body)
 	if err != nil {
 		return fmt.Errorf("error updating workspace '%s': %v", name, err)
 	}
@@ -107,13 +108,13 @@ func handleWorkspaceUpdate(ctx context.Context, args []string, purpose string, t
 }
 
 // handleWorkspacesList fetches workspace info from the server.
-func handleWorkspacesList(ctx context.Context, c *cli.Command) error {
-	client, err := getProtocolClient()
+func handleWorkspacesList(ctx context.Context, cmd *cli.Command) error {
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
 
-	rsp, err := client.ListWorkspaces(ctx, nil)
+	rsp, err := c.ListWorkspaces(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("error fetching workspaces: %v", err)
 	}
@@ -131,8 +132,8 @@ func handleWorkspacesList(ctx context.Context, c *cli.Command) error {
 
 	fmt.Println("Available workspaces:")
 	for _, ws := range *workspaces {
-		name := strVal(ws.Name)
-		path := strVal(ws.Path)
+		name := client.StrVal(ws.Name)
+		path := client.StrVal(ws.Path)
 		status := ""
 		if ws.Status != nil {
 			status = string(*ws.Status)
@@ -158,7 +159,7 @@ func handleWorkspaceStop(ctx context.Context, args []string) error {
 		}
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -167,7 +168,7 @@ func handleWorkspaceStop(ctx context.Context, args []string) error {
 		Reason: strPtr(reason),
 	}
 
-	rsp, err := client.StopWorkspace(ctx, name, body)
+	rsp, err := c.StopWorkspace(ctx, name, body)
 	if err != nil {
 		return fmt.Errorf("error stopping workspace '%s': %v", name, err)
 	}
@@ -205,7 +206,7 @@ func handleWorkspaceRestore(ctx context.Context, args []string) error {
 		}
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -214,7 +215,7 @@ func handleWorkspaceRestore(ctx context.Context, args []string) error {
 		RecreateWorkspace: &recreateSandbox,
 	}
 
-	rsp, err := client.RestoreWorkspace(ctx, name, body)
+	rsp, err := c.RestoreWorkspace(ctx, name, body)
 	if err != nil {
 		return fmt.Errorf("error restoring workspace '%s': %v", name, err)
 	}
@@ -249,7 +250,7 @@ func handleWorkspacePurge(ctx context.Context, args []string, confirm bool) erro
 		return fmt.Errorf("'purge' requires --confirm flag to proceed (destructive operation)")
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -258,7 +259,7 @@ func handleWorkspacePurge(ctx context.Context, args []string, confirm bool) erro
 		Confirm: true,
 	}
 
-	rsp, err := client.PurgeWorkspace(ctx, name, body)
+	rsp, err := c.PurgeWorkspace(ctx, name, body)
 	if err != nil {
 		return fmt.Errorf("error purging workspace '%s': %v", name, err)
 	}

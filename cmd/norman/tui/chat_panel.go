@@ -3,7 +3,7 @@ package tui
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -16,15 +16,16 @@ type ChatPanel struct {
 	height    int
 	messages  []ChatMessage
 	viewport  viewport.Model
-	textInput textinput.Model
+	textInput textarea.Model
 }
 
 // NewChatPanel creates a new chat panel with default settings.
 func NewChatPanel() ChatPanel {
-	ti := textinput.New()
-	ti.Prompt = "> "
+	ti := textarea.New()
+	ti.Placeholder = "Type a message..."
 	ti.CharLimit = 10000
-	ti.Width = 78
+	ti.SetWidth(78)
+	ti.ShowLineNumbers = false
 
 	viewportModel := viewport.New(78, 30)
 	viewportModel.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858"))
@@ -34,6 +35,17 @@ func NewChatPanel() ChatPanel {
 		height:    30,
 		textInput: ti,
 		viewport:  viewportModel,
+	}
+}
+
+// setStyles applies focused/blurred border styles to the textarea and viewport.
+func (p *ChatPanel) setStyles() {
+	if p.focused {
+		p.textInput.FocusedStyle.Base = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#4a9eff"))
+		p.viewport.Style.BorderForeground(lipgloss.Color("#4a9eff"))
+	} else {
+		p.textInput.BlurredStyle.Base = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858"))
+		p.viewport.Style.BorderForeground(lipgloss.Color("#585858"))
 	}
 }
 
@@ -131,18 +143,22 @@ func joinLines(lines []string) string {
 
 // Render returns the chat panel view.
 func (p *ChatPanel) Render() string {
-	var header string
-	if p.focused {
-		header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#4a9eff")).PaddingTop(1).PaddingLeft(2).Render("[focused] Chat")
-	} else {
-		header = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#888888")).PaddingTop(1).PaddingLeft(2).Render("Chat")
-	}
+	header := lipgloss.NewStyle().Bold(true).PaddingTop(1).PaddingLeft(2).Render("Chat")
+	return lipgloss.JoinVertical(lipgloss.Left, header, p.viewport.View(), p.textInput.View())
+}
 
-	return lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		p.viewport.View(),
-		p.textInput.View(),
-	)
+// Focus sets the textarea to focused state and updates styles.
+func (p *ChatPanel) Focus() {
+	p.focused = true
+	p.textInput.Focus()
+	p.setStyles()
+}
+
+// Blur removes focus from the textarea.
+func (p *ChatPanel) Blur() {
+	p.focused = false
+	p.textInput.Blur()
+	p.setStyles()
 }
 
 // View implements tea.Model interface.

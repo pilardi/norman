@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/protocol"
@@ -96,10 +97,10 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 		Name:        name,
 		Type:        protocol.ProviderCreateRequestType(cmd.String("type")),
 		Endpoint:    cmd.String("endpoint"),
-		Model:       strPtr(cmd.String("model")),
-		Temperature: float32Ptr(cmd.Float64("temp")),
-		MaxTokens:   intPtr(cmd.Int("max-tokens")),
-		ApiKey:      strPtr(cmd.String("api-key")),
+		Model:       client.StrPtr(cmd.String("model")),
+		Temperature: client.Float32Ptr(cmd.Float64("temp")),
+		MaxTokens:   client.IntPtr(cmd.Int("max-tokens")),
+		ApiKey:      client.StrPtr(cmd.String("api-key")),
 	}
 
 	if cmd.IsSet("extra") {
@@ -121,12 +122,12 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider verification failed — %w", err)
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.CreateProvider(ctx, req)
+	resp, err := c.CreateProvider(ctx, req)
 	if err != nil {
 		return fmt.Errorf("error creating provider: %w", err)
 	}
@@ -152,12 +153,12 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 
 // handleProvidersList lists all configured providers.
 func handleProvidersList(ctx context.Context, cmd *cli.Command) error {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.ListProviders(ctx)
+	resp, err := c.ListProviders(ctx)
 	if err != nil {
 		return fmt.Errorf("error fetching providers: %w", err)
 	}
@@ -192,12 +193,12 @@ func handleProvidersGet(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required")
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.GetProvider(ctx, urlPathEscape(name))
+	resp, err := c.GetProvider(ctx, client.UrlPathEscape(name))
 	if err != nil {
 		return fmt.Errorf("error fetching provider '%s': %w", name, err)
 	}
@@ -237,24 +238,24 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	req := protocol.ProviderUpdateRequest{
-		Endpoint:    strPtr(cmd.String("endpoint")),
-		Model:       strPtr(cmd.String("model")),
-		Temperature: float32Ptr(cmd.Float64("temp")),
-		MaxTokens:   intPtr(cmd.Int("max-tokens")),
-		ApiKey:      strPtr(cmd.String("api-key")),
+		Endpoint:    client.StrPtr(cmd.String("endpoint")),
+		Model:       client.StrPtr(cmd.String("model")),
+		Temperature: client.Float32Ptr(cmd.Float64("temp")),
+		MaxTokens:   client.IntPtr(cmd.Int("max-tokens")),
+		ApiKey:      client.StrPtr(cmd.String("api-key")),
 	}
 	if t := cmd.String("type"); t != "" {
 		v := protocol.ProviderUpdateRequestType(t)
 		req.Type = &v
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
 	// Pre-update verification: merge old config with new values and test.
-	existingResp, err := client.GetProvider(ctx, urlPathEscape(name))
+	existingResp, err := c.GetProvider(ctx, client.UrlPathEscape(name))
 	if err != nil {
 		return fmt.Errorf("error fetching provider '%s': %w", name, err)
 	}
@@ -273,9 +274,9 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 	}
 	newCfg := &config.ProviderConfig{
 		Name:        strVal(old.Name),
-		Type:        strPtrVal(old.Type),
+		Type:        client.StrPtrVal(old.Type),
 		Endpoint:    strVal(old.Endpoint),
-		Model:       strPtrVal(old.Model),
+		Model:       client.StrPtrVal(old.Model),
 		Temperature: temp,
 		MaxTokens:   intPtrVal(old.MaxTokens),
 	}
@@ -303,7 +304,7 @@ func handleProvidersUpdate(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider verification failed — %w", err)
 	}
 
-	resp, err := client.UpdateProvider(ctx, urlPathEscape(name), req)
+	resp, err := c.UpdateProvider(ctx, client.UrlPathEscape(name), req)
 	if err != nil {
 		return fmt.Errorf("error updating provider '%s': %w", name, err)
 	}
@@ -333,12 +334,12 @@ func handleProvidersDelete(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required")
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.DeleteProvider(ctx, urlPathEscape(name))
+	resp, err := c.DeleteProvider(ctx, client.UrlPathEscape(name))
 	if err != nil {
 		return fmt.Errorf("error deleting provider '%s': %w", name, err)
 	}
@@ -355,12 +356,12 @@ func handleProvidersSetDefault(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required\nUsage: norman providers set-default <name>")
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.PutConfig(ctx, map[string]interface{}{
+	resp, err := c.PutConfig(ctx, map[string]interface{}{
 		"default_provider": name,
 	})
 	if err != nil {
@@ -379,12 +380,12 @@ func handleProvidersListModels(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("provider name is required\nUsage: norman providers list-models <name>")
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.ListProviderModels(ctx, urlPathEscape(name))
+	resp, err := c.ListProviderModels(ctx, client.UrlPathEscape(name))
 	if err != nil {
 		return fmt.Errorf("error fetching models for provider '%s': %w", name, err)
 	}
@@ -450,16 +451,16 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 	// Query available models via the server API.
 	var models []protocol.AvailableModelEntry
 	var resp *http.Response
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not create API client: %v\n", err)
 	} else {
 		queryReq := protocol.QueryProviderModelsRequest{
 			Type:     providerType,
 			Endpoint: endpoint,
-			ApiKey:   strPtr(apiKey),
+			ApiKey:   client.StrPtr(apiKey),
 		}
-		resp, err = client.QueryProviderModels(ctx, queryReq)
+		resp, err = c.QueryProviderModels(ctx, queryReq)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not fetch available models: %v\n", err)
 			fmt.Println("You can enter a model name manually below.")
@@ -475,7 +476,7 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 	if len(models) > 0 {
 		fmt.Printf("\nAvailable models for this provider (%d found):\n", len(models))
 		for i, m := range models {
-			fmt.Printf("  %d. %s\n", i+1, strPtrVal(m.Id))
+			fmt.Printf("  %d. %s\n", i+1, client.StrPtrVal(m.Id))
 		}
 		model = prompt("Select a model number (or press Enter to skip)")
 		if model != "" {
@@ -484,7 +485,7 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 				fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", model)
 				os.Exit(1)
 			}
-			model = strPtrVal(models[idx-1].Id)
+			model = client.StrPtrVal(models[idx-1].Id)
 		}
 	} else {
 		model = prompt("Model (optional)")
@@ -540,7 +541,7 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		return nil
 	}
 
-	client, err = getProtocolClient()
+	_, err = client.GetProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create API client: %v\n", err)
 		os.Exit(1)
@@ -550,10 +551,10 @@ func handleProvidersAddInteractive(ctx context.Context) error {
 		Name:        name,
 		Type:        protocol.ProviderCreateRequestType(providerType),
 		Endpoint:    endpoint,
-		Model:       strPtr(model),
+		Model:       client.StrPtr(model),
 		Temperature: parseFloat(tempStr),
 		MaxTokens:   parseInt(maxTokensStr),
-		ApiKey:      strPtr(apiKey),
+		ApiKey:      client.StrPtr(apiKey),
 	}
 	if extra != "" {
 		extraMap := parseExtra(extra)
@@ -631,13 +632,13 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 		return strings.TrimSpace(scanner.Text())
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create API client: %v\n", err)
 		os.Exit(1)
 	}
 
-	resp, err := client.GetProvider(ctx, urlPathEscape(name))
+	resp, err := c.GetProvider(ctx, client.UrlPathEscape(name))
 	if err != nil {
 		return fmt.Errorf("error fetching provider '%s': %w", name, err)
 	}
@@ -655,8 +656,8 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 
 	fmt.Printf("Valid types: %s\n", strings.Join(validProviderTypes, ", "))
 
-	providerTypeStr := promptWithCurrent("Provider type", strPtrVal(current.Type))
-	endpoint := promptWithCurrent("Endpoint URL", strPtrVal(current.Endpoint))
+	providerTypeStr := promptWithCurrent("Provider type", client.StrPtrVal(current.Type))
+	endpoint := promptWithCurrent("Endpoint URL", client.StrPtrVal(current.Endpoint))
 
 	var model string
 
@@ -676,11 +677,11 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 
 	if effectiveType != "" && effectiveEndpoint != "" {
 		var models []protocol.AvailableModelEntry
-		client, err := getProtocolClient()
+		c, err := client.GetProtocolClient()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to create API client: %v\n", err)
 		} else {
-			resp, err := client.ListProviderModels(ctx, urlPathEscape(name))
+			resp, err := c.ListProviderModels(ctx, client.UrlPathEscape(name))
 			if err == nil {
 				parsed, err := protocol.ParseListProviderModelsResponse(resp)
 				if err == nil && parsed.JSON200 != nil && parsed.JSON200.Models != nil {
@@ -691,22 +692,22 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 		if len(models) > 0 {
 			fmt.Printf("\nAvailable models for this provider (%d found):\n", len(models))
 			for i, m := range models {
-				fmt.Printf("  %d. %s\n", i+1, strPtrVal(m.Id))
+				fmt.Printf("  %d. %s\n", i+1, client.StrPtrVal(m.Id))
 			}
-			model = promptWithCurrent("Select a model number (or press Enter to keep current)", strPtrVal(current.Model))
+			model = promptWithCurrent("Select a model number (or press Enter to keep current)", client.StrPtrVal(current.Model))
 			if model != "" {
 				idx, err := strconv.Atoi(model)
 				if err != nil || idx < 1 || idx > len(models) {
 					fmt.Fprintf(os.Stderr, "Error: invalid selection '%s'\n", model)
 					os.Exit(1)
 				}
-				model = strPtrVal(models[idx-1].Id)
+				model = client.StrPtrVal(models[idx-1].Id)
 			}
 		} else {
-			model = promptWithCurrent("Model", strPtrVal(current.Model))
+			model = promptWithCurrent("Model", client.StrPtrVal(current.Model))
 		}
 	} else {
-		model = promptWithCurrent("Model", strPtrVal(current.Model))
+		model = promptWithCurrent("Model", client.StrPtrVal(current.Model))
 	}
 
 	tempVal := current.Temperature
@@ -736,11 +737,11 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 
 	// Build the request map (only non-empty fields)
 	req := protocol.ProviderUpdateRequest{
-		Endpoint:    strPtr(endpoint),
-		Model:       strPtr(model),
+		Endpoint:    client.StrPtr(endpoint),
+		Model:       client.StrPtr(model),
 		Temperature: parseFloat(tempStr),
 		MaxTokens:   parseInt(maxTokensStr),
-		ApiKey:      strPtr(apiKey),
+		ApiKey:      client.StrPtr(apiKey),
 	}
 	if providerTypeStr != "" {
 		v := protocol.ProviderUpdateRequestType(providerTypeStr)
@@ -808,7 +809,7 @@ func handleProvidersUpdateInteractive(ctx context.Context, name string) error {
 		return nil
 	}
 
-	resp, err = client.UpdateProvider(ctx, urlPathEscape(name), req)
+	resp, err = client.UpdateProvider(ctx, client.UrlPathEscape(name), req)
 	if err != nil {
 		return fmt.Errorf("error updating provider '%s': %w", name, err)
 	}
@@ -842,7 +843,7 @@ func printprovidersSummaryTyped(p *protocol.ProviderResponse) {
 		name = *p.Name
 	}
 	fmt.Printf("  [%s]\n", name)
-	fmt.Printf("    type:       %v\n", strPtrVal(p.Type))
+	fmt.Printf("    type:       %v\n", client.StrPtrVal(p.Type))
 	fmt.Printf("    endpoint:   %v\n", strVal(p.Endpoint))
 	fmt.Printf("    model:      %v\n", strVal(p.Model))
 	if p.Temperature != nil {
@@ -866,8 +867,8 @@ func verifyConfig(ctx context.Context, provCfg *config.ProviderConfig) error {
 	}
 
 	// Step 2: quick completion test
-	client := llm.NewClientWithProvider(provCfg)
-	resp, err := client.Complete(ctx, llm.CompletionRequest{
+	llmClient := llm.NewClientWithProvider(provCfg)
+	resp, err := llmClient.Complete(ctx, llm.CompletionRequest{
 		Messages:    []llm.Message{{Role: "user", Content: "Say OK"}},
 		Temperature: 0.1,
 		MaxTokens:   5,
@@ -892,12 +893,12 @@ func handleProvidersVerify(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("usage: norman providers verify <name>")
 	}
 
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.VerifyProvider(ctx, urlPathEscape(name))
+	resp, err := c.VerifyProvider(ctx, client.UrlPathEscape(name))
 	if err != nil {
 		return fmt.Errorf("error verifying provider '%s': %w", name, err)
 	}
@@ -927,7 +928,7 @@ func handleProvidersVerify(ctx context.Context, cmd *cli.Command) error {
 		case "success":
 			fmt.Printf("  [✓] Model list:   %d models found\n", intPtrVal(details.ModelCount))
 		case "failure":
-			fmt.Printf("  [✗] Model list:   failed — %s\n", strPtrVal(details.ModelListError))
+			fmt.Printf("  [✗] Model list:   failed — %s\n", client.StrPtrVal(details.ModelListError))
 		case "skipped":
 			fmt.Printf("  [ ] Model list:   skipped\n")
 		default:
@@ -943,7 +944,7 @@ func handleProvidersVerify(ctx context.Context, cmd *cli.Command) error {
 			tokens := intPtrVal(details.TokensUsed)
 			fmt.Printf("  [✓] Completion:   OK (%d tokens)\n", tokens)
 		case "failure":
-			fmt.Printf("  [✗] Completion:   failed — %s\n", strPtrVal(details.CompletionError))
+			fmt.Printf("  [✗] Completion:   failed — %s\n", client.StrPtrVal(details.CompletionError))
 		case "skipped":
 			fmt.Printf("  [ ] Completion:   skipped (no model configured or model list failed)\n")
 		default:

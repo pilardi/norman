@@ -378,7 +378,7 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 		l.tasks[taskID] = task
 		l.mu.Unlock()
 		l.pushCompletion(task)
-		return &AgentResponse{SessionID: sessionID, Response: task.Error}, nil
+		return nil, fmt.Errorf("session has no workspace_id attached")
 	}
 
 	task := &Task{

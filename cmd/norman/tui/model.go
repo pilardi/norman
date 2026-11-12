@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -24,7 +25,7 @@ type ChatMessage struct {
 // Model is the main application state for the TUI client.
 type Model struct {
 	chatPanel        ChatPanel
-	eventPanel       list.Model
+	eventPanel       EventPanel
 	statusBar        StatusBar
 	spinner          spinner.Model
 	connectionState  string
@@ -50,7 +51,7 @@ func NewModel(workspaceName string) *Model {
 
 	return &Model{
 		chatPanel:        NewChatPanel(),
-		eventPanel:       newEventPanel(),
+		eventPanel:       NewEventPanel(),
 		statusBar:        NewStatusBar(),
 		spinner:          spinnerModel,
 		connectionState:  "● Connecting...",
@@ -105,7 +106,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				m.helpOverlay.showing = false
 				return m, nil
+			case "?":
+				// Toggle between short and full help view
+				m.helpOverlay.help.ShowAll = !m.helpOverlay.help.ShowAll
+				return m, nil
 			}
+			// Let the help component handle other keys (arrows, etc.)
+			_, cmd := m.helpOverlay.help.Update(msg)
+			return m, cmd
 		}
 
 		// Phase 3: session switcher dismissal / selection
@@ -132,14 +140,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			// Toggle focus between chat and event panels
 			if m.chatPanel.focused {
-				m.chatPanel.focused = false
+				m.chatPanel.Blur()
+				m.eventPanel.Focus()
 			} else {
-				m.chatPanel.focused = true
+				m.chatPanel.Focus()
+				m.eventPanel.Blur()
 			}
+			return m, nil // tab itself has no special action
+
 		case "enter":
-			if !m.chatPanel.focused {
-				return m, nil
-			}
 			input := m.chatPanel.textInput.Value()
 			if input == "" {
 				return m, nil
@@ -179,9 +188,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.commandMode {
 				m.statusBar.SetConnection("⊶ Command mode — type a command")
 			} else {
-				m.statusBar.SetConnection(fmt.Sprintf("● Connected (%s)", m.connectionState))
+				m.statusBar.SetConnection(fmt.Sprintf("Connected (%s)", strings.TrimPrefix(m.connectionState, "●")))
 			}
 			return m, nil
+		}
+
+		// Forward all other keys to textinput when focused (arrows, backspace, etc.)
+		if m.chatPanel.focused {
+			_, cmd := m.chatPanel.Update(msg)
+			return m, cmd
 		}
 
 	default:
@@ -219,10 +234,10 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Timestamp: time.Now(),
 		})
 	case "turn_completed":
-		m.statusBar.SetConnection("● Connected")
+		m.statusBar.SetConnection("Connected")
 	case "session_switched":
 		m.sessionID = msg.SessionID
-		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", shortID(msg.SessionID)))
+		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", client.ShortID(msg.SessionID)))
 	case "session_created":
 		if msg.SessionID != "" {
 			m.statusBar.SetConnection(fmt.Sprintf("✓ Using session %s", truncate(msg.SessionID, 12)))
@@ -245,6 +260,11 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		m.statusBar.SetConnection("⚠ Session compressed — context trimmed")
 	case "error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
+		m.chatPanel.AppendMessage(ChatMessage{
+			Role:      "system",
+			Content:   msg.Message,
+			Timestamp: time.Now(),
+		})
 		m.done = true // TUI will quit after current view render.
 	case "connection_error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
@@ -352,7 +372,7 @@ func (m *Model) View() string {
 	out += m.statusBar.Render(m.workspaceName, m.sessionID) + "\n"
 
 	// Two-column layout: chat on left (~70%), events on right (~30%)
-	eventView := RenderEventPanel(m.events)
+	eventView := m.eventPanel.Render()
 	out += lipgloss.JoinHorizontal(lipgloss.Left,
 		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.7)).Render(m.chatPanel.Render()),
 		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.3)).Render(eventView),

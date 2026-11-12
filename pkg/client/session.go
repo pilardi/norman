@@ -4,6 +4,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -151,4 +152,104 @@ func GetVersion() (*protocol.ServerVersion, error) {
 	}
 
 	return v, nil
+}
+
+// ListWorkspaces returns a raw HTTP response with the list of workspaces.
+func ListWorkspaces(ctx context.Context, params *protocol.ListWorkspacesParams) (*http.Response, error) {
+	cfg, err := config.LoadDefault()
+	var urlStr string
+	if err != nil || cfg == nil || cfg.System == nil {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	} else if cfg.System.ServerURL != "" {
+		urlStr = cfg.System.ServerURL
+	} else {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+
+	client, err := protocol.NewClient(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return client.ListWorkspaces(ctx, params)
+}
+
+// QueryProviderModels queries available models for a provider type/endpoint.
+func QueryProviderModels(ctx context.Context, body protocol.QueryProviderModelsJSONRequestBody) (*http.Response, error) {
+	cfg, err := config.LoadDefault()
+	var urlStr string
+	if err != nil || cfg == nil || cfg.System == nil {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	} else if cfg.System.ServerURL != "" {
+		urlStr = cfg.System.ServerURL
+	} else {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+
+	client, err := protocol.NewClient(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return client.QueryProviderModels(ctx, body)
+}
+
+// CreateProvider creates a new provider. Returns the raw HTTP response.
+func CreateProvider(ctx context.Context, body protocol.CreateProviderJSONRequestBody) (*http.Response, error) {
+	cfg, err := config.LoadDefault()
+	var urlStr string
+	if err != nil || cfg == nil || cfg.System == nil {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	} else if cfg.System.ServerURL != "" {
+		urlStr = cfg.System.ServerURL
+	} else {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+
+	client, err := protocol.NewClient(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return client.CreateProvider(ctx, body)
+}
+
+// UpdateProvider updates an existing provider. Returns the raw HTTP response.
+func UpdateProvider(ctx context.Context, name string, body protocol.UpdateProviderJSONRequestBody) (*http.Response, error) {
+	cfg, err := config.LoadDefault()
+	var urlStr string
+	if err != nil || cfg == nil || cfg.System == nil {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	} else if cfg.System.ServerURL != "" {
+		urlStr = cfg.System.ServerURL
+	} else {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+
+	client, err := protocol.NewClient(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return client.UpdateProvider(ctx, name, body)
+}
+
+// ConnectWebSocket connects to the WebSocket endpoint for a session. Returns the raw HTTP response.
+func ConnectWebSocket(ctx context.Context, params *protocol.ConnectWebSocketParams) (*http.Response, error) {
+	cfg, err := config.LoadDefault()
+	var urlStr string
+	if err != nil || cfg == nil || cfg.System == nil {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	} else if cfg.System.ServerURL != "" {
+		urlStr = cfg.System.ServerURL
+	} else {
+		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
+	}
+
+	client, err := protocol.NewClient(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return client.ConnectWebSocket(ctx, params)
 }

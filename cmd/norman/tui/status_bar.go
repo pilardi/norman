@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/norman/norman/pkg/client"
 )
 
 // StatusBar displays session ID, workspace name, and connection state.
@@ -15,7 +16,7 @@ type StatusBar struct {
 // NewStatusBar creates a new status bar with default styling.
 func NewStatusBar() StatusBar {
 	return StatusBar{
-		connection: "● Connecting...",
+		connection: "Connecting...",
 		width:      80,
 	}
 }
@@ -42,7 +43,7 @@ func (s *StatusBar) Render(workspaceName, sessionID string) string {
 
 	if sessionID != "" {
 		sidStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#666666"))
-		bar = lipgloss.JoinHorizontal(lipgloss.Left, bar, sidStyle.Render("session: "+shortID(sessionID)))
+		bar = lipgloss.JoinHorizontal(lipgloss.Left, bar, sidStyle.Render("session: "+client.ShortID(sessionID)))
 	}
 
 	return lipgloss.NewStyle().Width(s.width).Height(1).Foreground(lipgloss.Color("#aaaaaa")).Render(bar)

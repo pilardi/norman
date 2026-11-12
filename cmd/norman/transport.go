@@ -8,13 +8,14 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
 
 // runWebSocketLoop connects to the WebSocket endpoint and displays incoming events.
 // It runs concurrently with the REPL input loop.
 func runWebSocketLoop(sessionID string) {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)
 		return
@@ -24,7 +25,7 @@ func runWebSocketLoop(sessionID string) {
 		SessionId: sessionID,
 	}
 
-	resp, err := client.ConnectWebSocket(context.Background(), params)
+	resp, err := c.ConnectWebSocket(context.Background(), params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "WebSocket connection failed: %v\n", err)
 		return

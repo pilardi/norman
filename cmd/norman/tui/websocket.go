@@ -9,7 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gorilla/websocket"
-	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -27,7 +27,7 @@ type WSMessageEvent struct {
 // back via the model's wsMsg channel. It runs as a long-lived goroutine.
 func startWebSocket(model *Model) tea.Cmd {
 	return func() tea.Msg {
-		client, err := getProtocolClient()
+		c, err := client.GetProtocolClient()
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
 		}
@@ -36,7 +36,7 @@ func startWebSocket(model *Model) tea.Cmd {
 			SessionId: model.sessionID,
 		}
 
-		resp, err := client.ConnectWebSocket(context.Background(), params)
+		resp, err := c.ConnectWebSocket(context.Background(), params)
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("WebSocket connection failed: %v", err)}
 		}
@@ -108,7 +108,7 @@ func startWebSocket(model *Model) tea.Cmd {
 
 // sendChatMessage sends a chat message to the current session via HTTP POST.
 func sendChatMessage(sessionID, message string) {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating client: %v\n", err)
 		return
@@ -118,9 +118,9 @@ func sendChatMessage(sessionID, message string) {
 		Message: message,
 	}
 
-	msgRsp, err := client.SendMessage(context.Background(), sessionID, body)
+	msgRsp, err := c.SendMessage(context.Background(), sessionID, body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", shortID(sessionID), err)
+		fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", client.ShortID(sessionID), err)
 		return
 	}
 
@@ -134,44 +134,4 @@ func sendChatMessage(sessionID, message string) {
 	if result != nil && result.Response != nil {
 		fmt.Printf("\n[assistant] %s\n", *result.Response)
 	}
-}
-
-// getProtocolClient returns a shared protocol client, lazily initialized.
-func getProtocolClient() (*protocol.Client, error) {
-	cfg, err := config.LoadDefault()
-	if err != nil || cfg == nil || cfg.System == nil {
-		def := config.EmbeddedDefaults()
-		return protocol.NewClient(fmt.Sprintf("http://%s:%d", def.System.Host, def.System.ServerPort))
-	}
-	url := ""
-	if cfg.System.ServerURL != "" {
-		url = cfg.System.ServerURL
-	} else {
-		host := cfg.System.Host
-		port := cfg.System.ServerPort
-		if host == "" {
-			host = config.EmbeddedDefaults().System.Host
-		}
-		if port == 0 {
-			port = config.EmbeddedDefaults().System.ServerPort
-		}
-		url = fmt.Sprintf("http://%s:%d", host, port)
-	}
-	return protocol.NewClient(url)
-}
-
-// strVal returns the dereferenced value of s, or empty string if nil.
-func strVal(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-// shortID truncates a session ID for display.
-func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
 }

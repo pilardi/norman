@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/norman/norman/pkg/client"
 )
 
 type sessionSwitcher struct {
@@ -44,7 +45,7 @@ func switchToSession(sessionID string) tea.Cmd {
 	return func() tea.Msg {
 		return WSMessageEvent{
 			Event:     "session_switched",
-			Message:   fmt.Sprintf("Switched to session %s", shortID(sessionID)),
+			Message:   fmt.Sprintf("Switched to session %s", client.ShortID(sessionID)),
 			SessionID: sessionID,
 		}
 	}
