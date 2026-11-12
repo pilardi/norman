@@ -369,7 +369,17 @@ Examples:
 							workspaceName := args[0]
 							sessionID := ""
 							if len(args) > 1 {
-								sessionID = args[1]
+								var found bool
+								var err error
+								sessionID, found, err = resolveSessionID(args[1])
+								if err != nil {
+									fmt.Fprintf(os.Stderr, "Error resolving session '%s': %v\n", args[1], err)
+									os.Exit(1)
+								}
+								if !found {
+									fmt.Fprintf(os.Stderr, "Error: session '%s' not found. Run 'norman sessions list' to see available sessions.\n", args[1])
+									os.Exit(1)
+								}
 							}
 
 							// Resolve mode: auto-detect TTY unless overridden by --mode flag.
