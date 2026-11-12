@@ -209,9 +209,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case WSMessageEvent:
 			if msg.Event == "chat_updated" {
 				m.chatPanel.updateViewport()
-				return m, tea.Tick(time.Millisecond*50, func(t time.Time) tea.Msg {
-					return nil // triggers re-render on next tick
-				})
+				return m, func() tea.Msg { return nil } // force re-render
 			}
 			m.handleWSMessage(msg)
 		}
