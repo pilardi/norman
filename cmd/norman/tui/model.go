@@ -211,16 +211,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.handleWSMessage(msg)
 		}
 
-		// Handle persistent WebSocket messages via channel.
-		select {
-		case msg, ok := <-m.wsMsg:
-			if !ok {
-				// Channel closed = connection dropped.
-				m.statusBar.SetConnection("✗ WebSocket disconnected")
+		// Drain all pending messages from the channel before returning.
+		for {
+			select {
+			case msg, ok := <-m.wsMsg:
+				if !ok {
+					// Channel closed = connection dropped.
+					m.statusBar.SetConnection("✗ WebSocket disconnected")
+					return m, nil
+				}
+				m.handleWSMessage(msg)
+			default:
 				return m, nil
 			}
-			m.handleWSMessage(msg)
-		default:
 		}
 	}
 
