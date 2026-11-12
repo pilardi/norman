@@ -139,13 +139,8 @@ func sendChatMessage(model *Model, sessionID, message string) {
 			Content:   *result.Response,
 			Timestamp: time.Now(),
 		})
-		// Force immediate re-render by triggering focus change.
-		if model.chatPanel.focused {
-			model.chatPanel.Blur()
-			model.chatPanel.Focus()
-		} else {
-			model.chatPanel.Focus()
-		}
+		// Signal Update to re-render by setting the flag.
+		model.reRender = true
 		return
 	}
 
