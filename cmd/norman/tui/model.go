@@ -43,9 +43,6 @@ type Model struct {
 	// WebSocket message channel for persistent event streaming.
 	wsMsg chan WSMessageEvent
 	// Buffered to prevent blocking on channel send (max 100 pending events).
-
-	// reRender signals that Update should force a re-render cycle.
-	reRender bool
 }
 
 // NewModel creates a new application model with default settings.
@@ -215,13 +212,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg { return nil } // force re-render
 			}
 			m.handleWSMessage(msg)
-		}
-
-		// Force re-render if signaled by sendChatMessage.
-		if m.reRender {
-			m.reRender = false
-			m.chatPanel.updateViewport()
-			return m, func() tea.Msg { return nil }
 		}
 
 		// Drain ALL pending events from the channel before returning.
