@@ -59,11 +59,14 @@ func startWebSocket(model *Model) tea.Cmd {
 			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("WebSocket dial failed: %v", err)}
 		}
 
+		// Store connection reference on model so we can close and reconnect.
+		model.wsConn = conn
+
 		// Start a goroutine that continuously reads messages and sends them
 		// back via the model's wsMsg channel. The connection stays open
 		// until an error occurs.
 		go func() {
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close(); model.wsConn = nil }()
 			for {
 				_, msg, err := conn.ReadMessage()
 				if err != nil {

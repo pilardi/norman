@@ -516,12 +516,13 @@ func (l *Loop) CreateTask(ctx context.Context, prompt string, config map[string]
 		log.Printf("agent: failed to persist task %s: %v", taskID, err)
 	}
 
-	// Broadcast progress event (no session-specific filtering for emergent tasks).
+	// Broadcast progress event (carries session_id so consumers can filter).
 	l.wsHub.BroadcastEvent(protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &taskID,
-		Message: strPtr(fmt.Sprintf("Emergent task %s created", taskID[:8])),
-		Step:    intPtr(0),
+		Event:     protocol.TaskProgress,
+		TaskId:    &taskID,
+		SessionId: strPtr(""), // empty for emergent tasks — global scope
+		Message:   strPtr(fmt.Sprintf("Emergent task %s created", taskID[:8])),
+		Step:      intPtr(0),
 	})
 
 	// Execute synchronously (blocks until completion).

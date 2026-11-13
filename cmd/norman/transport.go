@@ -68,22 +68,28 @@ func runWebSocketLoop(sessionID string) {
 			continue
 		}
 
-		displayWSMessage(event)
+		displayWSMessage(sessionID, event)
 	}
 }
 
 // displayWSMessage formats and prints a WebSocket event for the user.
-func displayWSMessage(event map[string]interface{}) {
+// Skips events from other sessions; only shows current-session or global (empty session_id) events.
+func displayWSMessage(sessionID string, event map[string]interface{}) {
 	eventType, _ := event["event"].(string)
 	message, _ := event["message"].(string)
-	sessionID, _ := event["session_id"].(string)
+	evSessionID, _ := event["session_id"].(string)
 	taskID, _ := event["task_id"].(string)
 	step, _ := event["step"].(float64)
 	threshold, _ := event["threshold"].(string)
 
+	// Skip events from other sessions; only show current-session or global (empty session_id).
+	if evSessionID != "" && evSessionID != sessionID {
+		return
+	}
+
 	prefix := fmt.Sprintf("[ws] %s", eventType)
-	if sessionID != "" {
-		prefix += " @" + sessionID[:8]
+	if evSessionID != "" {
+		prefix += " @" + evSessionID[:8]
 	}
 
 	switch eventType {

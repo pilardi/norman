@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/gorilla/websocket"
 	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
@@ -43,6 +44,9 @@ type Model struct {
 	// WebSocket message channel for persistent event streaming.
 	wsMsg chan WSMessageEvent
 	// Buffered to prevent blocking on channel send (max 100 pending events).
+
+	// Current WebSocket connection reference, used to close and reconnect on session switch.
+	wsConn *websocket.Conn
 
 	// Provider name for LLM calls (from -p flag).
 	provider string
@@ -215,6 +219,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chatPanel.updateViewport()
 				return m, func() tea.Msg { return nil } // force re-render
 			}
+			if msg.Event == "session_switched" {
+				// Close old WS connection and open a new one with the updated session ID.
+				if m.wsConn != nil {
+					_ = m.wsConn.Close()
+				}
+				return m, startWebSocket(m)
+			}
 			m.handleWSMessage(msg)
 		}
 
@@ -240,11 +251,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleWSMessage(msg WSMessageEvent) {
 	switch msg.Event {
 	case "item_started":
-		m.events = append(m.events, EventItem{
-			Type:      "tool_call",
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "tool_call",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	case "turn_completed":
 		m.statusBar.SetConnection("Connected")
 	case "session_switched":
@@ -287,23 +300,29 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 	case "connection_error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
 	case "task_progress":
-		m.events = append(m.events, EventItem{
-			Type:      "progress",
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "progress",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	case "notification":
-		m.events = append(m.events, EventItem{
-			Type:      "notification",
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "notification",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	default:
-		m.events = append(m.events, EventItem{
-			Type:      msg.Event,
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      msg.Event,
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	}
 
 	// Extract RichOutput from event data if present (Phase 2).
@@ -322,6 +341,12 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		items[i] = e
 	}
 	m.eventPanel.SetItems(items)
+}
+
+// isSessionScoped returns true if the event should be displayed for the current session.
+// Events with an empty SessionID are global (e.g., emergent tasks) and always shown.
+func (m *Model) isSessionScoped(msg WSMessageEvent) bool {
+	return msg.SessionID == "" || msg.SessionID == m.sessionID
 }
 
 // extractRichOutput parses a data map into a *protocol.RichOutput if present.
