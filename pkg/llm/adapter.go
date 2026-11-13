@@ -61,6 +61,9 @@ func (a *ClientAdapter) Stream(ctx context.Context, req CompletionRequest) (Stre
 
 // ProviderInfo delegates to the wrapped LLM implementation.
 func (a *ClientAdapter) ProviderInfo() ProviderMetadata {
+	if a.llm == nil {
+		return ProviderMetadata{Name: "unknown", SupportsTools: false, SupportsStream: false}
+	}
 	return a.llm.ProviderInfo()
 }
 

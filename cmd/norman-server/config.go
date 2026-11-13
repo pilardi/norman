@@ -37,6 +37,7 @@ func (s *server) GetConfig(c echo.Context, params protocol.GetConfigParams) erro
 	cfgCopy := *s.cfg.System
 	cfgCopy.Logging = config.LoggingConfig{Verbose: false}
 	result["system"] = cfgCopy
+	result["llm_providers"] = s.cfg.System.LlmProviders
 	result["openshell"] = resolveGatewayAddress()
 	return c.JSON(http.StatusOK, result)
 }

@@ -166,6 +166,20 @@ type ClientInterface interface {
 	// Corresponds with POST /api/providers/models/query (the `QueryProviderModels` operationId).
 	QueryProviderModels(ctx context.Context, body QueryProviderModelsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// VerifyProviderConfigWithBody Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+	VerifyProviderConfigWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// VerifyProviderConfig Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+	VerifyProviderConfig(ctx context.Context, body VerifyProviderConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteProvider Remove a provider (cannot delete the last remaining one)
 	//
 	// Corresponds with DELETE /api/providers/{name} (the `DeleteProvider` operationId).
@@ -687,6 +701,40 @@ func (c *Client) QueryProviderModelsWithBody(ctx context.Context, contentType st
 // Corresponds with POST /api/providers/models/query (the `QueryProviderModels` operationId).
 func (c *Client) QueryProviderModels(ctx context.Context, body QueryProviderModelsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewQueryProviderModelsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyProviderConfigWithBody Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+func (c *Client) VerifyProviderConfigWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyProviderConfigRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyProviderConfig Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+func (c *Client) VerifyProviderConfig(ctx context.Context, body VerifyProviderConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyProviderConfigRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1854,6 +1902,46 @@ func NewQueryProviderModelsRequestWithBody(server string, contentType string, bo
 	}
 
 	operationPath := fmt.Sprintf("/api/providers/models/query")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewVerifyProviderConfigRequest calls the generic VerifyProviderConfig builder with application/json body
+func NewVerifyProviderConfigRequest(server string, body VerifyProviderConfigJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewVerifyProviderConfigRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewVerifyProviderConfigRequestWithBody constructs an http.Request for the VerifyProviderConfig method, with any body, and a specified content type
+func NewVerifyProviderConfigRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/providers/verify")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3532,6 +3620,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/providers/models/query (the `QueryProviderModels` operationId).
 	QueryProviderModelsWithResponse(ctx context.Context, body QueryProviderModelsJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryProviderModelsResponse, error)
 
+	// VerifyProviderConfigWithBodyWithResponse Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+	VerifyProviderConfigWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*VerifyProviderConfigResponse, error)
+
+	// VerifyProviderConfigWithResponse Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+	VerifyProviderConfigWithResponse(ctx context.Context, body VerifyProviderConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyProviderConfigResponse, error)
+
 	// DeleteProviderWithResponse Remove a provider (cannot delete the last remaining one)
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4241,6 +4343,47 @@ func (r QueryProviderModelsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r QueryProviderModelsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type VerifyProviderConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VerifyResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r VerifyProviderConfigResponse) GetJSON200() *VerifyResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r VerifyProviderConfigResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyProviderConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyProviderConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VerifyProviderConfigResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5937,6 +6080,32 @@ func (c *ClientWithResponses) QueryProviderModelsWithResponse(ctx context.Contex
 	return ParseQueryProviderModelsResponse(rsp)
 }
 
+// VerifyProviderConfigWithBodyWithResponse Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+func (c *ClientWithResponses) VerifyProviderConfigWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*VerifyProviderConfigResponse, error) {
+	rsp, err := c.VerifyProviderConfigWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyProviderConfigResponse(rsp)
+}
+
+// VerifyProviderConfigWithResponse Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/providers/verify (the `VerifyProviderConfig` operationId).
+func (c *ClientWithResponses) VerifyProviderConfigWithResponse(ctx context.Context, body VerifyProviderConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyProviderConfigResponse, error) {
+	rsp, err := c.VerifyProviderConfig(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyProviderConfigResponse(rsp)
+}
+
 // DeleteProviderWithResponse Remove a provider (cannot delete the last remaining one)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6835,6 +7004,38 @@ func ParseQueryProviderModelsResponse(rsp *http.Response) (*QueryProviderModelsR
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AvailableModelsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 400:
+		break // No content-type
+
+	case rsp.StatusCode == 500:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseVerifyProviderConfigResponse parses an HTTP response from a VerifyProviderConfigWithResponse call
+func ParseVerifyProviderConfigResponse(rsp *http.Response) (*VerifyProviderConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyProviderConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VerifyResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

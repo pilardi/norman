@@ -971,6 +971,29 @@ paths:
         "500":
           description: Failed to query provider's model list endpoint
 
+  /api/providers/verify:
+    post:
+      tags: [provider]
+      summary: Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+      operationId: verifyProviderConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderConfig"
+      responses:
+        "200":
+          description: Verification result (model list + completion test)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        "400":
+          description: Invalid request (e.g., missing required fields)
+        "500":
+          description: Failed to verify provider configuration
+
   /api/providers/{name}/verify:
     post:
       tags: [provider]

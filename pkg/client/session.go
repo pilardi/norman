@@ -8,30 +8,19 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/protocol"
 )
 
 // CreateNewSession creates a new session for the given workspace and returns its ID.
 // Returns the session ID and an optional error message on failure.
 func CreateNewSession(workspaceName string) (string, error) {
-	cfg, err := config.LoadDefault()
-	var url string
-	if err != nil || cfg == nil || cfg.System == nil {
-		url = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		url = cfg.System.ServerURL
-	} else {
-		url = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClient(url)
+	c, err := GetProtocolClient()
 	if err != nil {
 		return "", fmt.Errorf("failed to create client: %w", err)
 	}
 
 	// Resolve workspace name to ID.
-	wsRsp, err := client.ListWorkspaces(context.Background(), nil)
+	wsRsp, err := c.ListWorkspaces(context.Background(), nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to list workspaces: %w", err)
 	}
@@ -58,7 +47,7 @@ func CreateNewSession(workspaceName string) (string, error) {
 		ClientType:  &ct,
 	}
 
-	sessRsp, err := client.CreateSession(context.Background(), body)
+	sessRsp, err := c.CreateSession(context.Background(), body)
 	if err != nil {
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
@@ -90,24 +79,14 @@ func strVal(s *string) string {
 
 // GetSession fetches session detail by ID. Returns (*protocol.SessionDetail, error).
 func GetSession(sessionID string) (*protocol.SessionDetail, error) {
-	cfg, err := config.LoadDefault()
-	var urlStr string
-	if err != nil || cfg == nil || cfg.System == nil {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		urlStr = cfg.System.ServerURL
-	} else {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClientWithResponses(urlStr)
+	c, err := protocol.NewClientWithResponses(ServerURL())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
 	// Escape the session ID for use in URL path.
 	escapedID := url.PathEscape(sessionID)
-	rsp, err := client.GetSessionWithResponse(context.Background(), escapedID)
+	rsp, err := c.GetSessionWithResponse(context.Background(), escapedID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch session: %w", err)
 	}
@@ -126,22 +105,12 @@ func GetSession(sessionID string) (*protocol.SessionDetail, error) {
 
 // GetVersion returns the server version info. Returns (*protocol.ServerVersion, error).
 func GetVersion() (*protocol.ServerVersion, error) {
-	cfg, err := config.LoadDefault()
-	var urlStr string
-	if err != nil || cfg == nil || cfg.System == nil {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		urlStr = cfg.System.ServerURL
-	} else {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClientWithResponses(urlStr)
+	c, err := protocol.NewClientWithResponses(ServerURL())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	rsp, err := client.GetVersionWithResponse(context.Background())
+	rsp, err := c.GetVersionWithResponse(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch version: %w", err)
 	}
@@ -156,100 +125,61 @@ func GetVersion() (*protocol.ServerVersion, error) {
 
 // ListWorkspaces returns a raw HTTP response with the list of workspaces.
 func ListWorkspaces(ctx context.Context, params *protocol.ListWorkspacesParams) (*http.Response, error) {
-	cfg, err := config.LoadDefault()
-	var urlStr string
-	if err != nil || cfg == nil || cfg.System == nil {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		urlStr = cfg.System.ServerURL
-	} else {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClient(urlStr)
+	c, err := GetProtocolClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return client.ListWorkspaces(ctx, params)
+	return c.ListWorkspaces(ctx, params)
 }
 
 // QueryProviderModels queries available models for a provider type/endpoint.
 func QueryProviderModels(ctx context.Context, body protocol.QueryProviderModelsJSONRequestBody) (*http.Response, error) {
-	cfg, err := config.LoadDefault()
-	var urlStr string
-	if err != nil || cfg == nil || cfg.System == nil {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		urlStr = cfg.System.ServerURL
-	} else {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClient(urlStr)
+	c, err := GetProtocolClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return client.QueryProviderModels(ctx, body)
+	return c.QueryProviderModels(ctx, body)
 }
 
 // CreateProvider creates a new provider. Returns the raw HTTP response.
 func CreateProvider(ctx context.Context, body protocol.CreateProviderJSONRequestBody) (*http.Response, error) {
-	cfg, err := config.LoadDefault()
-	var urlStr string
-	if err != nil || cfg == nil || cfg.System == nil {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		urlStr = cfg.System.ServerURL
-	} else {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClient(urlStr)
+	c, err := GetProtocolClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return client.CreateProvider(ctx, body)
+	return c.CreateProvider(ctx, body)
 }
 
 // UpdateProvider updates an existing provider. Returns the raw HTTP response.
 func UpdateProvider(ctx context.Context, name string, body protocol.UpdateProviderJSONRequestBody) (*http.Response, error) {
-	cfg, err := config.LoadDefault()
-	var urlStr string
-	if err != nil || cfg == nil || cfg.System == nil {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		urlStr = cfg.System.ServerURL
-	} else {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClient(urlStr)
+	c, err := GetProtocolClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return client.UpdateProvider(ctx, name, body)
+	return c.UpdateProvider(ctx, name, body)
 }
 
 // ConnectWebSocket connects to the WebSocket endpoint for a session. Returns the raw HTTP response.
 func ConnectWebSocket(ctx context.Context, params *protocol.ConnectWebSocketParams) (*http.Response, error) {
-	cfg, err := config.LoadDefault()
-	var urlStr string
-	if err != nil || cfg == nil || cfg.System == nil {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	} else if cfg.System.ServerURL != "" {
-		urlStr = cfg.System.ServerURL
-	} else {
-		urlStr = fmt.Sprintf("http://%s:%d", config.EmbeddedDefaults().System.Host, config.EmbeddedDefaults().System.ServerPort)
-	}
-
-	client, err := protocol.NewClient(urlStr)
+	c, err := GetProtocolClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return client.ConnectWebSocket(ctx, params)
+	return c.ConnectWebSocket(ctx, params)
+}
+
+// VerifyProviderConfig verifies a proposed provider configuration by calling the server's
+// /api/providers/verify endpoint. Returns the raw HTTP response.
+func VerifyProviderConfig(ctx context.Context, body protocol.ProviderConfig) (*http.Response, error) {
+	c, err := GetProtocolClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return c.VerifyProviderConfig(ctx, body)
 }

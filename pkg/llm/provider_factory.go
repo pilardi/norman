@@ -12,22 +12,20 @@ import (
 )
 
 // NewProviderFromConfig creates an LLM client adapter from system configuration.
-// It resolves the provider name using this priority: CLI-selected > default_provider > first configured provider.
-// Returns nil if no providers are configured (no-op client).
+// It resolves the provider name using this priority: CLI-selected > default_provider.
+// Returns an error if no provider is explicitly selected or no default_provider is configured.
 // The resolved provider name is returned for diagnostics; empty string means no provider.
 func NewProviderFromConfig(sysCfg *config.SystemConfig, selectedProvider string) (*ClientAdapter, string, error) {
-	// Resolve selected provider: CLI flag > configured default_provider > first in list.
+	// Resolve selected provider: CLI flag > configured default_provider.
 	var providerName string
 	if selectedProvider != "" {
 		providerName = selectedProvider
 	} else if sysCfg.DefaultProvider != "" {
 		providerName = sysCfg.DefaultProvider
-	} else if len(sysCfg.LlmProviders) > 0 {
-		providerName = sysCfg.LlmProviders[0].Name
 	}
 
 	if providerName == "" {
-		return nil, "", nil // no providers configured
+		return nil, "", fmt.Errorf("no provider configured: neither default_provider nor CLI-selected provider is set (configured providers: %d)", len(sysCfg.LlmProviders))
 	}
 
 	provCfg, err := sysCfg.ResolveProvider(providerName)

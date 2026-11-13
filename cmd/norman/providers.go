@@ -11,7 +11,6 @@ import (
 
 	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/config"
-	"github.com/norman/norman/pkg/llm"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/urfave/cli/v3"
 )
@@ -857,32 +856,127 @@ func printprovidersSummaryTyped(p *protocol.ProviderResponse) {
 	}
 }
 
-// verifyConfig builds a client from the given ProviderConfig and tests
-// both model-list connectivity and a quick completion call. Returns nil on success.
+// verifyConfig tests a proposed provider configuration by calling the server's
+// /api/providers/verify endpoint (which handles all LLM interactions internally).
 func verifyConfig(ctx context.Context, provCfg *config.ProviderConfig) error {
-	// Step 1: model list connectivity test
-	models, err := llm.QueryProviderModels(provCfg)
-	if err != nil {
-		return fmt.Errorf("model list failed — %w", err)
+	// Build the protocol.ProviderConfig request body.
+	cfg := protocol.ProviderConfig{
+		Name:     provCfg.Name,
+		Type:     protocol.ProviderConfigType(provCfg.Type),
+		Endpoint: provCfg.Endpoint,
+	}
+	if provCfg.Model != "" {
+		cfg.Model = strPtr(provCfg.Model)
+	}
+	if provCfg.Temperature > 0 {
+		v := float32(provCfg.Temperature)
+		cfg.Temperature = &v
+	}
+	if provCfg.MaxTokens > 0 {
+		cfg.MaxTokens = &provCfg.MaxTokens
+	}
+	if provCfg.ApiKey != "" {
+		cfg.ApiKey = &provCfg.ApiKey
+	}
+	if len(provCfg.Extra) > 0 {
+		extra := make(map[string]interface{})
+		for k, v := range provCfg.Extra {
+			extra[k] = v
+		}
+		cfg.Extra = &extra
 	}
 
-	// Step 2: quick completion test
-	llmClient := llm.NewClientWithProvider(provCfg)
-	resp, err := llmClient.Complete(ctx, llm.CompletionRequest{
-		Messages:    []llm.Message{{Role: "user", Content: "Say OK"}},
-		Temperature: 0.1,
-		MaxTokens:   5,
-	})
+	resp, err := client.VerifyProviderConfig(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("completion failed — %w", err)
-	}
-	if len(resp.Choices) == 0 {
-		return fmt.Errorf("completion returned no choices")
+		return fmt.Errorf("verification request failed — %w", err)
 	}
 
-	fmt.Printf("  [✓] Model list:   %d models found\n", len(models))
-	fmt.Printf("  [✓] Completion:   OK (%d tokens)\n", resp.Usage.TotalTokens)
+	parsed, err := protocol.ParseVerifyProviderConfigResponse(resp)
+	if err != nil {
+		return fmt.Errorf("failed to parse verification response: %w", err)
+	}
+
+	result := parsed.GetJSON200()
+	if result == nil || result.Details == nil {
+		errMsg := strings.TrimSpace(string(parsed.Body))
+		if errMsg != "" {
+			return fmt.Errorf("verification failed — %s", errMsg)
+		}
+		return fmt.Errorf("verification returned no result")
+	}
+
+	details := result.Details
+
+	// Print verification results.
+	fmt.Printf("  [✓] Model list:   ")
+	if details.ModelListStatus != nil {
+		switch *details.ModelListStatus {
+		case "success":
+			modelCount := 0
+			if details.ModelCount != nil {
+				modelCount = *details.ModelCount
+			}
+			fmt.Printf("%d models found\n", modelCount)
+		case "failure":
+			if details.ModelListError != nil {
+				fmt.Printf("failed — %s\n", *details.ModelListError)
+			} else {
+				fmt.Println("failed")
+			}
+		default:
+			fmt.Println("skipped")
+		}
+	} else {
+		fmt.Println("skipped")
+	}
+
+	if details.CompletionStatus != nil {
+		switch *details.CompletionStatus {
+		case "success":
+			tokens := 0
+			if details.TokensUsed != nil {
+				tokens = *details.TokensUsed
+			}
+			fmt.Printf("  [✓] Completion:   OK (%d tokens)\n", tokens)
+		case "failure":
+			if details.CompletionError != nil {
+				fmt.Printf("  [✗] Completion:   failed — %s\n", *details.CompletionError)
+			} else {
+				fmt.Println("  [✗] Completion:   failed")
+			}
+		default:
+			fmt.Println("  [ ] Completion:   skipped")
+		}
+	}
+
+	// Check overall status.
+	if result.Status != nil && *result.Status == "failed" {
+		return fmt.Errorf("provider verification failed — %s", getVerificationError(details))
+	}
+
 	return nil
+}
+
+func getVerificationError(d *protocol.VerifyResult) string {
+	var parts []string
+	if d.ModelListStatus != nil && *d.ModelListStatus == "failure" {
+		if d.ModelListError != nil {
+			parts = append(parts, "model list: "+*d.ModelListError)
+		} else {
+			parts = append(parts, "model list: failed")
+		}
+	}
+	if d.CompletionStatus != nil && *d.CompletionStatus == "failure" {
+		if d.CompletionError != nil {
+			parts = append(parts, "completion: "+*d.CompletionError)
+		} else {
+			parts = append(parts, "completion: failed")
+		}
+	}
+	if len(parts) == 0 {
+		return "unknown error"
+	}
+	return strings.Join(parts, "; ")
 }
 
 // handleProvidersVerify tests a provider's connectivity and runs a quick completion test.

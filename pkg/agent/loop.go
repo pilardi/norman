@@ -665,6 +665,11 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 		provider = l.llmClient
 	}
 
+	// Fail early if no provider is available.
+	if provider == nil {
+		return nil, fmt.Errorf("no LLM provider configured; cannot execute task")
+	}
+
 	// Multi-turn loop: max l.config.System.MaxTurns iterations to prevent infinite loops.
 	// task.Output accumulates both text responses and tool call results.
 	var fullOutput strings.Builder

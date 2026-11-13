@@ -343,16 +343,14 @@ func (c *Config) MergeWorkspaceConfig(workspaceID string, ws *WorkspaceConfig) *
 	result := DefaultWorkspaceConfig()
 
 	// Use the default provider (if set) as the system-level default source.
-	// Falls back to the first configured provider if no default is specified.
+	// No implicit fallback to first provider — if no default_provider is configured,
+	// workspace defaults remain empty (empty model/zero temp signals "use system defaults").
 	var selected *ProviderConfig
 	if c.System.DefaultProvider != "" {
 		pc, err := c.System.ResolveProvider(c.System.DefaultProvider)
 		if err == nil {
 			selected = pc
 		}
-	}
-	if selected == nil && len(c.System.LlmProviders) > 0 {
-		selected = &c.System.LlmProviders[0]
 	}
 	if selected != nil {
 		if result.Model == "" {
