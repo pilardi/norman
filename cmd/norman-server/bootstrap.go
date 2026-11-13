@@ -37,12 +37,14 @@ func bootstrap(verbose bool, selectedProvider string) *server {
 	}
 
 	// Create LLM client — provider resolution is handled internally by the factory.
+	// If no default_provider is set and no CLI flag selects one, fall back to the first
+	// configured provider (from embedded defaults) with a warning rather than failing.
 	llmClient, providerName, err := llm.NewProviderFromConfig(cfg.System, selectedProvider)
 	if err != nil {
-		log.Fatalf("failed to create LLM client: %v", err)
-	}
-	if llmClient == nil {
-		// No providers configured; fall back to a default OpenAI-compatible client.
+		log.Printf("warning: %v; falling back to default OpenAI-compatible client", err)
+		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
+	} else if llmClient == nil {
+		// No providers configured at all; fall back to a default OpenAI-compatible client.
 		llmClient = llm.NewClientAdapter(llm.NewClient(cfg.System))
 	}
 

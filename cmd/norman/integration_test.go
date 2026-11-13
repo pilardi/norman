@@ -112,7 +112,7 @@ func TestClientServerCommunication(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
 	t.Logf("Starting server with OPENSHELL_GATEWAY_ADDRESS=%s", mockGatewayAddr)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start server: %v", err)
@@ -205,7 +205,7 @@ func TestCLIConfigJSON(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin, "config", "--json")
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("norman config --json: %v\n%s", err, string(out))
@@ -240,7 +240,7 @@ func TestCLIPlaintextConfig(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin, "config")
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("norman config: %v\n%s", err, string(out))
@@ -275,7 +275,12 @@ func ensureServer(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr)
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
+
+	// Capture server stderr for debugging
+	serverStderr, _ := os.OpenFile("/tmp/norman-server-test.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	cmd.Stderr = serverStderr
+
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start server: %v", err)
 	}
@@ -496,7 +501,22 @@ func TestPhase4SessionCleanup(t *testing.T) {
 		if err != nil {
 			t.Fatalf("POST /api/sessions/%s/messages (turn %d): %v", sessionID, i+1, err)
 		}
+
+		// Read response body to see error details
+		bodyBytes, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		t.Logf("  DEBUG: POST /api/sessions/%s/messages returned HTTP %d, body: %s", sessionID, resp.StatusCode, string(bodyBytes))
+
+		// Parse body to get error message
+		var errResp map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
+			if msg, ok := errResp["message"].(string); ok {
+				t.Logf("  DEBUG: Error message: %s", msg)
+			}
+			if errMsg, ok := errResp["error"].(string); ok {
+				t.Logf("  DEBUG: Error field: %s", errMsg)
+			}
+		}
 
 		// Small delay to allow server-side persistence.
 		time.Sleep(200 * time.Millisecond)
@@ -512,6 +532,11 @@ func TestPhase4SessionCleanup(t *testing.T) {
 	var turns []map[string]interface{}
 	if err := json.NewDecoder(historyResp.Body).Decode(&turns); err != nil {
 		t.Fatalf("decode history response: %v", err)
+	}
+
+	t.Logf("History API returned %d turns for session %s", len(turns), sessionID)
+	for i, turn := range turns {
+		t.Logf("  turn[%d]: role=%v content_len=%d", i, turn["role"], len(turn["content"].(string)))
 	}
 
 	if len(turns) < 2 {

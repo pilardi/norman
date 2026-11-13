@@ -847,8 +847,16 @@ paths:
                 $ref: "#/components/schemas/ProviderResponse"
         "400":
           description: Invalid request (e.g., duplicate name, missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "409":
           description: Provider with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/providers/{name}:
     get:
@@ -962,6 +970,29 @@ paths:
           description: Invalid request (e.g., missing type or endpoint)
         "500":
           description: Failed to query provider's model list endpoint
+
+  /api/providers/verify:
+    post:
+      tags: [provider]
+      summary: Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+      operationId: verifyProviderConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderConfig"
+      responses:
+        "200":
+          description: Verification result (model list + completion test)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        "400":
+          description: Invalid request (e.g., missing required fields)
+        "500":
+          description: Failed to verify provider configuration
 
   /api/providers/{name}/verify:
     post:
@@ -1848,6 +1879,15 @@ components:
           type: object
           additionalProperties: true
           description: Type-specific fields (e.g., cache_size for llamacpp)
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+      example:
+        error: "model is required"
 
     ProviderCreateRequest:
       type: object

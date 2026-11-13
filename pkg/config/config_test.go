@@ -396,25 +396,41 @@ func TestWorkspaceConfigDefaults(t *testing.T) {
 
 	merged := cfg.MergeWorkspaceConfig("empty-ws", ws)
 
-	if merged.Model != "unsloth/Qwen3.8-27B-GGUF:IQ3_S" {
-		t.Errorf("expected model to fall back to provider default 'unsloth/Qwen3.8-27B-GGUF:IQ3_S', got %q", merged.Model)
+	// Without a default_provider set, workspace defaults remain empty (no silent fallback to first provider).
+	if merged.Model != "" {
+		t.Errorf("expected empty model when no default_provider is set, got %q", merged.Model)
 	}
-	if merged.Temperature != 0.7 {
-		t.Errorf("expected temperature to fall back to 0.7, got %.2f", merged.Temperature)
+	if merged.Temperature != 0.0 {
+		t.Errorf("expected zero temperature when no default_provider is set, got %.2f", merged.Temperature)
 	}
 }
 
 func TestMergeWorkspaceConfigNil(t *testing.T) {
 	cfg := DefaultConfig()
 
-	// Passing nil should not panic and should return defaults.
+	// Passing nil should not panic and should return defaults (empty model/zero temp without default_provider).
 	merged := cfg.MergeWorkspaceConfig("nil-ws", nil)
 
+	if merged.Model != "" {
+		t.Errorf("expected empty model when no default_provider is set, got %q", merged.Model)
+	}
+	if merged.Temperature != 0.0 {
+		t.Errorf("expected zero temperature when no default_provider is set, got %.2f", merged.Temperature)
+	}
+}
+
+func TestMergeWorkspaceConfigWithDefaultProvider(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.System.DefaultProvider = "local-llamacpp"
+	ws := &WorkspaceConfig{}
+
+	merged := cfg.MergeWorkspaceConfig("test-ws", ws)
+
 	if merged.Model != "unsloth/Qwen3.8-27B-GGUF:IQ3_S" {
-		t.Errorf("expected model to fall back to provider default 'unsloth/Qwen3.8-27B-GGUF:IQ3_S', got %q", merged.Model)
+		t.Errorf("expected model to use default_provider's value 'unsloth/Qwen3.8-27B-GGUF:IQ3_S', got %q", merged.Model)
 	}
 	if merged.Temperature != 0.7 {
-		t.Errorf("expected temperature to fall back to 0.7, got %.2f", merged.Temperature)
+		t.Errorf("expected temperature to use default_provider's value 0.7, got %.2f", merged.Temperature)
 	}
 }
 

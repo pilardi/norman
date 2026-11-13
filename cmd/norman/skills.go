@@ -4,18 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/urfave/cli/v3"
 )
 
 // listSkills fetches installed skills from the server and displays provenance.
 func listSkills(ctx context.Context, cmd *cli.Command) error {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
 
-	rsp, err := client.ListSkills(ctx)
+	rsp, err := c.ListSkills(ctx)
 	if err != nil {
 		return fmt.Errorf("error fetching skills: %v", err)
 	}
@@ -33,9 +34,9 @@ func listSkills(ctx context.Context, cmd *cli.Command) error {
 
 	fmt.Printf("Discovered %d skill(s):\n\n", len(*skills))
 	for _, s := range *skills {
-		name := strVal(s.Name)
-		desc := strVal(s.Description)
-		version := strVal(s.Version)
+		name := client.StrVal(s.Name)
+		desc := client.StrVal(s.Description)
+		version := client.StrVal(s.Version)
 
 		fmt.Printf("  📦 %s\n", name)
 		if desc != "" {
@@ -44,7 +45,7 @@ func listSkills(ctx context.Context, cmd *cli.Command) error {
 		if s.Tools != nil && len(*s.Tools) > 0 {
 			toolNames := make([]string, len(*s.Tools))
 			for i, t := range *s.Tools {
-				toolNames[i] = strVal(t.Name)
+				toolNames[i] = client.StrVal(t.Name)
 			}
 			fmt.Printf("     Tools: %s\n", joinStrings(toolNames, ", "))
 		}
@@ -58,7 +59,7 @@ func listSkills(ctx context.Context, cmd *cli.Command) error {
 
 // installSkill delegates to the server's /api/skills/install endpoint.
 func installSkill(ctx context.Context, sourcePath string) error {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -67,7 +68,7 @@ func installSkill(ctx context.Context, sourcePath string) error {
 		Repo: sourcePath,
 	}
 
-	rsp, err := client.InstallSkill(ctx, body)
+	rsp, err := c.InstallSkill(ctx, body)
 	if err != nil {
 		return fmt.Errorf("error installing skill: %v", err)
 	}
@@ -83,7 +84,7 @@ func installSkill(ctx context.Context, sourcePath string) error {
 
 // installRemote installs a skill from a git repository URL.
 func installRemote(ctx context.Context, repoURL string) error {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
@@ -92,7 +93,7 @@ func installRemote(ctx context.Context, repoURL string) error {
 		Repo: repoURL,
 	}
 
-	rsp, err := client.InstallSkill(ctx, body)
+	rsp, err := c.InstallSkill(ctx, body)
 	if err != nil {
 		return fmt.Errorf("error installing skill: %v", err)
 	}
@@ -108,12 +109,12 @@ func installRemote(ctx context.Context, repoURL string) error {
 
 // removeSkill delegates to the server's /api/skills/:name endpoint.
 func removeSkill(ctx context.Context, name string) error {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
 
-	rsp, err := client.RemoveSkill(ctx, name)
+	rsp, err := c.RemoveSkill(ctx, name)
 	if err != nil {
 		return fmt.Errorf("error removing skill: %v", err)
 	}

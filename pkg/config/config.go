@@ -342,17 +342,25 @@ func (c *Config) Validate() error {
 func (c *Config) MergeWorkspaceConfig(workspaceID string, ws *WorkspaceConfig) *WorkspaceConfig {
 	result := DefaultWorkspaceConfig()
 
-	// Use the first configured provider as the system-level default source.
-	if len(c.System.LlmProviders) > 0 {
-		first := c.System.LlmProviders[0]
+	// Use the default provider (if set) as the system-level default source.
+	// No implicit fallback to first provider — if no default_provider is configured,
+	// workspace defaults remain empty (empty model/zero temp signals "use system defaults").
+	var selected *ProviderConfig
+	if c.System.DefaultProvider != "" {
+		pc, err := c.System.ResolveProvider(c.System.DefaultProvider)
+		if err == nil {
+			selected = pc
+		}
+	}
+	if selected != nil {
 		if result.Model == "" {
-			result.Model = first.Model
+			result.Model = selected.Model
 		}
-		if result.Temperature == 0 && first.Temperature > 0 {
-			result.Temperature = first.Temperature
+		if result.Temperature == 0 && selected.Temperature > 0 {
+			result.Temperature = selected.Temperature
 		}
-		if result.MaxTokens == 0 && first.MaxTokens > 0 {
-			result.MaxTokens = first.MaxTokens
+		if result.MaxTokens == 0 && selected.MaxTokens > 0 {
+			result.MaxTokens = selected.MaxTokens
 		}
 	}
 
