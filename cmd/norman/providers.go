@@ -89,7 +89,7 @@ func handleProvidersAdd(ctx context.Context, cmd *cli.Command) error {
 		cmd.Args().Get(1) == ""
 
 	if noFlags {
-		return handleProvidersAddInteractive(ctx)
+		return handleProvidersAddInteractive(ctx, name)
 	}
 
 	req := protocol.ProviderCreateRequest{
@@ -418,18 +418,24 @@ func handleProvidersListModels(ctx context.Context, cmd *cli.Command) error {
 }
 
 // handleProvidersAddInteractive runs an interactive prompt-based workflow for adding a provider.
-func handleProvidersAddInteractive(ctx context.Context) error {
+// The `name` parameter is the pre-parsed CLI positional argument; if empty, prompt interactively.
+func handleProvidersAddInteractive(ctx context.Context, name string) error {
 	scanner := bufio.NewScanner(os.Stdin)
+
 	prompt := func(label string) string {
 		fmt.Printf("%s: ", label)
 		scanner.Scan()
 		return strings.TrimSpace(scanner.Text())
 	}
 
-	name := prompt("Provider name")
 	if name == "" {
-		fmt.Fprintln(os.Stderr, "Error: provider name is required")
-		os.Exit(1)
+		name = prompt("Provider name")
+		if name == "" {
+			fmt.Fprintln(os.Stderr, "Error: provider name is required")
+			os.Exit(1)
+		}
+	} else {
+		fmt.Printf("Using pre-supplied provider name: %s\n", name)
 	}
 
 	fmt.Printf("Valid types: %s\n", strings.Join(validProviderTypes, ", "))
