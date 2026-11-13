@@ -43,10 +43,13 @@ type Model struct {
 	// WebSocket message channel for persistent event streaming.
 	wsMsg chan WSMessageEvent
 	// Buffered to prevent blocking on channel send (max 100 pending events).
+
+	// Provider name for LLM calls (from -p flag).
+	provider string
 }
 
 // NewModel creates a new application model with default settings.
-func NewModel(workspaceName string) *Model {
+func NewModel(workspaceName string, provider string) *Model {
 	spinnerModel := spinner.New()
 	spinnerModel.Spinner = spinner.Dot
 
@@ -58,6 +61,7 @@ func NewModel(workspaceName string) *Model {
 		connectionState:  "● Connecting...",
 		initialWorkspace: workspaceName,
 		wsMsg:            make(chan WSMessageEvent, 100),
+		provider:         provider,
 	}
 }
 

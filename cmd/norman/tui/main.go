@@ -16,9 +16,9 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
-// Main launches the TUI application with the given workspace and optional session ID.
-func Main(workspaceName, sessionID string) {
-	model := NewModel(workspaceName)
+// Main launches the TUI application with the given workspace, optional session ID, and provider.
+func Main(workspaceName, sessionID string, provider string) {
+	model := NewModel(workspaceName, provider)
 	if sessionID != "" {
 		model.sessionID = sessionID
 	}

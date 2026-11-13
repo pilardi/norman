@@ -116,7 +116,8 @@ func sendChatMessage(model *Model, sessionID, message string) {
 	}
 
 	body := protocol.SendMessageRequest{
-		Message: message,
+		Message:  message,
+		Provider: client.StrPtr(model.provider),
 	}
 
 	msgRsp, err := c.SendMessage(context.Background(), sessionID, body)

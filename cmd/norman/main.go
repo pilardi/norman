@@ -386,7 +386,7 @@ Examples:
 							mode := cmd.String("mode")
 							if mode == "" || mode == "auto" {
 								if term.IsTerminal(int(os.Stdout.Fd())) {
-									tui.Main(workspaceName, sessionID)
+									tui.Main(workspaceName, sessionID, selectedProvider)
 									return nil
 								}
 								handleChat(args)
@@ -395,7 +395,7 @@ Examples:
 
 							switch strings.ToLower(mode) {
 							case "tui":
-								tui.Main(workspaceName, sessionID)
+								tui.Main(workspaceName, sessionID, selectedProvider)
 								return nil
 							case "repl":
 								handleChat(args)
