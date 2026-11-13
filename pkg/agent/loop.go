@@ -16,6 +16,7 @@ import (
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/env"
 	"github.com/norman/norman/pkg/llm"
+	"github.com/norman/norman/pkg/llm/api"
 	"github.com/norman/norman/pkg/mcp"
 	"github.com/norman/norman/pkg/memory"
 	"github.com/norman/norman/pkg/notify"
@@ -1063,7 +1064,7 @@ func (l *Loop) buildTools() []llm.Tool {
 	tools = append(tools, llm.Tool{
 		Name:        "bash",
 		Description: "Execute a shell command inside the workspace environment. Returns combined stdout/stderr output.",
-		Parameters: map[string]interface{}{
+		Parameters: makeSchema(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"command": map[string]interface{}{
@@ -1072,13 +1073,13 @@ func (l *Loop) buildTools() []llm.Tool {
 				},
 			},
 			"required": []string{"command"},
-		},
+		}),
 	})
 
 	tools = append(tools, llm.Tool{
 		Name:        "read_file",
 		Description: "Read the contents of a file inside the workspace environment. Returns the file content as a string.",
-		Parameters: map[string]interface{}{
+		Parameters: makeSchema(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"path": map[string]interface{}{
@@ -1087,13 +1088,13 @@ func (l *Loop) buildTools() []llm.Tool {
 				},
 			},
 			"required": []string{"path"},
-		},
+		}),
 	})
 
 	tools = append(tools, llm.Tool{
 		Name:        "write_file",
 		Description: "Write content to a file inside the workspace environment. Creates parent directories if needed.",
-		Parameters: map[string]interface{}{
+		Parameters: makeSchema(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"path": map[string]interface{}{
@@ -1106,14 +1107,14 @@ func (l *Loop) buildTools() []llm.Tool {
 				},
 			},
 			"required": []string{"path", "content"},
-		},
+		}),
 	})
 
 	// Read-only in-workspace filesystem tools.
 	tools = append(tools, llm.Tool{
 		Name:        "list_dir",
 		Description: "List the contents of a directory inside the workspace environment. Returns a detailed listing (equivalent to 'ls -la').",
-		Parameters: map[string]interface{}{
+		Parameters: makeSchema(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"path": map[string]interface{}{
@@ -1122,13 +1123,13 @@ func (l *Loop) buildTools() []llm.Tool {
 				},
 			},
 			"required": []string{"path"},
-		},
+		}),
 	})
 
 	tools = append(tools, llm.Tool{
 		Name:        "find_files",
 		Description: "Search for files matching a pattern inside the workspace environment. Returns matched file paths.",
-		Parameters: map[string]interface{}{
+		Parameters: makeSchema(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"pattern": map[string]interface{}{
@@ -1137,7 +1138,7 @@ func (l *Loop) buildTools() []llm.Tool {
 				},
 			},
 			"required": []string{"pattern"},
-		},
+		}),
 	})
 
 	// Always-available host-interaction tools (bidirectional user communication).
@@ -1145,7 +1146,7 @@ func (l *Loop) buildTools() []llm.Tool {
 		tools = append(tools, llm.Tool{
 			Name:        "ask_user",
 			Description: "Ask the connected user a question and wait for their typed response. Returns the user's answer as a string.",
-			Parameters: map[string]interface{}{
+			Parameters: makeSchema(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"question": map[string]interface{}{
@@ -1154,13 +1155,13 @@ func (l *Loop) buildTools() []llm.Tool {
 					},
 				},
 				"required": []string{"question"},
-			},
+			}),
 		})
 
 		tools = append(tools, llm.Tool{
 			Name:        "notify",
 			Description: "Send a notification to the connected user via WebSocket/bell/Slack. Returns immediately.",
-			Parameters: map[string]interface{}{
+			Parameters: makeSchema(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"title": map[string]interface{}{
@@ -1173,7 +1174,7 @@ func (l *Loop) buildTools() []llm.Tool {
 					},
 				},
 				"required": []string{"title", "body"},
-			},
+			}),
 		})
 	}
 
@@ -1182,7 +1183,7 @@ func (l *Loop) buildTools() []llm.Tool {
 		tools = append(tools, llm.Tool{
 			Name:        "request_permission",
 			Description: "Ask the connected user to approve or deny a potentially destructive action. Returns 'approved' or 'denied'.",
-			Parameters: map[string]interface{}{
+			Parameters: makeSchema(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"description": map[string]interface{}{
@@ -1195,7 +1196,7 @@ func (l *Loop) buildTools() []llm.Tool {
 					},
 				},
 				"required": []string{"description"},
-			},
+			}),
 		})
 	}
 
@@ -1204,7 +1205,7 @@ func (l *Loop) buildTools() []llm.Tool {
 		tools = append(tools, llm.Tool{
 			Name:        "mcp_list_tools",
 			Description: "List available tools from the connected MCP server. Returns a list of tool definitions with their names and schemas.",
-			Parameters: map[string]interface{}{
+			Parameters: makeSchema(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"endpoint": map[string]interface{}{
@@ -1212,13 +1213,13 @@ func (l *Loop) buildTools() []llm.Tool {
 						"description": "Optional MCP endpoint URL to query (if nil, uses the default configured endpoint)",
 					},
 				},
-			},
+			}),
 		})
 
 		tools = append(tools, llm.Tool{
 			Name:        "mcp_call",
 			Description: "Invoke a tool on the connected MCP server by name with typed arguments. Returns the tool's result.",
-			Parameters: map[string]interface{}{
+			Parameters: makeSchema(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name": map[string]interface{}{
@@ -1231,7 +1232,7 @@ func (l *Loop) buildTools() []llm.Tool {
 					},
 				},
 				"required": []string{"name"},
-			},
+			}),
 		})
 	}
 
@@ -1248,26 +1249,19 @@ func (l *Loop) buildTools() []llm.Tool {
 		// If the skill defines typed tool schemas, use them; otherwise fall back to generic {args}.
 		if len(entry.Tools) > 0 {
 			for _, td := range entry.Tools {
-				params := map[string]interface{}{
-					"type": "object",
-				}
-				if len(td.Parameters) > 0 {
-					params["properties"] = td.Parameters
+				var params *api.Schema
+				if td.Parameters != nil {
+					params = td.Parameters
 				} else {
-					params["properties"] = map[string]interface{}{
-						"args": map[string]interface{}{
-							"type":        "object",
-							"description": "Tool-specific arguments",
+					params = makeSchema(map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"args": map[string]interface{}{
+								"type":        "string",
+								"description": "Tool-specific arguments",
+							},
 						},
-					}
-				}
-				if len(td.Parameters) > 0 {
-					// If parameters define a "required" field, propagate it
-					if req, ok := td.Parameters["required"]; ok {
-						if r, ok := req.([]interface{}); ok {
-							params["required"] = r
-						}
-					}
+					})
 				}
 				tools = append(tools, llm.Tool{
 					Name:        td.Name,
@@ -1280,21 +1274,55 @@ func (l *Loop) buildTools() []llm.Tool {
 			tools = append(tools, llm.Tool{
 				Name:        entry.Name,
 				Description: entry.Description,
-				Parameters: map[string]interface{}{
+				Parameters: makeSchema(map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
 						"args": map[string]interface{}{
-							"type":        "object",
+							"type":        "string",
 							"description": "Tool-specific arguments",
 						},
 					},
-					"required": []string{"args"},
-				},
+				}),
 			})
 		}
 	}
 
 	return tools
+}
+
+// makeSchema builds a typed *api.Schema from a map[string]interface{} definition.
+// This ensures consistent JSON serialization compatible with llama-server's schema parser.
+func makeSchema(m map[string]interface{}) *api.Schema {
+	if m == nil {
+		return nil
+	}
+	s := &api.Schema{
+		Type:        getString(m, "type"),
+		Description: getString(m, "description"),
+	}
+	if props, ok := m["properties"].(map[string]interface{}); ok {
+		s.Properties = make(map[string]*api.Schema)
+		for k, v := range props {
+			if sub, ok := v.(map[string]interface{}); ok {
+				s.Properties[k] = makeSchema(sub)
+			}
+		}
+	}
+	if req, ok := m["required"].([]interface{}); ok {
+		for _, r := range req {
+			if name, ok := r.(string); ok {
+				s.Required = append(s.Required, name)
+			}
+		}
+	}
+	return s
+}
+
+func getString(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // buildMessages assembles conversation messages from session history, raw sources, and skills.

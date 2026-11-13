@@ -11,15 +11,16 @@ import (
 	"strings"
 
 	"github.com/norman/norman/pkg/env"
+	"github.com/norman/norman/pkg/llm/api"
 	"gopkg.in/yaml.v3"
 )
 
 // SkillEntry represents a discovered skill with its metadata.
 // ToolDef defines a single tool with its name, description, and typed parameter schema.
 type ToolDef struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+	Name        string      `json:"name"`
+	Description string      `json:"description,omitempty"`
+	Parameters  *api.Schema `json:"parameters,omitempty"`
 }
 
 type SkillEntry struct {
@@ -379,7 +380,7 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 					Description: v["description"].(string),
 				}
 				if params, ok := v["parameters"].(map[string]interface{}); ok {
-					td.Parameters = params
+					td.Parameters = mapToSchema(params)
 				}
 				entry.Tools = append(entry.Tools, td)
 			}
@@ -410,4 +411,39 @@ func readSkillMetadata(dir string) (SkillEntry, error) {
 	}
 
 	return entry, nil
+}
+
+// mapToSchema converts a raw map[string]interface{} into a typed *api.Schema.
+// This ensures consistent JSON serialization for llama-server compatibility.
+func mapToSchema(m map[string]interface{}) *api.Schema {
+	if m == nil {
+		return nil
+	}
+	s := &api.Schema{
+		Type:        getString(m, "type"),
+		Description: getString(m, "description"),
+	}
+	if props, ok := m["properties"].(map[string]interface{}); ok {
+		s.Properties = make(map[string]*api.Schema)
+		for k, v := range props {
+			if sub, ok := v.(map[string]interface{}); ok {
+				s.Properties[k] = mapToSchema(sub)
+			}
+		}
+	}
+	if req, ok := m["required"].([]interface{}); ok {
+		for _, r := range req {
+			if name, ok := r.(string); ok {
+				s.Required = append(s.Required, name)
+			}
+		}
+	}
+	return s
+}
+
+func getString(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }

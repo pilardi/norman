@@ -222,7 +222,7 @@ func formatToolInjection(entry SkillEntry) string {
 	if len(entry.Tools) > 0 {
 		sb.WriteString("\n**Available Tools:**\n")
 		for _, tool := range entry.Tools {
-			fmt.Fprintf(&sb, "- `%s`\n", tool)
+			fmt.Fprintf(&sb, "- `%s`\n", tool.Name)
 		}
 	}
 
