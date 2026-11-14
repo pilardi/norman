@@ -993,7 +993,7 @@ func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
 }
 
 // detectRichOutput analyzes accumulated task output and returns a RichOutput struct
-// populated with content type, render hint, and structured data if parseable as JSON.
+// populated with content type, render hint, and structured data if parseable as JSON or text/markdown/html.
 func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
 	trimmed := strings.TrimSpace(string(output))
 	if len(trimmed) == 0 {
@@ -1011,6 +1011,12 @@ func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
 	var jsonMap map[string]interface{}
 	if err := json.Unmarshal([]byte(trimmed), &jsonMap); err == nil {
 		richOut.StructuredData = &jsonMap
+	} else if renderHint == protocol.Markdown || renderHint == protocol.Text || renderHint == protocol.Html {
+		// For markdown, text, html, populate StructuredData with the content.
+		contentMap := map[string]interface{}{
+			"content": trimmed,
+		}
+		richOut.StructuredData = &contentMap
 	}
 
 	return richOut
