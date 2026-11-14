@@ -270,6 +270,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.wsConn != nil {
 					_ = m.wsConn.Close()
 				}
+				// Update session ID and status bar
+				m.sessionID = msg.SessionID
+				m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", client.ShortID(msg.SessionID)))
 				// Load session history before starting the WebSocket connection.
 				loadSessionHistory(m, msg.SessionID)
 				return m, startWebSocket(m)
