@@ -121,25 +121,52 @@ func (p *ChatPanel) updateViewport() {
 				lines = append(lines, renderRichOutput(msg.RichOutput))
 			} else {
 				content := msg.Content
-				maxWidth := p.width - 23
+				// Use the layout-allocated width (70% of total), not full terminal width.
+				allocatedWidth := int(float64(p.width) * 0.7)
+				maxWidth := allocatedWidth - 23
 				if maxWidth < 0 {
 					maxWidth = 0
 				}
-				if len(content) > p.width-20 && maxWidth > 0 {
-					content = content[:maxWidth] + "..."
-				}
+				// Wrap content to fill the text area instead of truncating.
+				content = wrapString(content, maxWidth)
 				lines = append(lines, "  "+content)
 			}
 			lines = append(lines, "")
 		}
 	}
-	p.viewport.SetContent(joinLines(lines))
-	// Adjust viewport height to match content length to avoid visibleLines panic.
-	if len(lines) > 0 && p.height > len(lines) {
-		p.viewport.Height = len(lines)
+	content := joinLines(lines)
+	p.viewport.SetContent(content)
+	// Scroll to bottom of visible area.
+	p.viewport.YOffset = max(0, strings.Count(content, "\n")-p.height)
+}
+
+// wrapString wraps a long string to fit within maxWidth characters,
+// breaking on word boundaries (spaces).
+func wrapString(s string, maxWidth int) string {
+	if maxWidth <= 0 || len(s) == 0 {
+		return s
 	}
-	// Force scroll to bottom of new content.
-	p.viewport.YOffset = max(0, len(lines)-p.height)
+	var result strings.Builder
+	words := strings.Fields(s)
+	var line strings.Builder
+	for _, w := range words {
+		if line.Len()+len(w)+1 > maxWidth && line.Len() > 0 {
+			result.WriteString(line.String())
+			result.WriteByte('\n')
+			line.Reset()
+		}
+		if line.Len() > 0 {
+			line.WriteByte(' ')
+		}
+		line.WriteString(w)
+	}
+	if line.Len() > 0 {
+		if result.Len() > 0 {
+			result.WriteByte('\n')
+		}
+		result.WriteString(line.String())
+	}
+	return result.String()
 }
 
 func joinLines(lines []string) string {
@@ -158,10 +185,10 @@ func (p *ChatPanel) Render() string {
 }
 
 // Focus sets the textarea to focused state and updates styles.
-func (p *ChatPanel) Focus() {
+func (p *ChatPanel) Focus() tea.Cmd {
 	p.focused = true
-	p.textInput.Focus()
 	p.setStyles()
+	return p.textInput.Focus()
 }
 
 // Blur removes focus from the textarea.

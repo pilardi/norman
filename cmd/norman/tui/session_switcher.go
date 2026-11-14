@@ -14,7 +14,7 @@ type sessionSwitcher struct {
 }
 
 func newSessionSwitcher(items []list.Item) sessionSwitcher {
-	l := list.New(items, nil, 20, 15)
+	l := list.New(items, list.NewDefaultDelegate(), 20, 15)
 	return sessionSwitcher{list: l, showing: true}
 }
 

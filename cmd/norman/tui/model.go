@@ -6,10 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/gorilla/websocket"
 	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
@@ -43,6 +45,9 @@ type Model struct {
 	// WebSocket message channel for persistent event streaming.
 	wsMsg chan WSMessageEvent
 	// Buffered to prevent blocking on channel send (max 100 pending events).
+
+	// Current WebSocket connection reference, used to close and reconnect on session switch.
+	wsConn *websocket.Conn
 
 	// Provider name for LLM calls (from -p flag).
 	provider string
@@ -79,6 +84,10 @@ func (m *Model) Init() tea.Cmd {
 	}
 
 	cmds = append(cmds, initializeClient(context.Background(), m), startWebSocket(m))
+
+	// Focus the chat panel and start cursor blink animation on startup
+	cmds = append(cmds, m.chatPanel.Focus())
+
 	return tea.Batch(cmds...)
 }
 
@@ -98,9 +107,34 @@ func createSessionCmd(model *Model) tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.chatPanel.width = msg.Width - 30   // reserve space for event panel
+		m.chatPanel.width = msg.Width
 		m.chatPanel.height = msg.Height - 14 // leave room for status bar + input line + padding
+
+		// Calculate chat panel width (70% of total)
+		chatWidth := int(float64(m.chatPanel.width) * 0.7)
+
+		// Subtract 2 for the border (left and right border characters)
+		contentWidth := chatWidth - 2
+		if contentWidth < 0 {
+			contentWidth = 0
+		}
+
+		// Update viewport width
+		m.chatPanel.viewport.Width = contentWidth
+
+		// Update textarea width
+		m.chatPanel.textInput.SetWidth(contentWidth)
+
 		m.chatPanel.updateViewportHeight()
+
+	case cursor.BlinkMsg:
+		// Textarea should also process cursor blinks.
+		var cmd tea.Cmd
+		chatPanelModel, cmd := m.chatPanel.Update(msg)
+		if chatPanelPtr, ok := chatPanelModel.(*ChatPanel); ok {
+			m.chatPanel = *chatPanelPtr
+		}
+		return m, cmd
 
 	case tea.KeyMsg:
 		// Phase 3: help overlay dismissal (always handled first)
@@ -131,6 +165,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if len(m.sessionSwitcher.list.Items()) > 0 {
 					item := m.sessionSwitcher.list.SelectedItem().(SessionItem)
+					m.sessionSwitcher.showing = false
 					return m, switchToSession(item.ID)
 				}
 			}
@@ -145,14 +180,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "tab":
 			// Toggle focus between chat and event panels
+			var cmd tea.Cmd
 			if m.chatPanel.focused {
 				m.chatPanel.Blur()
 				m.eventPanel.Focus()
 			} else {
-				m.chatPanel.Focus()
+				cmd = m.chatPanel.Focus()
 				m.eventPanel.Blur()
 			}
-			return m, nil // tab itself has no special action
+			return m, cmd
 
 		case "enter":
 			input := m.chatPanel.textInput.Value()
@@ -212,8 +248,34 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case WSMessageEvent:
 			if msg.Event == "chat_updated" {
-				m.chatPanel.updateViewport()
-				return m, func() tea.Msg { return nil } // force re-render
+				// Drain ALL remaining events from the channel before returning,
+				// so View() renders with fully up-to-date content (no stale gap).
+				for {
+					select {
+					case ev, ok := <-m.wsMsg:
+						if !ok {
+							m.statusBar.SetConnection("✗ WebSocket disconnected")
+							return m, nil
+						}
+						m.handleWSMessage(ev)
+					default:
+						// Ensure viewport is updated with all processed messages before re-rendering
+						m.chatPanel.updateViewport()
+						return m, nil
+					}
+				}
+			}
+			if msg.Event == "session_switched" {
+				// Close old WS connection and open a new one with the updated session ID.
+				if m.wsConn != nil {
+					_ = m.wsConn.Close()
+				}
+				// Update session ID and status bar
+				m.sessionID = msg.SessionID
+				m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", client.ShortID(msg.SessionID)))
+				// Load session history before starting the WebSocket connection.
+				loadSessionHistory(m, msg.SessionID)
+				return m, startWebSocket(m)
 			}
 			m.handleWSMessage(msg)
 		}
@@ -240,17 +302,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleWSMessage(msg WSMessageEvent) {
 	switch msg.Event {
 	case "item_started":
-		m.events = append(m.events, EventItem{
-			Type:      "tool_call",
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "tool_call",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	case "turn_completed":
 		m.statusBar.SetConnection("Connected")
 	case "session_switched":
 		m.sessionID = msg.SessionID
 		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", client.ShortID(msg.SessionID)))
 	case "session_created":
+		// Load session history for the newly created or existing session
+		if m.sessionID != "" {
+			// Load history before appending system message
+			loadSessionHistory(m, m.sessionID)
+		}
+
 		if msg.SessionID != "" {
 			m.statusBar.SetConnection(fmt.Sprintf("✓ Using session %s", truncate(msg.SessionID, 12)))
 			m.chatPanel.AppendMessage(ChatMessage{
@@ -285,25 +355,44 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Timestamp: time.Now(),
 		})
 	case "connection_error":
+		// Ignore connection errors that are due to intentional closure (e.g., session switch)
+		if strings.Contains(msg.Message, "use of closed network connection") ||
+			strings.Contains(msg.Message, "websocket: close sent") ||
+			strings.Contains(msg.Message, "closed network connection") {
+			return
+		}
 		m.statusBar.SetConnection("✗ " + msg.Message)
+	case "websocket_parse_error":
+		m.statusBar.SetConnection("✗ " + msg.Message)
+		m.events = append(m.events, EventItem{
+			Type:      "error",
+			Message:   msg.Message,
+			Timestamp: time.Now(),
+		})
 	case "task_progress":
-		m.events = append(m.events, EventItem{
-			Type:      "progress",
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "progress",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	case "notification":
-		m.events = append(m.events, EventItem{
-			Type:      "notification",
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "notification",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	default:
-		m.events = append(m.events, EventItem{
-			Type:      msg.Event,
-			Message:   msg.Message,
-			Timestamp: time.Now(),
-		})
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      msg.Event,
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	}
 
 	// Extract RichOutput from event data if present (Phase 2).
@@ -322,6 +411,12 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		items[i] = e
 	}
 	m.eventPanel.SetItems(items)
+}
+
+// isSessionScoped returns true if the event should be displayed for the current session.
+// Events with an empty SessionID are global (e.g., emergent tasks) and always shown.
+func (m *Model) isSessionScoped(msg WSMessageEvent) bool {
+	return msg.SessionID == "" || msg.SessionID == m.sessionID
 }
 
 // extractRichOutput parses a data map into a *protocol.RichOutput if present.
@@ -391,9 +486,11 @@ func (m *Model) View() string {
 
 	// Two-column layout: chat on left (~70%), events on right (~30%)
 	eventView := m.eventPanel.Render()
+	chatWidth := int(float64(m.chatPanel.width) * 0.7)
+	eventWidth := m.chatPanel.width - chatWidth
 	out += lipgloss.JoinHorizontal(lipgloss.Left,
-		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.7)).Render(m.chatPanel.Render()),
-		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.3)).Render(eventView),
+		lipgloss.NewStyle().Width(chatWidth).Render(m.chatPanel.Render()),
+		lipgloss.NewStyle().Width(eventWidth).Render(eventView),
 	)
 
 	// Phase 3: help overlay on top
