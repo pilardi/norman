@@ -114,6 +114,60 @@ func startWebSocket(model *Model) tea.Cmd {
 	}
 }
 
+// loadSessionHistory fetches the conversation history for a session and appends
+// the messages to the chat panel.
+func loadSessionHistory(model *Model, sessionID string) {
+	c, err := client.GetProtocolClient()
+	if err != nil {
+		return
+	}
+
+	params := &protocol.SessionHistoryParams{
+		Limit: client.IntPtr(50), // Load up to 50 recent messages
+	}
+
+	rsp, err := c.SessionHistory(context.Background(), sessionID, params)
+	if err != nil {
+		return
+	}
+
+	parsed, err := protocol.ParseSessionHistoryResponse(rsp)
+	if err != nil {
+		return
+	}
+
+	turns := parsed.GetJSON200()
+	if turns == nil {
+		return
+	}
+
+	for _, t := range *turns {
+		role := ""
+		if t.Role != nil {
+			role = string(*t.Role)
+		}
+		content := client.StrVal(t.Content)
+		ts := time.Time{}
+		if t.Timestamp != nil {
+			ts = *t.Timestamp
+		}
+
+		if role != "" && content != "" {
+			model.chatPanel.AppendMessage(ChatMessage{
+				Role:      role,
+				Content:   content,
+				Timestamp: ts,
+			})
+		}
+	}
+
+	// Signal Update to re-render by sending a chat_updated event (non-blocking).
+	select {
+	case model.wsMsg <- WSMessageEvent{Event: "chat_updated"}:
+	default:
+	}
+}
+
 // sendChatMessage sends a chat message to the current session via HTTP POST.
 // The assistant response is sent back via model.wsMsg channel.
 func sendChatMessage(model *Model, sessionID, message string) {

@@ -270,6 +270,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.wsConn != nil {
 					_ = m.wsConn.Close()
 				}
+				// Load session history before starting the WebSocket connection.
+				loadSessionHistory(m, msg.SessionID)
 				return m, startWebSocket(m)
 			}
 			m.handleWSMessage(msg)
