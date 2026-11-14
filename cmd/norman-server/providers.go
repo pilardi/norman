@@ -423,6 +423,105 @@ func (s *server) VerifyProvider(c echo.Context, name string) error {
 	})
 }
 
+// VerifyProviderConfig tests connectivity and runs a quick completion against a proposed provider configuration (no persistence).
+func (s *server) VerifyProviderConfig(c echo.Context) error {
+	var cfg protocol.ProviderConfig
+	if err := c.Bind(&cfg); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	// Validate required fields.
+	if cfg.Name == "" || cfg.Type == "" || cfg.Endpoint == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "name, type, and endpoint are required",
+		})
+	}
+
+	// Convert protocol.ProviderConfig to config.ProviderConfig for LLM SDK calls.
+	apiKeyVal := ""
+	if cfg.ApiKey != nil {
+		apiKeyVal = *cfg.ApiKey
+	}
+	tmpProv := &config.ProviderConfig{
+		Name:     cfg.Name,
+		Type:     string(cfg.Type),
+		Endpoint: cfg.Endpoint,
+		Model:    "",
+		ApiKey:   apiKeyVal,
+		Temperature: func() float64 {
+			v := 0.7
+			if cfg.Temperature != nil {
+				v = float64(*cfg.Temperature)
+			}
+			return v
+		}(),
+		MaxTokens: func() int {
+			if cfg.MaxTokens != nil {
+				return *cfg.MaxTokens
+			}
+			return 0
+		}(),
+	}
+
+	result := &protocol.VerifyResult{}
+
+	// Step 1: Query available models (tests connectivity).
+	models, err := llm.QueryProviderModels(tmpProv)
+	if err != nil {
+		s := protocol.VerifyResultStatus("failed")
+		m := protocol.VerifyResultModelListStatus("failure")
+		cst := protocol.VerifyResultCompletionStatus("skipped")
+		result.Status = &s
+		result.ModelListStatus = &m
+		result.ModelListError = strPtr(err.Error())
+		result.CompletionStatus = &cst
+	} else {
+		s := protocol.VerifyResultStatus("ok")
+		m := protocol.VerifyResultModelListStatus("success")
+		result.Status = &s
+		result.ModelListStatus = &m
+		modelCount := len(models)
+		result.ModelCount = &modelCount
+	}
+
+	// Step 2: Quick completion test (only if model list succeeded and a model is specified).
+	if result.ModelListStatus != nil && *result.ModelListStatus == "success" && cfg.Model != nil {
+		tmpProv.Model = *cfg.Model
+		comp, compErr := quickCompletion(tmpProv)
+		if compErr != nil {
+			cst := protocol.VerifyResultCompletionStatus("failure")
+			result.CompletionStatus = &cst
+			result.CompletionError = strPtr(compErr.Error())
+			if result.Status != nil && *result.Status == "ok" {
+				f := protocol.VerifyResultStatus("failed")
+				result.Status = &f
+			}
+		} else {
+			cst := protocol.VerifyResultCompletionStatus("success")
+			result.CompletionStatus = &cst
+			tokens := comp.Usage.TotalTokens
+			result.TokensUsed = &tokens
+		}
+	}
+
+	statusStr := ""
+	if result.Status != nil {
+		statusStr = string(*result.Status)
+	}
+
+	var httpStatus int
+	if statusStr == "failed" {
+		httpStatus = http.StatusInternalServerError
+	} else {
+		httpStatus = http.StatusOK
+	}
+	return c.JSON(httpStatus, protocol.VerifyResponse{
+		Status:       (*protocol.VerifyResponseStatus)(strPtr(statusStr)),
+		Details:      result,
+		ProviderName: strPtr(cfg.Name),
+	})
+}
+
 // quickCompletion sends a minimal completion request to test the provider's inference.
 func quickCompletion(p *config.ProviderConfig) (*llm.CompletionResponse, error) {
 	client := llm.NewClientWithProvider(p)

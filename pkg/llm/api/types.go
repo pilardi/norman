@@ -18,11 +18,21 @@ type Message struct {
 	ID      string `json:"id,omitempty"`   // Tool call ID (for response)
 }
 
+// Schema represents a JSON Schema node for tool parameters.
+// Using a typed struct instead of map[string]interface{} ensures
+// consistent serialization and proper type handling for llama-server compatibility.
+type Schema struct {
+	Type        string             `json:"type"`
+	Properties  map[string]*Schema `json:"properties,omitempty"`
+	Required    []string           `json:"required,omitempty"`
+	Description string             `json:"description,omitempty"`
+}
+
 // Tool represents a callable tool that the LLM can invoke.
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Parameters  *Schema `json:"parameters,omitempty"`
 }
 
 // CompletionRequest is the universal request shape for all providers.

@@ -679,6 +679,12 @@ type DeferTaskRequest struct {
 	WorkspaceId *string `json:"workspace_id,omitempty"`
 }
 
+// Error defines model for Error.
+type Error struct {
+	// Error Human-readable error message
+	Error *string `json:"error,omitempty"`
+}
+
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
 	// BuildDate ISO 8601 build timestamp
@@ -1476,6 +1482,9 @@ type CreateProviderJSONRequestBody = ProviderCreateRequest
 // QueryProviderModelsJSONRequestBody defines body for QueryProviderModels for application/json ContentType.
 type QueryProviderModelsJSONRequestBody = QueryProviderModelsRequest
 
+// VerifyProviderConfigJSONRequestBody defines body for VerifyProviderConfig for application/json ContentType.
+type VerifyProviderConfigJSONRequestBody = ProviderConfig
+
 // UpdateProviderJSONRequestBody defines body for UpdateProvider for application/json ContentType.
 type UpdateProviderJSONRequestBody = ProviderUpdateRequest
 
@@ -1550,6 +1559,9 @@ type ServerInterface interface {
 	// QueryProviderModels Query available models for a temporary provider configuration (no persistence)
 	// (POST /api/providers/models/query)
 	QueryProviderModels(ctx echo.Context) error
+	// VerifyProviderConfig Verify a proposed provider configuration by testing connectivity and running a quick completion (no persistence)
+	// (POST /api/providers/verify)
+	VerifyProviderConfig(ctx echo.Context) error
 	// DeleteProvider Remove a provider (cannot delete the last remaining one)
 	// (DELETE /api/providers/{name})
 	DeleteProvider(ctx echo.Context, name string) error
@@ -1756,6 +1768,15 @@ func (w *ServerInterfaceWrapper) QueryProviderModels(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.QueryProviderModels(ctx)
+	return err
+}
+
+// VerifyProviderConfig converts echo context to params.
+func (w *ServerInterfaceWrapper) VerifyProviderConfig(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.VerifyProviderConfig(ctx)
 	return err
 }
 
@@ -2399,6 +2420,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.PUT(options.BaseURL+"/api/providers/:name", wrapper.UpdateProvider, options.OperationMiddlewares["updateProvider"]...)
 	router.GET(options.BaseURL+"/api/providers/:name/models", wrapper.ListProviderModels, options.OperationMiddlewares["listProviderModels"]...)
 	router.POST(options.BaseURL+"/api/providers/models/query", wrapper.QueryProviderModels, options.OperationMiddlewares["queryProviderModels"]...)
+	router.POST(options.BaseURL+"/api/providers/verify", wrapper.VerifyProviderConfig, options.OperationMiddlewares["verifyProviderConfig"]...)
 	router.POST(options.BaseURL+"/api/providers/:name/verify", wrapper.VerifyProvider, options.OperationMiddlewares["verifyProvider"]...)
 
 }

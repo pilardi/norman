@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/urfave/cli/v3"
 )
@@ -129,15 +130,15 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 
 	if asJSON {
 		output := map[string]interface{}{
-			"server_port":           derefInt(cfg.ServerPort),
-			"host":                  strPtrVal(cfg.Host),
-			"default_provider":      strPtrVal(cfg.DefaultProvider),
-			"max_active_skills":     derefInt(cfg.Skills.MaxActive),
-			"bell_enabled":          derefBool(cfg.Notify.BellEnabled),
-			"rate_limit_per_min":    derefInt(cfg.Notify.RateLimitPerMin),
+			"server_port":           client.DerefInt(cfg.ServerPort),
+			"host":                  client.StrPtrVal(cfg.Host),
+			"default_provider":      client.StrPtrVal(cfg.DefaultProvider),
+			"max_active_skills":     client.DerefInt(cfg.Skills.MaxActive),
+			"bell_enabled":          client.DerefBool(cfg.Notify.BellEnabled),
+			"rate_limit_per_min":    client.DerefInt(cfg.Notify.RateLimitPerMin),
 			"openshell_address":     resolvedGateway,
-			"max_turns":             derefInt(cfg.MaxTurns),
-			"max_tasks_per_session": derefInt(cfg.MaxTasksPerSession),
+			"max_turns":             client.DerefInt(cfg.MaxTurns),
+			"max_tasks_per_session": client.DerefInt(cfg.MaxTasksPerSession),
 		}
 		if len(llmProviders) > 0 {
 			providers := make([]map[string]interface{}, len(llmProviders))
@@ -146,9 +147,9 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 					"name":        p.Name,
 					"type":        p.Type,
 					"endpoint":    p.Endpoint,
-					"model":       strPtrVal(p.Model),
-					"temperature": derefFloat32(p.Temperature),
-					"max_tokens":  derefInt(p.MaxTokens),
+					"model":       client.StrPtrVal(p.Model),
+					"temperature": client.DerefFloat32(p.Temperature),
+					"max_tokens":  client.DerefInt(p.MaxTokens),
 				}
 				providers[i] = prov
 			}
@@ -160,22 +161,22 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 	}
 
 	fmt.Println("# Current Configuration (System)")
-	fmt.Printf("  server_port:        %d\n", derefInt(cfg.ServerPort))
-	fmt.Printf("  host:               %s\n", strPtrVal(cfg.Host))
+	fmt.Printf("  server_port:        %d\n", client.DerefInt(cfg.ServerPort))
+	fmt.Printf("  host:               %s\n", client.StrPtrVal(cfg.Host))
 	if cfg.DefaultProvider != nil {
 		fmt.Printf("  default_provider:   %s\n", *cfg.DefaultProvider)
 	}
 	if cfg.Skills != nil {
-		fmt.Printf("  max_active_skills:  %d\n", derefInt(cfg.Skills.MaxActive))
+		fmt.Printf("  max_active_skills:  %d\n", client.DerefInt(cfg.Skills.MaxActive))
 		if cfg.Skills.BuiltinSkills != nil && len(*cfg.Skills.BuiltinSkills) > 0 {
 			fmt.Printf("  builtin_skills:     %v\n", *cfg.Skills.BuiltinSkills)
 		}
 	}
 	if cfg.Notify != nil {
-		fmt.Printf("  bell_enabled:       %v\n", derefBool(cfg.Notify.BellEnabled))
-		fmt.Printf("  rate_limit_per_min: %d\n", derefInt(cfg.Notify.RateLimitPerMin))
+		fmt.Printf("  bell_enabled:       %v\n", client.DerefBool(cfg.Notify.BellEnabled))
+		fmt.Printf("  rate_limit_per_min: %d\n", client.DerefInt(cfg.Notify.RateLimitPerMin))
 	}
-	fmt.Printf("  max_turns:            %d\n", derefInt(cfg.MaxTurns))
+	fmt.Printf("  max_turns:            %d\n", client.DerefInt(cfg.MaxTurns))
 	if cfg.MaxActiveSessions != nil {
 		fmt.Printf("  max_active_sessions:  %d\n", *cfg.MaxActiveSessions)
 	}
@@ -194,9 +195,9 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 			fmt.Printf("    [%d] name: %s\n", i+1, p.Name)
 			fmt.Printf("        type:     %s\n", p.Type)
 			fmt.Printf("        endpoint: %s\n", p.Endpoint)
-			fmt.Printf("        model:    %s\n", strPtrVal(p.Model))
-			fmt.Printf("        temp:     %.2f\n", derefFloat32(p.Temperature))
-			fmt.Printf("        max_tokens: %d\n", derefInt(p.MaxTokens))
+			fmt.Printf("        model:    %s\n", client.StrPtrVal(p.Model))
+			fmt.Printf("        temp:     %.2f\n", client.DerefFloat32(p.Temperature))
+			fmt.Printf("        max_tokens: %d\n", client.DerefInt(p.MaxTokens))
 		}
 	}
 	return nil
@@ -205,12 +206,12 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 // Helper: safely dereference a *int pointer for display.
 // getConfig fetches the current system config from the server using the protocol client.
 func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, string, error) {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.GetConfig(ctx, nil)
+	resp, err := c.GetConfig(ctx, nil)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("fetch config: %w", err)
 	}
@@ -410,12 +411,12 @@ func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, st
 
 // putConfig sends a partial system config update to the server using the protocol client.
 func putConfig(ctx context.Context, updates map[string]interface{}) error {
-	client, err := getProtocolClient()
+	c, err := client.GetProtocolClient()
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	resp, err := client.PutConfig(ctx, updates)
+	resp, err := c.PutConfig(ctx, updates)
 	if err != nil {
 		return fmt.Errorf("update config: %w", err)
 	}

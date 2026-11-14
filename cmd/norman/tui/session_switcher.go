@@ -1,0 +1,52 @@
+package tui
+
+import (
+	"fmt"
+
+	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/norman/norman/pkg/client"
+)
+
+type sessionSwitcher struct {
+	list    list.Model
+	showing bool
+}
+
+func newSessionSwitcher(items []list.Item) sessionSwitcher {
+	l := list.New(items, nil, 20, 15)
+	return sessionSwitcher{list: l, showing: true}
+}
+
+func (s *sessionSwitcher) Init() tea.Cmd { return nil }
+
+func (s *sessionSwitcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	s.list, cmd = s.list.Update(msg)
+	return s, cmd
+}
+
+// View implements tea.Model interface.
+func (s *sessionSwitcher) View() string {
+	if !s.showing {
+		return ""
+	}
+	return s.list.View()
+}
+
+// showModal renders the session switcher modal (alias for View).
+func (s *sessionSwitcher) showModal() string {
+	return s.View()
+}
+
+func (s *sessionSwitcher) IsShowing() bool { return s.showing }
+
+func switchToSession(sessionID string) tea.Cmd {
+	return func() tea.Msg {
+		return WSMessageEvent{
+			Event:     "session_switched",
+			Message:   fmt.Sprintf("Switched to session %s", client.ShortID(sessionID)),
+			SessionID: sessionID,
+		}
+	}
+}
