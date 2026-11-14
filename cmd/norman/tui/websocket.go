@@ -141,6 +141,9 @@ func loadSessionHistory(model *Model, sessionID string) {
 		return
 	}
 
+	// Clear existing messages before loading history
+	model.chatPanel.Clear()
+
 	for _, t := range *turns {
 		role := ""
 		if t.Role != nil {
