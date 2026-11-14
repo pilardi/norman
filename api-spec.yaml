@@ -1622,6 +1622,11 @@ components:
           type: string
           nullable: true
           description: Budget threshold that triggered the event (e.g., "75%")
+        data:
+          type: object
+          nullable: true
+          description: Additional event data (e.g., rich_output metadata like content_type, render_hint, structured_data)
+          additionalProperties: true
 
     ArchiveTaskRequest:
       type: object

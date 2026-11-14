@@ -988,6 +988,11 @@ func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
 	defer l.mu.Unlock()
 	if task, ok := l.tasks[taskID]; ok {
 		task.events = append(task.events, evt)
+		// Include RichOutput data in the event's Data field if present
+		if task.RichOutput != nil {
+			dataMap := richOutputToMap(task.RichOutput)
+			evt.Data = &dataMap
+		}
 	}
 	l.wsHub.BroadcastGranular(evt.Event, taskID, *evt.SessionId, *evt.Message)
 }
@@ -1020,6 +1025,30 @@ func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
 	}
 
 	return richOut
+}
+
+// richOutputToMap converts a RichOutput to a map[string]interface{} for WebSocket event data.
+func richOutputToMap(ro *protocol.RichOutput) map[string]interface{} {
+	if ro == nil {
+		return nil
+	}
+	data := make(map[string]interface{})
+	if ro.ContentType != nil {
+		data["content_type"] = *ro.ContentType
+	}
+	if ro.MimeType != nil {
+		data["mime_type"] = *ro.MimeType
+	}
+	if ro.RenderHint != nil {
+		data["render_hint"] = string(*ro.RenderHint)
+	}
+	if ro.ArtifactUrl != nil {
+		data["artifact_url"] = *ro.ArtifactUrl
+	}
+	if ro.StructuredData != nil {
+		data["structured_data"] = *ro.StructuredData
+	}
+	return data
 }
 
 // detectContentType returns a high-level content type and matching render hint from raw text.
