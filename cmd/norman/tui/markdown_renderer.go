@@ -33,7 +33,6 @@ var (
 	reBold        = regexp.MustCompile(`\*\*(.+?)\*\*`)
 	reItalic      = regexp.MustCompile(`\*(.+?)\*`)
 	reCodeInline  = regexp.MustCompile("`([^`]+)`")
-	reCodeBlock   = regexp.MustCompile("```([\\s\\S]*?)```")
 	reListItem    = regexp.MustCompile(`^[-*+]\s+(.+)$`)
 	reOrderedList = regexp.MustCompile(`^\d+\.\s+(.+)$`)
 	reTable       = regexp.MustCompile(`\|(.+)\|`)
@@ -41,20 +40,46 @@ var (
 
 // renderMarkdownText processes a markdown string line by line.
 func renderMarkdownText(content string, lines *[]string) {
-	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	linesSlice := strings.Split(content, "\n")
+
+	inCodeBlock := false
+	codeBlockContent := []string{}
+
+	for _, line := range linesSlice {
+		trimmedLine := strings.TrimSpace(line)
+
+		// Check for code block start or end
+		if strings.HasPrefix(trimmedLine, "```") {
+			if !inCodeBlock {
+				// Start of code block
+				inCodeBlock = true
+				codeBlockContent = []string{}
+			} else {
+				// End of code block
+				inCodeBlock = false
+
+				// Render code block
+				codeBlockStr := strings.Join(codeBlockContent, "\n")
+
+				// Style the code block
+				style := lipgloss.NewStyle().Background(lipgloss.Color("#1e1e2e"))
+				renderedCode := "  " + codeBlockStr
+				*lines = append(*lines, style.Render(renderedCode))
+			}
 			continue
 		}
 
-		// Code block
-		if codeBlockMatches := reCodeBlock.FindStringSubmatch(line); codeBlockMatches != nil {
-			*lines = append(*lines, lipgloss.NewStyle().Background(lipgloss.Color("#1e1e2e")).Render("  "+strings.TrimSpace(codeBlockMatches[1])))
+		if inCodeBlock {
+			codeBlockContent = append(codeBlockContent, line)
+			continue
+		}
+
+		if trimmedLine == "" {
 			continue
 		}
 
 		// Headers
-		if headerMatches := reHeader.FindStringSubmatch(line); headerMatches != nil {
+		if headerMatches := reHeader.FindStringSubmatch(trimmedLine); headerMatches != nil {
 			level := len(headerMatches[1])
 			style := lipgloss.NewStyle().Bold(true)
 			switch level {
@@ -72,25 +97,25 @@ func renderMarkdownText(content string, lines *[]string) {
 		}
 
 		// Tables
-		if tableMatches := reTable.FindAllStringSubmatch(line, -1); len(tableMatches) > 0 {
+		if tableMatches := reTable.FindAllStringSubmatch(trimmedLine, -1); len(tableMatches) > 0 {
 			*lines = append(*lines, renderTableLine(tableMatches))
 			continue
 		}
 
 		// List items
-		if listMatches := reListItem.FindStringSubmatch(line); listMatches != nil {
+		if listMatches := reListItem.FindStringSubmatch(trimmedLine); listMatches != nil {
 			*lines = append(*lines, "  • "+renderInlineStyle(listMatches[1]))
 			continue
 		}
 
 		// Ordered list
-		if olMatches := reOrderedList.FindStringSubmatch(line); olMatches != nil {
+		if olMatches := reOrderedList.FindStringSubmatch(trimmedLine); olMatches != nil {
 			*lines = append(*lines, "  "+olMatches[1])
 			continue
 		}
 
 		// Regular text with inline formatting
-		*lines = append(*lines, "  "+renderInlineStyle(line))
+		*lines = append(*lines, "  "+renderInlineStyle(trimmedLine))
 	}
 }
 
