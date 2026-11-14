@@ -76,6 +76,11 @@ func startWebSocket(model *Model) tea.Cmd {
 
 				var event map[string]interface{}
 				if err := json.Unmarshal(msg, &event); err != nil {
+					// Emit a parse error event so it's visible in the events panel
+					select {
+					case model.wsMsg <- WSMessageEvent{Event: "websocket_parse_error", Message: fmt.Sprintf("Failed to parse websocket message: %s, error: %v", string(msg), err)}:
+					default:
+					}
 					continue
 				}
 
@@ -143,8 +148,11 @@ func sendChatMessage(model *Model, sessionID, message string) {
 			Content:   *result.Response,
 			Timestamp: time.Now(),
 		})
-		// Signal Update to re-render by sending a chat_updated event.
-		model.wsMsg <- WSMessageEvent{Event: "chat_updated"}
+		// Signal Update to re-render by sending a chat_updated event (non-blocking).
+		select {
+		case model.wsMsg <- WSMessageEvent{Event: "chat_updated"}:
+		default:
+		}
 		return
 	}
 

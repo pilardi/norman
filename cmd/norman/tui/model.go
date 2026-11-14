@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -83,6 +84,10 @@ func (m *Model) Init() tea.Cmd {
 	}
 
 	cmds = append(cmds, initializeClient(context.Background(), m), startWebSocket(m))
+
+	// Focus the chat panel and start cursor blink animation on startup
+	cmds = append(cmds, m.chatPanel.Focus())
+
 	return tea.Batch(cmds...)
 }
 
@@ -102,9 +107,34 @@ func createSessionCmd(model *Model) tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.chatPanel.width = msg.Width - 30   // reserve space for event panel
+		m.chatPanel.width = msg.Width
 		m.chatPanel.height = msg.Height - 14 // leave room for status bar + input line + padding
+
+		// Calculate chat panel width (70% of total)
+		chatWidth := int(float64(m.chatPanel.width) * 0.7)
+
+		// Subtract 2 for the border (left and right border characters)
+		contentWidth := chatWidth - 2
+		if contentWidth < 0 {
+			contentWidth = 0
+		}
+
+		// Update viewport width
+		m.chatPanel.viewport.Width = contentWidth
+
+		// Update textarea width
+		m.chatPanel.textInput.SetWidth(contentWidth)
+
 		m.chatPanel.updateViewportHeight()
+
+	case cursor.BlinkMsg:
+		// Textarea should also process cursor blinks.
+		var cmd tea.Cmd
+		chatPanelModel, cmd := m.chatPanel.Update(msg)
+		if chatPanelPtr, ok := chatPanelModel.(*ChatPanel); ok {
+			m.chatPanel = *chatPanelPtr
+		}
+		return m, cmd
 
 	case tea.KeyMsg:
 		// Phase 3: help overlay dismissal (always handled first)
@@ -149,14 +179,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "tab":
 			// Toggle focus between chat and event panels
+			var cmd tea.Cmd
 			if m.chatPanel.focused {
 				m.chatPanel.Blur()
 				m.eventPanel.Focus()
 			} else {
-				m.chatPanel.Focus()
+				cmd = m.chatPanel.Focus()
 				m.eventPanel.Blur()
 			}
-			return m, nil // tab itself has no special action
+			return m, cmd
 
 		case "enter":
 			input := m.chatPanel.textInput.Value()
@@ -216,8 +247,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case WSMessageEvent:
 			if msg.Event == "chat_updated" {
-				m.chatPanel.updateViewport()
-				return m, func() tea.Msg { return nil } // force re-render
+				// Drain ALL remaining events from the channel before returning,
+				// so View() renders with fully up-to-date content (no stale gap).
+				for {
+					select {
+					case ev, ok := <-m.wsMsg:
+						if !ok {
+							m.statusBar.SetConnection("✗ WebSocket disconnected")
+							return m, nil
+						}
+						m.handleWSMessage(ev)
+					default:
+						// Ensure viewport is updated with all processed messages before re-rendering
+						m.chatPanel.updateViewport()
+						return m, nil
+					}
+				}
 			}
 			if msg.Event == "session_switched" {
 				// Close old WS connection and open a new one with the updated session ID.
@@ -299,6 +344,13 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		})
 	case "connection_error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
+	case "websocket_parse_error":
+		m.statusBar.SetConnection("✗ " + msg.Message)
+		m.events = append(m.events, EventItem{
+			Type:      "error",
+			Message:   msg.Message,
+			Timestamp: time.Now(),
+		})
 	case "task_progress":
 		if m.isSessionScoped(msg) {
 			m.events = append(m.events, EventItem{
@@ -416,9 +468,11 @@ func (m *Model) View() string {
 
 	// Two-column layout: chat on left (~70%), events on right (~30%)
 	eventView := m.eventPanel.Render()
+	chatWidth := int(float64(m.chatPanel.width) * 0.7)
+	eventWidth := m.chatPanel.width - chatWidth
 	out += lipgloss.JoinHorizontal(lipgloss.Left,
-		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.7)).Render(m.chatPanel.Render()),
-		lipgloss.NewStyle().Width(int(float64(m.chatPanel.width)*0.3)).Render(eventView),
+		lipgloss.NewStyle().Width(chatWidth).Render(m.chatPanel.Render()),
+		lipgloss.NewStyle().Width(eventWidth).Render(eventView),
 	)
 
 	// Phase 3: help overlay on top
