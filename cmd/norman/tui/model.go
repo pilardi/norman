@@ -349,6 +349,12 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Timestamp: time.Now(),
 		})
 	case "connection_error":
+		// Ignore connection errors that are due to intentional closure (e.g., session switch)
+		if strings.Contains(msg.Message, "use of closed network connection") ||
+			strings.Contains(msg.Message, "websocket: close sent") ||
+			strings.Contains(msg.Message, "closed network connection") {
+			return
+		}
 		m.statusBar.SetConnection("✗ " + msg.Message)
 	case "websocket_parse_error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
