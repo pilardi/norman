@@ -315,6 +315,12 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		m.sessionID = msg.SessionID
 		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", client.ShortID(msg.SessionID)))
 	case "session_created":
+		// Load session history for the newly created or existing session
+		if m.sessionID != "" {
+			// Load history before appending system message
+			loadSessionHistory(m, m.sessionID)
+		}
+
 		if msg.SessionID != "" {
 			m.statusBar.SetConnection(fmt.Sprintf("✓ Using session %s", truncate(msg.SessionID, 12)))
 			m.chatPanel.AppendMessage(ChatMessage{
