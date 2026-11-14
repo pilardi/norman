@@ -1326,7 +1326,10 @@ type VerifyResultStatus string
 
 // WebSocketEvent defines model for WebSocketEvent.
 type WebSocketEvent struct {
-	Channel         *string                 `json:"channel,omitempty"`
+	Channel *string `json:"channel,omitempty"`
+
+	// Data Additional event data (e.g., rich_output metadata like content_type, render_hint, structured_data)
+	Data            *map[string]interface{} `json:"data,omitempty"`
 	Event           WebSocketEventEvent     `json:"event"`
 	Message         *string                 `json:"message,omitempty"`
 	Priority        *WebSocketEventPriority `json:"priority,omitempty"`

@@ -988,12 +988,17 @@ func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
 	defer l.mu.Unlock()
 	if task, ok := l.tasks[taskID]; ok {
 		task.events = append(task.events, evt)
+		// Include RichOutput data in the event's Data field if present
+		if task.RichOutput != nil {
+			dataMap := richOutputToMap(task.RichOutput)
+			evt.Data = &dataMap
+		}
 	}
 	l.wsHub.BroadcastGranular(evt.Event, taskID, *evt.SessionId, *evt.Message)
 }
 
 // detectRichOutput analyzes accumulated task output and returns a RichOutput struct
-// populated with content type, render hint, and structured data if parseable as JSON.
+// populated with content type, render hint, and structured data if parseable as JSON or text/markdown/html.
 func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
 	trimmed := strings.TrimSpace(string(output))
 	if len(trimmed) == 0 {
@@ -1011,9 +1016,39 @@ func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
 	var jsonMap map[string]interface{}
 	if err := json.Unmarshal([]byte(trimmed), &jsonMap); err == nil {
 		richOut.StructuredData = &jsonMap
+	} else if renderHint == protocol.Markdown || renderHint == protocol.Text || renderHint == protocol.Html {
+		// For markdown, text, html, populate StructuredData with the content.
+		contentMap := map[string]interface{}{
+			"content": trimmed,
+		}
+		richOut.StructuredData = &contentMap
 	}
 
 	return richOut
+}
+
+// richOutputToMap converts a RichOutput to a map[string]interface{} for WebSocket event data.
+func richOutputToMap(ro *protocol.RichOutput) map[string]interface{} {
+	if ro == nil {
+		return nil
+	}
+	data := make(map[string]interface{})
+	if ro.ContentType != nil {
+		data["content_type"] = *ro.ContentType
+	}
+	if ro.MimeType != nil {
+		data["mime_type"] = *ro.MimeType
+	}
+	if ro.RenderHint != nil {
+		data["render_hint"] = string(*ro.RenderHint)
+	}
+	if ro.ArtifactUrl != nil {
+		data["artifact_url"] = *ro.ArtifactUrl
+	}
+	if ro.StructuredData != nil {
+		data["structured_data"] = *ro.StructuredData
+	}
+	return data
 }
 
 // detectContentType returns a high-level content type and matching render hint from raw text.
@@ -1049,11 +1084,30 @@ func hasHTMLTags(s string) bool {
 }
 
 func hasMarkdown(s string) bool {
-	// Detect common markdown patterns: headings (#), code blocks (```), lists (-/1.), bold (**).
-	for _, marker := range []string{"\n# ", "\n## ", "```", "\n- ", "\n1. ", "**"} {
-		if strings.Contains(s, marker) {
-			return true
-		}
+	// Detect common markdown patterns: headings (#), code blocks (```), lists (-/1.), bold (**), inline code (`).
+	// Check for code blocks first
+	if strings.Contains(s, "```") {
+		return true
+	}
+	// Check for headings (any # followed by space or end of line)
+	if strings.Contains(s, "# ") || strings.Contains(s, "## ") || strings.Contains(s, "### ") ||
+		strings.Contains(s, "#### ") || strings.Contains(s, "##### ") || strings.Contains(s, "###### ") {
+		return true
+	}
+	// Check for lists ( - or * or number at start of line or after newline)
+	if strings.Contains(s, "\n- ") || strings.Contains(s, "\n* ") || strings.Contains(s, "\n1. ") ||
+		strings.Contains(s, "\n2. ") || strings.Contains(s, "\n3. ") || strings.Contains(s, "\n4. ") ||
+		strings.Contains(s, "\n5. ") || strings.Contains(s, "\n6. ") || strings.Contains(s, "\n7. ") ||
+		strings.Contains(s, "\n8. ") || strings.Contains(s, "\n9. ") || strings.Contains(s, "\n10. ") {
+		return true
+	}
+	// Check for bold/italic
+	if strings.Contains(s, "**") || strings.Contains(s, "*") || strings.Contains(s, "__") {
+		return true
+	}
+	// Check for inline code
+	if strings.Contains(s, "`") {
+		return true
 	}
 	return false
 }
