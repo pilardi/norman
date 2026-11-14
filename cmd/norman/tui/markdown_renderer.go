@@ -75,6 +75,8 @@ func renderMarkdownText(content string, lines *[]string) {
 		}
 
 		if trimmedLine == "" {
+			// Preserve empty lines for proper markdown spacing
+			*lines = append(*lines, "")
 			continue
 		}
 

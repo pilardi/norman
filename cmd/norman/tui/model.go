@@ -311,6 +311,14 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		}
 	case "turn_completed":
 		m.statusBar.SetConnection("Connected")
+		// Finish any pending streaming message
+		m.chatPanel.FinishStreamingMessage()
+	case "task_complete":
+		// Finish any pending streaming message
+		m.chatPanel.FinishStreamingMessage()
+	case "task_failed":
+		// Finish any pending streaming message and show error
+		m.chatPanel.FinishStreamingMessage()
 	case "session_switched":
 		m.sessionID = msg.SessionID
 		m.statusBar.SetConnection(fmt.Sprintf("● Switched to session %s", client.ShortID(msg.SessionID)))
@@ -371,16 +379,33 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		})
 	case "task_progress":
 		if m.isSessionScoped(msg) {
-			m.events = append(m.events, EventItem{
-				Type:      "progress",
-				Message:   msg.Message,
-				Timestamp: time.Now(),
-			})
+			// Check if this is a streaming text chunk or a progress message
+			msgStr := msg.Message
+
+			if !isProgressMessage(msgStr) {
+				// It's a streaming text chunk - append to chat panel's streaming message
+				m.chatPanel.AppendStreamingChunk(msgStr)
+			} else {
+				// It's a progress message - add to events panel
+				m.events = append(m.events, EventItem{
+					Type:      "progress",
+					Message:   msgStr,
+					Timestamp: time.Now(),
+				})
+			}
 		}
 	case "thinking_progress":
 		if m.isSessionScoped(msg) {
 			m.events = append(m.events, EventItem{
 				Type:      "thinking",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
+	case "agent_step":
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "progress",
 				Message:   msg.Message,
 				Timestamp: time.Now(),
 			})

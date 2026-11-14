@@ -1583,6 +1583,7 @@ components:
           enum:
             - task_progress
             - thinking_progress
+            - agent_step
             - task_complete
             - task_failed
             - notification

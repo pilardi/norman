@@ -319,7 +319,7 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, se
 
 	// Push progress event (session-aware)
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
+		Event:   protocol.AgentStep,
 		TaskId:  &taskID,
 		Message: strPtr(fmt.Sprintf("Task %s submitted", taskID)),
 		Step:    intPtr(0),
@@ -572,7 +572,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// Phase 1: Skill resolution and activation (session-aware)
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
+		Event:   protocol.AgentStep,
 		TaskId:  &task.ID,
 		Message: strPtr("Resolving skills..."),
 		Step:    intPtr(1),
@@ -589,14 +589,14 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 		activeSkills := l.activator.Active()
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-			Event:   protocol.TaskProgress,
+			Event:   protocol.AgentStep,
 			TaskId:  &task.ID,
 			Message: strPtr(fmt.Sprintf("Activated skills: %s", strings.Join(activeSkills, ", "))),
 			Step:    intPtr(2),
 		})
 	} else {
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-			Event:   protocol.TaskProgress,
+			Event:   protocol.AgentStep,
 			TaskId:  &task.ID,
 			Message: strPtr("Activated skills: (none)"),
 			Step:    intPtr(2),
@@ -605,7 +605,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// Phase 2: Execute — multi-turn agent loop with LLM using existing workspace.
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
+		Event:   protocol.AgentStep,
 		TaskId:  &task.ID,
 		Message: strPtr("Executing task..."),
 		Step:    intPtr(3),
@@ -677,7 +677,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 	var fullOutput strings.Builder
 	for turn := 0; turn < l.config.System.MaxTurns; turn++ {
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-			Event:   protocol.TaskProgress,
+			Event:   protocol.AgentStep,
 			TaskId:  &task.ID,
 			Message: strPtr(fmt.Sprintf("LLM turn %d/%d", turn+1, l.config.System.MaxTurns)),
 			Step:    intPtr(6 + turn),
@@ -857,7 +857,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 			for _, tc := range toolCalls {
 				// Pre-execution broadcast with tool detail
 				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-					Event:   protocol.TaskProgress,
+					Event:   protocol.AgentStep,
 					TaskId:  &task.ID,
 					Message: strPtr(fmt.Sprintf("Executing tool: %s (args: %.60s...)", tc.Name, string(tc.Arguments))),
 					Step:    intPtr(7 + turn),
@@ -884,7 +884,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 					status = "failed"
 				}
 				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-					Event:   protocol.TaskProgress,
+					Event:   protocol.AgentStep,
 					TaskId:  &task.ID,
 					Message: strPtr(fmt.Sprintf("Tool '%s' completed: %s (exit %d)", tc.Name, status, exitCode)),
 					Step:    intPtr(7 + turn),
@@ -1587,9 +1587,10 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 	l.mu.Unlock()
 
 	l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &taskID,
-		Message: strPtr(fmt.Sprintf("Context budget at %.0f%% — compressing session", l.budget.UsedFraction()*100)),
+		Event:     protocol.ContextBudgetWarning,
+		TaskId:    &taskID,
+		Message:   strPtr(fmt.Sprintf("Context budget at %.0f%% — compressing session", l.budget.UsedFraction()*100)),
+		Threshold: strPtr(fmt.Sprintf("%.0f%%", l.budget.UsedFraction()*100)),
 	})
 
 	// Push notification via notifier path (threshold event logging)
