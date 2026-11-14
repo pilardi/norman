@@ -165,6 +165,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if len(m.sessionSwitcher.list.Items()) > 0 {
 					item := m.sessionSwitcher.list.SelectedItem().(SessionItem)
+					m.sessionSwitcher.showing = false
 					return m, switchToSession(item.ID)
 				}
 			}
