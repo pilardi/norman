@@ -501,6 +501,7 @@ const (
 	TaskComplete         WebSocketEventEvent = "task_complete"
 	TaskFailed           WebSocketEventEvent = "task_failed"
 	TaskProgress         WebSocketEventEvent = "task_progress"
+	ThinkingProgress     WebSocketEventEvent = "thinking_progress"
 	TurnCompleted        WebSocketEventEvent = "turn_completed"
 	TurnFailed           WebSocketEventEvent = "turn_failed"
 	UserResponse         WebSocketEventEvent = "user_response"
@@ -526,6 +527,8 @@ func (e WebSocketEventEvent) Valid() bool {
 	case TaskFailed:
 		return true
 	case TaskProgress:
+		return true
+	case ThinkingProgress:
 		return true
 	case TurnCompleted:
 		return true

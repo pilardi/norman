@@ -371,6 +371,10 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 				chunk.Delta = content
 			}
 		}
+		// Extract reasoning/thinking content (for models that support it).
+		if reasoning, ok := delta["reasoning_content"].(string); ok {
+			chunk.ReasoningContent = reasoning
+		}
 		if fr, ok := delta["finish_reason"].(string); ok {
 			chunk.FinishReason = fr
 		}
@@ -399,7 +403,7 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 				})
 			}
 		}
-		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls))
+		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q reasoning=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.ReasoningContent, chunk.FinishReason, len(chunk.ToolCalls))
 		return chunk, nil
 	}
 

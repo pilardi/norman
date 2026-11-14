@@ -377,6 +377,14 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 				Timestamp: time.Now(),
 			})
 		}
+	case "thinking_progress":
+		if m.isSessionScoped(msg) {
+			m.events = append(m.events, EventItem{
+				Type:      "thinking",
+				Message:   msg.Message,
+				Timestamp: time.Now(),
+			})
+		}
 	case "notification":
 		if m.isSessionScoped(msg) {
 			m.events = append(m.events, EventItem{

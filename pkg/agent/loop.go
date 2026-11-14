@@ -752,7 +752,34 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 				continue
 			}
 
-			fullText.WriteString(chunk.Delta)
+			// Distinguish between thinking/reasoning content and final answer content.
+			// Models like OpenAI's o1/o3 provide reasoning_content separately from content.
+			isThinking := chunk.ReasoningContent != ""
+
+			if isThinking {
+				// Broadcast thinking/reasoning chunk to client in real-time.
+				if chunk.ReasoningContent != "" {
+					reasoningMsg := chunk.ReasoningContent
+					l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+						Event:   protocol.ThinkingProgress,
+						TaskId:  &task.ID,
+						Message: &reasoningMsg,
+						Step:    intPtr(6 + turn),
+					})
+				}
+			} else if chunk.Delta != "" {
+				// Broadcast final answer chunk to client in real-time (lower perceived latency).
+				// Only non-empty deltas are sent; empty-string chunks come from
+				// tool-call / role-assignment events that carry no content.
+				chunkMsg := chunk.Delta
+				fullText.WriteString(chunkMsg)
+				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					TaskId:  &task.ID,
+					Message: &chunkMsg,
+					Step:    intPtr(6 + turn),
+				})
+			}
 
 			// Accumulate tool calls captured from delta.tool_calls field.
 			// Arguments stream incrementally across chunks; group by ID and concatenate.
@@ -776,19 +803,6 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 				usage.PromptTokens += chunk.Usage.PromptTokens
 				usage.CompletionTokens += chunk.Usage.CompletionTokens
 				usage.TotalTokens += chunk.Usage.TotalTokens
-			}
-
-			// Broadcast chunk to client in real-time (lower perceived latency).
-			// Only non-empty deltas are sent; empty-string chunks come from
-			// tool-call / role-assignment events that carry no content.
-			if chunk.Delta != "" {
-				chunkMsg := chunk.Delta
-				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-					Event:   protocol.TaskProgress,
-					TaskId:  &task.ID,
-					Message: &chunkMsg,
-					Step:    intPtr(6 + turn),
-				})
 			}
 		}
 

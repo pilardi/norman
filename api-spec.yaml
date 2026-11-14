@@ -1582,6 +1582,7 @@ components:
           type: string
           enum:
             - task_progress
+            - thinking_progress
             - task_complete
             - task_failed
             - notification

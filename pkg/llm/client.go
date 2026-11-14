@@ -271,6 +271,10 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 					if content, ok := deltaMap["content"].(string); ok {
 						chunk.Delta = content
 					}
+					// Extract reasoning/thinking content (for models like o1/o3 that support it).
+					if reasoning, ok := deltaMap["reasoning_content"].(string); ok {
+						chunk.ReasoningContent = reasoning
+					}
 					// Extract tool calls from delta.tool_calls array.
 					if tcArr, ok := deltaMap["tool_calls"].([]interface{}); ok && len(tcArr) > 0 {
 						for _, tcRaw := range tcArr {
