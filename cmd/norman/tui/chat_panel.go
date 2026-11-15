@@ -100,6 +100,17 @@ func (p *ChatPanel) FinishStreamingMessage() {
 	}
 }
 
+// AppendRichOutputMessage appends a rich output message to the chat panel.
+func (p *ChatPanel) AppendRichOutputMessage(ro *RichOutput) {
+	content := renderRichOutputForClient(ro)
+	p.messages = append(p.messages, ChatMessage{
+		Role:      "assistant",
+		Content:   content,
+		Timestamp: time.Now(),
+	})
+	p.updateViewport()
+}
+
 // Clear removes all messages from the panel.
 func (p *ChatPanel) Clear() {
 	p.messages = nil

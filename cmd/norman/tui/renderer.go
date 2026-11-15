@@ -7,6 +7,26 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
+// renderRichOutputForClient renders rich output from the client's RichOutput struct.
+func renderRichOutputForClient(ro *RichOutput) string {
+	if ro == nil || ro.RenderHint == "" {
+		return ""
+	}
+
+	// Convert client RichOutput to protocol.RichOutput
+	artifactUrl := ro.ArtifactURL
+	renderHint := protocol.RichOutputRenderHint(ro.RenderHint)
+	structuredData := ro.StructuredData
+
+	protoRo := &protocol.RichOutput{
+		RenderHint:     &renderHint,
+		StructuredData: &structuredData,
+		ArtifactUrl:    &artifactUrl,
+	}
+
+	return renderRichOutput(protoRo)
+}
+
 // renderRichOutput dispatches a RichOutput to the appropriate renderer based on render_hint.
 func renderRichOutput(ro *protocol.RichOutput) string {
 	if ro == nil || ro.RenderHint == nil {
