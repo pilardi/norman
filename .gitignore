@@ -17,3 +17,7 @@ roger
 docs/api-reference.html
 docs/*.html
 ~~/
+
+# PR description files
+pr_description.md
+pr89_description.md
