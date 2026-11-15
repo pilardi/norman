@@ -319,7 +319,7 @@ func (l *Loop) Submit(ctx context.Context, prompt string, workspaceID string, se
 
 	// Push progress event (session-aware)
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
+		Event:   protocol.AgentStep,
 		TaskId:  &taskID,
 		Message: strPtr(fmt.Sprintf("Task %s submitted", taskID)),
 		Step:    intPtr(0),
@@ -572,7 +572,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// Phase 1: Skill resolution and activation (session-aware)
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
+		Event:   protocol.AgentStep,
 		TaskId:  &task.ID,
 		Message: strPtr("Resolving skills..."),
 		Step:    intPtr(1),
@@ -589,14 +589,14 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 		activeSkills := l.activator.Active()
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-			Event:   protocol.TaskProgress,
+			Event:   protocol.AgentStep,
 			TaskId:  &task.ID,
 			Message: strPtr(fmt.Sprintf("Activated skills: %s", strings.Join(activeSkills, ", "))),
 			Step:    intPtr(2),
 		})
 	} else {
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-			Event:   protocol.TaskProgress,
+			Event:   protocol.AgentStep,
 			TaskId:  &task.ID,
 			Message: strPtr("Activated skills: (none)"),
 			Step:    intPtr(2),
@@ -605,7 +605,7 @@ func (l *Loop) execute(ctx context.Context, task *Task) {
 
 	// Phase 2: Execute — multi-turn agent loop with LLM using existing workspace.
 	l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
+		Event:   protocol.AgentStep,
 		TaskId:  &task.ID,
 		Message: strPtr("Executing task..."),
 		Step:    intPtr(3),
@@ -677,7 +677,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 	var fullOutput strings.Builder
 	for turn := 0; turn < l.config.System.MaxTurns; turn++ {
 		l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-			Event:   protocol.TaskProgress,
+			Event:   protocol.AgentStep,
 			TaskId:  &task.ID,
 			Message: strPtr(fmt.Sprintf("LLM turn %d/%d", turn+1, l.config.System.MaxTurns)),
 			Step:    intPtr(6 + turn),
@@ -752,7 +752,34 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 				continue
 			}
 
-			fullText.WriteString(chunk.Delta)
+			// Distinguish between thinking/reasoning content and final answer content.
+			// Models like OpenAI's o1/o3 provide reasoning_content separately from content.
+			isThinking := chunk.ReasoningContent != ""
+
+			if isThinking {
+				// Broadcast thinking/reasoning chunk to client in real-time.
+				if chunk.ReasoningContent != "" {
+					reasoningMsg := chunk.ReasoningContent
+					l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+						Event:   protocol.ThinkingProgress,
+						TaskId:  &task.ID,
+						Message: &reasoningMsg,
+						Step:    intPtr(6 + turn),
+					})
+				}
+			} else if chunk.Delta != "" {
+				// Broadcast final answer chunk to client in real-time (lower perceived latency).
+				// Only non-empty deltas are sent; empty-string chunks come from
+				// tool-call / role-assignment events that carry no content.
+				chunkMsg := chunk.Delta
+				fullText.WriteString(chunkMsg)
+				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					TaskId:  &task.ID,
+					Message: &chunkMsg,
+					Step:    intPtr(6 + turn),
+				})
+			}
 
 			// Accumulate tool calls captured from delta.tool_calls field.
 			// Arguments stream incrementally across chunks; group by ID and concatenate.
@@ -776,19 +803,6 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 				usage.PromptTokens += chunk.Usage.PromptTokens
 				usage.CompletionTokens += chunk.Usage.CompletionTokens
 				usage.TotalTokens += chunk.Usage.TotalTokens
-			}
-
-			// Broadcast chunk to client in real-time (lower perceived latency).
-			// Only non-empty deltas are sent; empty-string chunks come from
-			// tool-call / role-assignment events that carry no content.
-			if chunk.Delta != "" {
-				chunkMsg := chunk.Delta
-				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-					Event:   protocol.TaskProgress,
-					TaskId:  &task.ID,
-					Message: &chunkMsg,
-					Step:    intPtr(6 + turn),
-				})
 			}
 		}
 
@@ -843,7 +857,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 			for _, tc := range toolCalls {
 				// Pre-execution broadcast with tool detail
 				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-					Event:   protocol.TaskProgress,
+					Event:   protocol.AgentStep,
 					TaskId:  &task.ID,
 					Message: strPtr(fmt.Sprintf("Executing tool: %s (args: %.60s...)", tc.Name, string(tc.Arguments))),
 					Step:    intPtr(7 + turn),
@@ -870,7 +884,7 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 					status = "failed"
 				}
 				l.wsHub.BroadcastSession(task.SessionId, protocol.WebSocketEvent{
-					Event:   protocol.TaskProgress,
+					Event:   protocol.AgentStep,
 					TaskId:  &task.ID,
 					Message: strPtr(fmt.Sprintf("Tool '%s' completed: %s (exit %d)", tc.Name, status, exitCode)),
 					Step:    intPtr(7 + turn),
@@ -993,7 +1007,7 @@ func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
 }
 
 // detectRichOutput analyzes accumulated task output and returns a RichOutput struct
-// populated with content type, render hint, and structured data if parseable as JSON.
+// populated with content type, render hint, and structured data if parseable as JSON or text/markdown/html.
 func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
 	trimmed := strings.TrimSpace(string(output))
 	if len(trimmed) == 0 {
@@ -1011,6 +1025,12 @@ func (l *Loop) detectRichOutput(output []byte) *protocol.RichOutput {
 	var jsonMap map[string]interface{}
 	if err := json.Unmarshal([]byte(trimmed), &jsonMap); err == nil {
 		richOut.StructuredData = &jsonMap
+	} else if renderHint == protocol.Markdown || renderHint == protocol.Text || renderHint == protocol.Html {
+		// For markdown, text, html, populate StructuredData with the content.
+		contentMap := map[string]interface{}{
+			"content": trimmed,
+		}
+		richOut.StructuredData = &contentMap
 	}
 
 	return richOut
@@ -1049,11 +1069,30 @@ func hasHTMLTags(s string) bool {
 }
 
 func hasMarkdown(s string) bool {
-	// Detect common markdown patterns: headings (#), code blocks (```), lists (-/1.), bold (**).
-	for _, marker := range []string{"\n# ", "\n## ", "```", "\n- ", "\n1. ", "**"} {
-		if strings.Contains(s, marker) {
-			return true
-		}
+	// Detect common markdown patterns: headings (#), code blocks (```), lists (-/1.), bold (**), inline code (`).
+	// Check for code blocks first
+	if strings.Contains(s, "```") {
+		return true
+	}
+	// Check for headings (any # followed by space or end of line)
+	if strings.Contains(s, "# ") || strings.Contains(s, "## ") || strings.Contains(s, "### ") ||
+		strings.Contains(s, "#### ") || strings.Contains(s, "##### ") || strings.Contains(s, "###### ") {
+		return true
+	}
+	// Check for lists ( - or * or number at start of line or after newline)
+	if strings.Contains(s, "\n- ") || strings.Contains(s, "\n* ") || strings.Contains(s, "\n1. ") ||
+		strings.Contains(s, "\n2. ") || strings.Contains(s, "\n3. ") || strings.Contains(s, "\n4. ") ||
+		strings.Contains(s, "\n5. ") || strings.Contains(s, "\n6. ") || strings.Contains(s, "\n7. ") ||
+		strings.Contains(s, "\n8. ") || strings.Contains(s, "\n9. ") || strings.Contains(s, "\n10. ") {
+		return true
+	}
+	// Check for bold/italic
+	if strings.Contains(s, "**") || strings.Contains(s, "*") || strings.Contains(s, "__") {
+		return true
+	}
+	// Check for inline code
+	if strings.Contains(s, "`") {
+		return true
 	}
 	return false
 }
@@ -1519,9 +1558,10 @@ func (l *Loop) checkAndCompress(ctx context.Context, taskID string) {
 	l.mu.Unlock()
 
 	l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
-		Event:   protocol.TaskProgress,
-		TaskId:  &taskID,
-		Message: strPtr(fmt.Sprintf("Context budget at %.0f%% — compressing session", l.budget.UsedFraction()*100)),
+		Event:     protocol.ContextBudgetWarning,
+		TaskId:    &taskID,
+		Message:   strPtr(fmt.Sprintf("Context budget at %.0f%% — compressing session", l.budget.UsedFraction()*100)),
+		Threshold: strPtr(fmt.Sprintf("%.0f%%", l.budget.UsedFraction()*100)),
 	})
 
 	// Push notification via notifier path (threshold event logging)

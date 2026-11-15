@@ -1,22 +1,26 @@
 package tui
 
 import (
+	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/norman/norman/pkg/protocol"
 )
 
 // ChatPanel is a scrollable chat message display with input textarea.
 type ChatPanel struct {
-	focused   bool
-	width     int
-	height    int
-	messages  []ChatMessage
-	viewport  viewport.Model
-	textInput textarea.Model
+	focused          bool
+	width            int
+	height           int
+	messages         []ChatMessage
+	viewport         viewport.Model
+	textInput        textarea.Model
+	streamingMessage *ChatMessage // Accumulates streaming chunks from the LLM
 }
 
 // NewChatPanel creates a new chat panel with default settings.
@@ -64,8 +68,36 @@ func (p *ChatPanel) updateViewportHeight() {
 
 // AppendMessage adds a message to the chat stream and updates the viewport.
 func (p *ChatPanel) AppendMessage(msg ChatMessage) {
+	// If there's a streaming message, finish it as a regular message
+	if p.streamingMessage != nil {
+		p.messages = append(p.messages, *p.streamingMessage)
+		p.streamingMessage = nil
+	}
 	p.messages = append(p.messages, msg)
 	p.updateViewport()
+}
+
+// AppendStreamingChunk appends a chunk to the streaming message, or creates a new one if none exists.
+func (p *ChatPanel) AppendStreamingChunk(chunk string) {
+	if p.streamingMessage == nil {
+		p.streamingMessage = &ChatMessage{
+			Role:      "assistant",
+			Content:   chunk,
+			Timestamp: time.Now(),
+		}
+	} else {
+		p.streamingMessage.Content += chunk
+	}
+	p.updateStreamingViewport()
+}
+
+// FinishStreamingMessage finalizes the streaming message and adds it to the messages list.
+func (p *ChatPanel) FinishStreamingMessage() {
+	if p.streamingMessage != nil {
+		p.messages = append(p.messages, *p.streamingMessage)
+		p.streamingMessage = nil
+		p.updateViewport()
+	}
 }
 
 // Clear removes all messages from the panel.
@@ -101,13 +133,141 @@ func (p *ChatPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+func (p *ChatPanel) updateStreamingViewport() {
+	if p.streamingMessage == nil {
+		return
+	}
+
+	// Detect content type of the accumulated streaming content
+	_, renderHint := detectContentType(p.streamingMessage.Content)
+
+	var lines []string
+	speaker := "Assistant"
+	ts := p.streamingMessage.Timestamp.Format("15:04:05")
+	lines = append(lines, "["+ts+"] "+speaker+":")
+
+	// Render based on detected content type
+	switch renderHint {
+	case protocol.Json:
+		// For JSON, render as JSON tree
+		var jsonMap map[string]interface{}
+		if err := json.Unmarshal([]byte(p.streamingMessage.Content), &jsonMap); err == nil {
+			lines = append(lines, renderJSONTree(&jsonMap))
+		} else {
+			// Fallback to text if JSON is incomplete
+			content := p.streamingMessage.Content
+			allocatedWidth := int(float64(p.width) * 0.7)
+			maxWidth := allocatedWidth - 23
+			if maxWidth < 0 {
+				maxWidth = 0
+			}
+			content = wrapString(content, maxWidth)
+			lines = append(lines, "  "+content)
+		}
+	case protocol.Html:
+		// For HTML, render as HTML text
+		content := p.streamingMessage.Content
+		allocatedWidth := int(float64(p.width) * 0.7)
+		maxWidth := allocatedWidth - 23
+		if maxWidth < 0 {
+			maxWidth = 0
+		}
+		content = wrapString(content, maxWidth)
+		lines = append(lines, "  "+content)
+	case protocol.Markdown:
+		// For markdown, render with markdown renderer
+		contentMap := map[string]interface{}{
+			"content": p.streamingMessage.Content,
+		}
+		lines = append(lines, renderMarkdown(&contentMap))
+	case protocol.Text:
+		// For text, wrap and display as plain text
+		content := p.streamingMessage.Content
+		allocatedWidth := int(float64(p.width) * 0.7)
+		maxWidth := allocatedWidth - 23
+		if maxWidth < 0 {
+			maxWidth = 0
+		}
+		content = wrapString(content, maxWidth)
+		lines = append(lines, "  "+content)
+	default:
+		// Fallback to text
+		content := p.streamingMessage.Content
+		allocatedWidth := int(float64(p.width) * 0.7)
+		maxWidth := allocatedWidth - 23
+		if maxWidth < 0 {
+			maxWidth = 0
+		}
+		content = wrapString(content, maxWidth)
+		lines = append(lines, "  "+content)
+	}
+
+	content := joinLines(lines)
+	p.viewport.SetContent(content)
+	// Scroll to bottom of visible area.
+	p.viewport.YOffset = max(0, strings.Count(content, "\n")-p.height)
+}
+
 func (p *ChatPanel) updateViewport() {
 	var lines []string
-	if len(p.messages) == 0 {
+	if len(p.messages) == 0 && p.streamingMessage == nil {
 		lines = append(lines, "Type a message below to start chatting.")
 		lines = append(lines, "")
 		lines = append(lines, "Keyboard: Tab = toggle focus | Ctrl+L = clear | Ctrl+H = help | Ctrl+S = sessions | / = command mode")
 	} else {
+		// First, render streaming message if it exists
+		if p.streamingMessage != nil {
+			_, renderHint := detectContentType(p.streamingMessage.Content)
+
+			speaker := "Assistant"
+			ts := p.streamingMessage.Timestamp.Format("15:04:05")
+			lines = append(lines, "["+ts+"] "+speaker+":")
+
+			switch renderHint {
+			case protocol.Json:
+				var jsonMap map[string]interface{}
+				if err := json.Unmarshal([]byte(p.streamingMessage.Content), &jsonMap); err == nil {
+					lines = append(lines, renderJSONTree(&jsonMap))
+				} else {
+					content := p.streamingMessage.Content
+					allocatedWidth := int(float64(p.width) * 0.7)
+					maxWidth := allocatedWidth - 23
+					if maxWidth < 0 {
+						maxWidth = 0
+					}
+					content = wrapString(content, maxWidth)
+					lines = append(lines, "  "+content)
+				}
+			case protocol.Html:
+				content := p.streamingMessage.Content
+				allocatedWidth := int(float64(p.width) * 0.7)
+				maxWidth := allocatedWidth - 23
+				if maxWidth < 0 {
+					maxWidth = 0
+				}
+				content = wrapString(content, maxWidth)
+				lines = append(lines, "  "+content)
+			case protocol.Markdown:
+				contentMap := map[string]interface{}{
+					"content": p.streamingMessage.Content,
+				}
+				lines = append(lines, renderMarkdown(&contentMap))
+			case protocol.Text:
+				fallthrough
+			default:
+				content := p.streamingMessage.Content
+				allocatedWidth := int(float64(p.width) * 0.7)
+				maxWidth := allocatedWidth - 23
+				if maxWidth < 0 {
+					maxWidth = 0
+				}
+				content = wrapString(content, maxWidth)
+				lines = append(lines, "  "+content)
+			}
+			lines = append(lines, "")
+		}
+
+		// Then, render regular messages
 		for _, msg := range p.messages {
 			speaker := "Assistant"
 			if msg.Role == "user" {
@@ -141,31 +301,40 @@ func (p *ChatPanel) updateViewport() {
 }
 
 // wrapString wraps a long string to fit within maxWidth characters,
-// breaking on word boundaries (spaces).
+// breaking on word boundaries (spaces), while preserving newlines.
 func wrapString(s string, maxWidth int) string {
 	if maxWidth <= 0 || len(s) == 0 {
 		return s
 	}
+
+	// Process line by line to preserve newlines
+	lines := strings.Split(s, "\n")
 	var result strings.Builder
-	words := strings.Fields(s)
-	var line strings.Builder
-	for _, w := range words {
-		if line.Len()+len(w)+1 > maxWidth && line.Len() > 0 {
-			result.WriteString(line.String())
-			result.WriteByte('\n')
-			line.Reset()
-		}
-		if line.Len() > 0 {
-			line.WriteByte(' ')
-		}
-		line.WriteString(w)
-	}
-	if line.Len() > 0 {
-		if result.Len() > 0 {
+
+	for i, line := range lines {
+		if i > 0 {
 			result.WriteByte('\n')
 		}
-		result.WriteString(line.String())
+
+		// Wrap this line
+		words := strings.Fields(line)
+		var lineBuilder strings.Builder
+		for _, w := range words {
+			if lineBuilder.Len()+len(w)+1 > maxWidth && lineBuilder.Len() > 0 {
+				result.WriteString(lineBuilder.String())
+				result.WriteByte('\n')
+				lineBuilder.Reset()
+			}
+			if lineBuilder.Len() > 0 {
+				lineBuilder.WriteByte(' ')
+			}
+			lineBuilder.WriteString(w)
+		}
+		if lineBuilder.Len() > 0 {
+			result.WriteString(lineBuilder.String())
+		}
 	}
+
 	return result.String()
 }
 

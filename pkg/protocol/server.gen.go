@@ -492,6 +492,7 @@ func (e VerifyResultStatus) Valid() bool {
 
 // Defines values for WebSocketEventEvent.
 const (
+	AgentStep            WebSocketEventEvent = "agent_step"
 	ContextBudgetWarning WebSocketEventEvent = "context_budget_warning"
 	ItemCompleted        WebSocketEventEvent = "item_completed"
 	ItemStarted          WebSocketEventEvent = "item_started"
@@ -501,6 +502,7 @@ const (
 	TaskComplete         WebSocketEventEvent = "task_complete"
 	TaskFailed           WebSocketEventEvent = "task_failed"
 	TaskProgress         WebSocketEventEvent = "task_progress"
+	ThinkingProgress     WebSocketEventEvent = "thinking_progress"
 	TurnCompleted        WebSocketEventEvent = "turn_completed"
 	TurnFailed           WebSocketEventEvent = "turn_failed"
 	UserResponse         WebSocketEventEvent = "user_response"
@@ -509,6 +511,8 @@ const (
 // Valid indicates whether the value is a known member of the WebSocketEventEvent enum.
 func (e WebSocketEventEvent) Valid() bool {
 	switch e {
+	case AgentStep:
+		return true
 	case ContextBudgetWarning:
 		return true
 	case ItemCompleted:
@@ -526,6 +530,8 @@ func (e WebSocketEventEvent) Valid() bool {
 	case TaskFailed:
 		return true
 	case TaskProgress:
+		return true
+	case ThinkingProgress:
 		return true
 	case TurnCompleted:
 		return true

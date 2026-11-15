@@ -95,10 +95,11 @@ type StreamReader interface {
 
 // Chunk represents a single increment from a streaming response.
 type Chunk struct {
-	Delta        string
-	FinishReason string
-	Usage        *Usage
-	ToolCalls    []ToolCall // Captured tool calls from delta.tool_calls field
+	Delta            string
+	ReasoningContent string // reasoning/thinking content (for models like o1/o3 that support it)
+	FinishReason     string
+	Usage            *Usage
+	ToolCalls        []ToolCall // Captured tool calls from delta.tool_calls field
 }
 
 // ResponseChoice is kept for backward compatibility with existing code that accesses resp.Choices[0].Message.

@@ -420,6 +420,13 @@ Examples:
   norman sessions history ab953ff5          # Last 10 messages (default)
   norman sessions history ab953ff5 20      # Last 20 messages
   norman sessions history my-session --json  # Raw JSON output`,
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:    "json",
+								Aliases: []string{"j"},
+								Usage:   "Output as machine-readable JSON instead of human-readable format",
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							args := cmd.Args().Slice()
 							if len(args) == 0 {
