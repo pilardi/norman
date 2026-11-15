@@ -14,6 +14,15 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
+// keysFromMap returns a slice of keys from a map[string]interface{}.
+func keysFromMap(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // RichOutput represents the rich output metadata from the server.
 type RichOutput struct {
 	ContentType    string                 `json:"content_type,omitempty"`
@@ -112,6 +121,9 @@ func startWebSocket(model *Model) tea.Cmd {
 				if step, ok := event["step"].(float64); ok {
 					wsEvt.Step = int(step)
 				}
+
+				// Debug log: print all event keys to see what's available
+				fmt.Fprintf(os.Stderr, "TUI WebSocket event keys: %v\n", keysFromMap(event))
 
 				// Extract rich_output if present
 				if richOutData, ok := event["rich_output"].(map[string]interface{}); ok {
