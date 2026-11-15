@@ -100,6 +100,11 @@ func (p *ChatPanel) FinishStreamingMessage() {
 	}
 }
 
+// ClearStreamingMessage discards the streaming message without adding it to the messages list.
+func (p *ChatPanel) ClearStreamingMessage() {
+	p.streamingMessage = nil
+}
+
 // AppendRichOutputMessage appends a rich output message to the chat panel.
 func (p *ChatPanel) AppendRichOutputMessage(ro *RichOutput) {
 	content := renderRichOutputForClient(ro)

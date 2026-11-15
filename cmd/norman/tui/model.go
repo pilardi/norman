@@ -311,15 +311,15 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		}
 	case "turn_completed":
 		m.statusBar.SetConnection("Connected")
-		// Finish any pending streaming message
-		m.chatPanel.FinishStreamingMessage()
+		// Clear any pending streaming message
+		m.chatPanel.ClearStreamingMessage()
 		// If rich_output is present, render and append it
 		if msg.RichOutput != nil {
 			m.chatPanel.AppendRichOutputMessage(msg.RichOutput)
 		}
 	case "task_complete":
-		// Finish any pending streaming message
-		m.chatPanel.FinishStreamingMessage()
+		// Clear any pending streaming message
+		m.chatPanel.ClearStreamingMessage()
 		// If rich_output is present, render and append it
 		if msg.RichOutput != nil {
 			m.chatPanel.AppendRichOutputMessage(msg.RichOutput)

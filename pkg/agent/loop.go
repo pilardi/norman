@@ -1020,7 +1020,10 @@ func (l *Loop) emitStoredWithRichOutput(taskID string, evt protocol.WebSocketEve
 		evt.RichOutput = richOut
 	}
 
-	l.wsHub.BroadcastGranular(evt.Event, taskID, *evt.SessionId, *evt.Message)
+	// Broadcast to the session with the full event including RichOutput
+	if evt.SessionId != nil {
+		l.wsHub.BroadcastSession(*evt.SessionId, evt)
+	}
 }
 
 // detectRichOutput analyzes accumulated task output and returns a RichOutput struct
