@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -134,6 +135,10 @@ func startWebSocket(model *Model) tea.Cmd {
 						richOut.ContentLength = int(contentLength)
 					}
 					wsEvt.RichOutput = richOut
+
+					// Debug log: log parsed RichOutput data
+					fmt.Fprintf(os.Stderr, "TUI WebSocket: parsed rich_output - contentType=%s, renderHint=%s, structuredData=%v\n",
+						richOut.ContentType, richOut.RenderHint, richOut.StructuredData)
 				}
 
 				// Non-blocking send to avoid goroutine blocking if channel is full.

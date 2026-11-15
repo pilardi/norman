@@ -1020,6 +1020,21 @@ func (l *Loop) emitStoredWithRichOutput(taskID string, evt protocol.WebSocketEve
 		evt.RichOutput = richOut
 	}
 
+	// Debug log: log RichOutput data
+	if richOut != nil {
+		contentType := "<nil>"
+		if richOut.ContentType != nil {
+			contentType = *richOut.ContentType
+		}
+		renderHint := "<nil>"
+		if richOut.RenderHint != nil {
+			renderHint = string(*richOut.RenderHint)
+		}
+		log.Printf("agent: emitStoredWithRichOutput - taskID=%s, contentType=%s, renderHint=%s, structuredData=%v",
+			taskID, contentType, renderHint, richOut.StructuredData,
+		)
+	}
+
 	// Broadcast to the session with the full event including RichOutput
 	if evt.SessionId != nil {
 		l.wsHub.BroadcastSession(*evt.SessionId, evt)
@@ -1648,6 +1663,21 @@ func turnsToInterface(turns []budget.Turn) []interface{} {
 func (l *Loop) pushCompletion(task *Task) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	// Debug log: log RichOutput data for task completion
+	if task.RichOutput != nil {
+		contentType := "<nil>"
+		if task.RichOutput.ContentType != nil {
+			contentType = *task.RichOutput.ContentType
+		}
+		renderHint := "<nil>"
+		if task.RichOutput.RenderHint != nil {
+			renderHint = string(*task.RichOutput.RenderHint)
+		}
+		log.Printf("agent: pushCompletion - taskID=%s, contentType=%s, renderHint=%s, structuredData=%v",
+			task.ID, contentType, renderHint, task.RichOutput.StructuredData,
+		)
+	}
 
 	completionEvent := protocol.WebSocketEvent{
 		Event:      protocol.TaskComplete,
