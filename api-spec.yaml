@@ -1624,6 +1624,10 @@ components:
           type: string
           nullable: true
           description: Budget threshold that triggered the event (e.g., "75%")
+        rich_output:
+          $ref: "#/components/schemas/RichOutput"
+          nullable: true
+          description: Structured metadata about the output (content type, render hint, structured data)
 
     ArchiveTaskRequest:
       type: object

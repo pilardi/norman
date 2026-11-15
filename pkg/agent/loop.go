@@ -957,12 +957,12 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 		}
 
 		// Granular event: turn.completed (stored + pushed via scope=events WebSocket clients)
-		l.emitStored(task.ID, protocol.WebSocketEvent{
+		l.emitStoredWithRichOutput(task.ID, protocol.WebSocketEvent{
 			Event:     protocol.TurnCompleted,
 			TaskId:    &task.ID,
 			SessionId: &task.SessionId,
 			Message:   strPtr(fmt.Sprintf("turn %d/%d completed with %d bytes output", turn+1, l.config.System.MaxTurns, len(task.Output))),
-		})
+		}, task.RichOutput)
 
 		return task.Output, nil
 	}
@@ -1003,6 +1003,23 @@ func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
 	if task, ok := l.tasks[taskID]; ok {
 		task.events = append(task.events, evt)
 	}
+	l.wsHub.BroadcastGranular(evt.Event, taskID, *evt.SessionId, *evt.Message)
+}
+
+// emitStoredWithRichOutput records a granular event in the task's event log
+// and broadcasts to scope=events clients, including RichOutput data if available.
+func (l *Loop) emitStoredWithRichOutput(taskID string, evt protocol.WebSocketEvent, richOut *protocol.RichOutput) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if task, ok := l.tasks[taskID]; ok {
+		task.events = append(task.events, evt)
+	}
+
+	// Include rich_output in the event if available
+	if richOut != nil {
+		evt.RichOutput = richOut
+	}
+
 	l.wsHub.BroadcastGranular(evt.Event, taskID, *evt.SessionId, *evt.Message)
 }
 
@@ -1630,9 +1647,10 @@ func (l *Loop) pushCompletion(task *Task) {
 	defer l.mu.Unlock()
 
 	completionEvent := protocol.WebSocketEvent{
-		Event:   protocol.TaskComplete,
-		TaskId:  &task.ID,
-		Message: strPtr(fmt.Sprintf("Task %s completed with status: %s", task.ID[:8], task.Status)),
+		Event:      protocol.TaskComplete,
+		TaskId:     &task.ID,
+		Message:    strPtr(fmt.Sprintf("Task %s completed with status: %s", task.ID[:8], task.Status)),
+		RichOutput: task.RichOutput,
 	}
 
 	if task.Error != "" {
