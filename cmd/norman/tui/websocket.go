@@ -23,25 +23,14 @@ func keysFromMap(m map[string]interface{}) []string {
 	return keys
 }
 
-// RichOutput represents the rich output metadata from the server.
-type RichOutput struct {
-	ContentType    string                 `json:"content_type,omitempty"`
-	RenderHint     string                 `json:"render_hint,omitempty"`
-	StructuredData map[string]interface{} `json:"structured_data,omitempty"`
-	ArtifactURL    string                 `json:"artifact_url,omitempty"`
-	ContentHash    string                 `json:"content_hash,omitempty"`
-	ContentLength  int                    `json:"content_length,omitempty"`
-}
-
 // WSMessageEvent represents a parsed WebSocket event message.
 type WSMessageEvent struct {
-	Event      string                 `json:"event"`
-	Message    string                 `json:"message,omitempty"`
-	SessionID  string                 `json:"session_id,omitempty"`
-	TaskID     string                 `json:"task_id,omitempty"`
-	Step       int                    `json:"step,omitempty"`
-	Data       map[string]interface{} `json:"data,omitempty"`
-	RichOutput *RichOutput            `json:"rich_output,omitempty"`
+	Event     string                 `json:"event"`
+	Message   string                 `json:"message,omitempty"`
+	SessionID string                 `json:"session_id,omitempty"`
+	TaskID    string                 `json:"task_id,omitempty"`
+	Step      int                    `json:"step,omitempty"`
+	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
 // startWebSocket connects to the server's WebSocket endpoint and streams events
@@ -124,34 +113,6 @@ func startWebSocket(model *Model) tea.Cmd {
 
 				// Debug log: print all event keys to see what's available
 				fmt.Fprintf(os.Stderr, "TUI WebSocket event keys: %v\n", keysFromMap(event))
-
-				// Extract rich_output if present
-				if richOutData, ok := event["rich_output"].(map[string]interface{}); ok {
-					richOut := &RichOutput{}
-					if contentType, ok := richOutData["content_type"].(string); ok {
-						richOut.ContentType = contentType
-					}
-					if renderHint, ok := richOutData["render_hint"].(string); ok {
-						richOut.RenderHint = renderHint
-					}
-					if structuredData, ok := richOutData["structured_data"].(map[string]interface{}); ok {
-						richOut.StructuredData = structuredData
-					}
-					if artifactURL, ok := richOutData["artifact_url"].(string); ok {
-						richOut.ArtifactURL = artifactURL
-					}
-					if contentHash, ok := richOutData["content_hash"].(string); ok {
-						richOut.ContentHash = contentHash
-					}
-					if contentLength, ok := richOutData["content_length"].(float64); ok {
-						richOut.ContentLength = int(contentLength)
-					}
-					wsEvt.RichOutput = richOut
-
-					// Debug log: log parsed RichOutput data
-					fmt.Fprintf(os.Stderr, "TUI WebSocket: parsed rich_output - contentType=%s, renderHint=%s, structuredData=%v\n",
-						richOut.ContentType, richOut.RenderHint, richOut.StructuredData)
-				}
 
 				// Non-blocking send to avoid goroutine blocking if channel is full.
 				select {

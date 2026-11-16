@@ -1,0 +1,7 @@
+TUI WebSocket event keys: [task_id event message rich_output session_id]
+TUI WebSocket event keys: [event message rich_output session_id task_id]
+TUI WebSocket event keys: [event message priority task_id]
+TUI WebSocket event keys: [event message rich_output session_id task_id]
+TUI WebSocket event keys: [session_id task_id event message rich_output]
+TUI WebSocket event keys: [event message priority task_id]
+TUI WebSocket event keys: [event message]

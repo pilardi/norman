@@ -1035,10 +1035,8 @@ func (l *Loop) emitStoredWithRichOutput(taskID string, evt protocol.WebSocketEve
 		)
 	}
 
-	// Broadcast to the session with the full event including RichOutput
-	if evt.SessionId != nil {
-		l.wsHub.BroadcastSession(*evt.SessionId, evt)
-	}
+	// Broadcast the event with all its fields (including rich_output and session_id) to all clients
+	l.wsHub.BroadcastEvent(evt)
 }
 
 // detectRichOutput analyzes accumulated task output and returns a RichOutput struct
@@ -1682,6 +1680,7 @@ func (l *Loop) pushCompletion(task *Task) {
 	completionEvent := protocol.WebSocketEvent{
 		Event:      protocol.TaskComplete,
 		TaskId:     &task.ID,
+		SessionId:  &task.SessionId,
 		Message:    strPtr(fmt.Sprintf("Task %s completed with status: %s", task.ID[:8], task.Status)),
 		RichOutput: task.RichOutput,
 	}
@@ -1691,7 +1690,8 @@ func (l *Loop) pushCompletion(task *Task) {
 		completionEvent.Message = strPtr(task.Error)
 	}
 
-	l.wsHub.BroadcastSession(task.SessionId, completionEvent)
+	// Broadcast the event with all its fields (including rich_output and session_id) to all clients
+	l.wsHub.BroadcastEvent(completionEvent)
 
 	// Push notification via notifier (if configured)
 	if l.notifier != nil {

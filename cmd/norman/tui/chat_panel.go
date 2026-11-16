@@ -91,31 +91,6 @@ func (p *ChatPanel) AppendStreamingChunk(chunk string) {
 	p.updateStreamingViewport()
 }
 
-// FinishStreamingMessage finalizes the streaming message and adds it to the messages list.
-func (p *ChatPanel) FinishStreamingMessage() {
-	if p.streamingMessage != nil {
-		p.messages = append(p.messages, *p.streamingMessage)
-		p.streamingMessage = nil
-		p.updateViewport()
-	}
-}
-
-// ClearStreamingMessage discards the streaming message without adding it to the messages list.
-func (p *ChatPanel) ClearStreamingMessage() {
-	p.streamingMessage = nil
-}
-
-// AppendRichOutputMessage appends a rich output message to the chat panel.
-func (p *ChatPanel) AppendRichOutputMessage(ro *RichOutput) {
-	content := renderRichOutputForClient(ro)
-	p.messages = append(p.messages, ChatMessage{
-		Role:      "assistant",
-		Content:   content,
-		Timestamp: time.Now(),
-	})
-	p.updateViewport()
-}
-
 // Clear removes all messages from the panel.
 func (p *ChatPanel) Clear() {
 	p.messages = nil
@@ -292,21 +267,9 @@ func (p *ChatPanel) updateViewport() {
 			ts := msg.Timestamp.Format("15:04:05")
 			lines = append(lines, "["+ts+"] "+speaker+":")
 
-			// Handle RichOutput rendering
-			if msg.RichOutput != nil {
-				lines = append(lines, renderRichOutput(msg.RichOutput))
-			} else {
-				content := msg.Content
-				// Use the layout-allocated width (70% of total), not full terminal width.
-				allocatedWidth := int(float64(p.width) * 0.7)
-				maxWidth := allocatedWidth - 23
-				if maxWidth < 0 {
-					maxWidth = 0
-				}
-				// Wrap content to fill the text area instead of truncating.
-				content = wrapString(content, maxWidth)
-				lines = append(lines, "  "+content)
-			}
+			// Render content using markdown renderer to properly handle code blocks
+			renderedContent := renderMarkdownString(msg.Content)
+			lines = append(lines, renderedContent)
 			lines = append(lines, "")
 		}
 	}

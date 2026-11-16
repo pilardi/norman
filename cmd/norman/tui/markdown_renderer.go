@@ -8,6 +8,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// renderMarkdownString renders a markdown string as styled terminal text.
+func renderMarkdownString(content string) string {
+	var lines []string
+	renderMarkdownText(content, &lines)
+	return strings.Join(lines, "\n")
+}
+
 // renderMarkdown renders basic Markdown content as styled terminal text.
 func renderMarkdown(data *map[string]interface{}) string {
 	if data == nil || (*data)["content"] == nil {

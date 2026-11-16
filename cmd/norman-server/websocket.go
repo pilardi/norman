@@ -38,16 +38,7 @@ func NewWSHub() *WSHub {
 
 // Run starts the hub's write loop.
 func (h *WSHub) Run() {
-	go h.writeLoop()
-	for msg := range h.broadcast {
-		h.mu.RLock()
-		for c := range h.clients {
-			if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
-				log.Printf("ws write error: %v", err)
-			}
-		}
-		h.mu.RUnlock()
-	}
+	h.writeLoop()
 }
 
 // Broadcast sends a message to all connected clients.
