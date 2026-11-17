@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -9,6 +10,13 @@ import (
 
 	"github.com/norman/norman/pkg/env"
 )
+
+// SkillFile represents a file to be uploaded as part of a skill.
+type SkillFile struct {
+	Name       string
+	Content    string
+	Executable bool
+}
 
 // SkillState represents the activation state of a skill.
 type SkillState string
@@ -80,6 +88,103 @@ func (a *Activator) Activate(name string, session *env.Session) (string, error) 
 	a.active[name] = SkillActive
 	a.order = append(a.order, name)
 	return formatToolInjection(entry), nil
+}
+
+// DeploySkillToWorkspaceFromSource ensures a skill's files are present inside the given OpenShell sandbox.
+// It handles both git-based skills (from sourceURL and version) and uploaded files.
+// If the skill is already deployed in this workspace, it is a no-op (idempotent).
+// For git-based skills: clones into /workspace/skills/<name>/ and runs install.sh.
+// For uploaded files: writes files into /workspace/skills/<name>/ and parses SKILL.md.
+// Returns the deployed SkillEntry or an error.
+func (a *Activator) DeploySkillToWorkspaceFromSource(name string, session *env.Session, sourceURL string, version string, files []SkillFile) (*SkillEntry, error) {
+	if session == nil {
+		return nil, fmt.Errorf("DeploySkillToWorkspaceFromSource requires a non-nil session")
+	}
+
+	workspaceName := session.Workspace()
+	ctx := context.Background()
+
+	skillDir := filepath.Join("/workspace", "skills", name)
+
+	// Check if skill is already deployed in this workspace
+	checkCmd := fmt.Sprintf("test -d %s && echo 'exists'", skillDir)
+	output, err := session.Exec(ctx, []string{"bash", "-c", checkCmd})
+	var entry SkillEntry
+	if err == nil && strings.Contains(strings.TrimSpace(output), "exists") {
+		log.Printf("[skills] '%s' already deployed in workspace '%s', skipping deploy", name, workspaceName)
+		entry, err = readSkillMetadata(skillDir)
+		if err != nil {
+			return nil, fmt.Errorf("parse SKILL.md in workspace '%s': %w", workspaceName, err)
+		}
+		// Update with provided source URL and version if available
+		if sourceURL != "" {
+			entry.SourceURL = sourceURL
+		}
+		if version != "" {
+			entry.Version = version
+		}
+		return &entry, nil
+	}
+
+	// Handle uploaded files
+	if len(files) > 0 {
+		log.Printf("[skills] uploading %d file(s) for skill '%s' to workspace '%s'", len(files), name, workspaceName)
+		for _, f := range files {
+			fullPath := filepath.Join(skillDir, f.Name)
+			// Create directory if needed
+			dir := filepath.Dir(fullPath)
+			mkdirCmd := fmt.Sprintf("mkdir -p %s", dir)
+			_, _ = session.Exec(ctx, []string{"bash", "-c", mkdirCmd})
+
+			// Write file via session.Exec using base64 encoding
+			encoded := base64.StdEncoding.EncodeToString([]byte(f.Content))
+			decodeCmd := fmt.Sprintf("echo '%s' | base64 -d > %s", encoded, fullPath)
+			_, err = session.Exec(ctx, []string{"bash", "-c", decodeCmd})
+			if err != nil {
+				return nil, fmt.Errorf("write file %s in workspace '%s': %w", f.Name, workspaceName, err)
+			}
+
+			if f.Executable {
+				chmodCmd := fmt.Sprintf("chmod +x %s", fullPath)
+				_, _ = session.Exec(ctx, []string{"bash", "-c", chmodCmd})
+			}
+		}
+	}
+
+	// Handle git-based skill: clone into /workspace/skills/<name>/
+	if sourceURL != "" {
+		log.Printf("[skills] cloning '%s' into workspace '%s' at %s", sourceURL, workspaceName, skillDir)
+		// Clone into workspace via session.Exec
+		cloneCmd := fmt.Sprintf("git clone --depth 1 %s %s && cd %s && git checkout %s 2>/dev/null || true",
+			sourceURL, skillDir, skillDir, version)
+		output, err = session.Exec(ctx, []string{"bash", "-c", cloneCmd})
+		if err != nil {
+			return nil, fmt.Errorf("git clone into workspace '%s': %w (output: %s)", workspaceName, err, output)
+		}
+	}
+
+	// Run platform-specific install if SKILL.md references it (e.g., graphify install --platform agents)
+	installCmd := fmt.Sprintf("cd %s && if [ -f install.sh ]; then bash install.sh; fi", skillDir)
+	output, err = session.Exec(ctx, []string{"bash", "-c", installCmd})
+	if err != nil {
+		log.Printf("[skills] platform install step for '%s' in workspace '%s': %v", name, workspaceName, output)
+	}
+
+	// Parse and return the deployed entry
+	entry, err = readSkillMetadata(skillDir)
+	if err != nil {
+		return nil, fmt.Errorf("parse SKILL.md in workspace '%s': %w", workspaceName, err)
+	}
+
+	// Update with provided source URL and version if available
+	if sourceURL != "" {
+		entry.SourceURL = sourceURL
+	}
+	if version != "" {
+		entry.Version = version
+	}
+
+	return &entry, nil
 }
 
 // DeployToWorkspace ensures a skill's files are present inside the given OpenShell sandbox.
