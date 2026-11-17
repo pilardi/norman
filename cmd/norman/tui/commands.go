@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
@@ -220,20 +219,20 @@ func formatTime(t interface{}) string {
 
 // helpText returns the help overlay content.
 func helpText() string {
+	cs := DefaultDarkColorScheme()
+	styles := cs.ToLipglossStyles()
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#4a9eff")).Render(" Norman TUI Help "))
+	sb.WriteString(styles["help-title"].Render(" Norman TUI Help "))
 	sb.WriteString("\n\n")
 
 	commands := Commands()
 	for _, cmd := range commands {
-		keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ff6b6b"))
-		helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc"))
-		sb.WriteString(keyStyle.Render(cmd.Key) + "  ")
-		sb.WriteString(helpStyle.Render(cmd.Help))
+		sb.WriteString(styles["help-key"].Render(cmd.Key) + "  ")
+		sb.WriteString(styles["help-desc"].Render(cmd.Help))
 		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Render("Press Esc or q to close this overlay"))
+	sb.WriteString(styles["help-footer"].Render("Press Esc or q to close this overlay"))
 	return sb.String()
 }

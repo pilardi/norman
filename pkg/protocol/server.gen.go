@@ -1337,9 +1337,12 @@ type WebSocketEvent struct {
 	Message         *string                 `json:"message,omitempty"`
 	Priority        *WebSocketEventPriority `json:"priority,omitempty"`
 	RemainingTokens *int                    `json:"remaining_tokens,omitempty"`
-	SessionId       *string                 `json:"session_id,omitempty"`
-	Step            *int                    `json:"step,omitempty"`
-	TaskId          *string                 `json:"task_id,omitempty"`
+
+	// RichOutput Structured metadata about the output (content type, render hint, structured data)
+	RichOutput *RichOutput `json:"rich_output,omitempty"`
+	SessionId  *string     `json:"session_id,omitempty"`
+	Step       *int        `json:"step,omitempty"`
+	TaskId     *string     `json:"task_id,omitempty"`
 
 	// Threshold Budget threshold that triggered the event (e.g., "75%")
 	Threshold  *string `json:"threshold,omitempty"`

@@ -8,8 +8,25 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// renderMarkdown renders basic Markdown content as styled terminal text.
+// renderMarkdownString renders a markdown string as styled terminal text using the default dark color scheme.
+func renderMarkdownString(content string) string {
+	return renderMarkdownStringWithScheme(content, DefaultDarkColorScheme())
+}
+
+// renderMarkdownStringWithScheme renders a markdown string as styled terminal text using the provided color scheme.
+func renderMarkdownStringWithScheme(content string, cs *ColorScheme) string {
+	var lines []string
+	renderMarkdownTextWithScheme(content, &lines, cs)
+	return strings.Join(lines, "\n")
+}
+
+// renderMarkdown renders basic Markdown content as styled terminal text using the default dark color scheme.
 func renderMarkdown(data *map[string]interface{}) string {
+	return renderMarkdownWithScheme(data, DefaultDarkColorScheme())
+}
+
+// renderMarkdownWithScheme renders basic Markdown content as styled terminal text using the provided color scheme.
+func renderMarkdownWithScheme(data *map[string]interface{}, cs *ColorScheme) string {
 	if data == nil || (*data)["content"] == nil {
 		return "┌─ Markdown ─────────────────────────────────────────┐\n│  (no content)                                       │\n└─────────────────────────────────────────────────────┘"
 	}
@@ -22,7 +39,7 @@ func renderMarkdown(data *map[string]interface{}) string {
 	var lines []string
 	lines = append(lines, "┌─ Markdown ─────────────────────────────────────────┐")
 
-	renderMarkdownText(content, &lines)
+	renderMarkdownTextWithScheme(content, &lines, cs)
 
 	lines = append(lines, "└─────────────────────────────────────────────────────┘")
 	return strings.Join(lines, "\n")
@@ -38,8 +55,9 @@ var (
 	reTable       = regexp.MustCompile(`\|(.+)\|`)
 )
 
-// renderMarkdownText processes a markdown string line by line.
-func renderMarkdownText(content string, lines *[]string) {
+// renderMarkdownTextWithScheme processes a markdown string line by line using the provided color scheme.
+func renderMarkdownTextWithScheme(content string, lines *[]string, cs *ColorScheme) {
+	styles := cs.ToLipglossStyles()
 	linesSlice := strings.Split(content, "\n")
 
 	inCodeBlock := false
@@ -61,10 +79,9 @@ func renderMarkdownText(content string, lines *[]string) {
 				// Render code block
 				codeBlockStr := strings.Join(codeBlockContent, "\n")
 
-				// Style the code block
-				style := lipgloss.NewStyle().Background(lipgloss.Color("#1e1e2e"))
+				// Style the code block using color scheme
 				renderedCode := "  " + codeBlockStr
-				*lines = append(*lines, style.Render(renderedCode))
+				*lines = append(*lines, styles["code-bg"].Render(renderedCode))
 			}
 			continue
 		}
@@ -83,16 +100,16 @@ func renderMarkdownText(content string, lines *[]string) {
 		// Headers
 		if headerMatches := reHeader.FindStringSubmatch(trimmedLine); headerMatches != nil {
 			level := len(headerMatches[1])
-			style := lipgloss.NewStyle().Bold(true)
+			var style lipgloss.Style
 			switch level {
 			case 1:
-				style = style.Foreground(lipgloss.Color("#ff6b6b"))
+				style = styles["heading-1"]
 			case 2:
-				style = style.Foreground(lipgloss.Color("#ffa94d"))
+				style = styles["heading-2"]
 			case 3:
-				style = style.Foreground(lipgloss.Color("#ffd43b"))
+				style = styles["heading-3"]
 			default:
-				style = style.Foreground(lipgloss.Color("#8ec07c"))
+				style = styles["heading-4-plus"]
 			}
 			*lines = append(*lines, "  "+style.Render(headerMatches[2]))
 			continue
@@ -106,7 +123,7 @@ func renderMarkdownText(content string, lines *[]string) {
 
 		// List items
 		if listMatches := reListItem.FindStringSubmatch(trimmedLine); listMatches != nil {
-			*lines = append(*lines, "  • "+renderInlineStyle(listMatches[1]))
+			*lines = append(*lines, "  • "+renderInlineStyleWithScheme(listMatches[1], styles))
 			continue
 		}
 
@@ -117,7 +134,7 @@ func renderMarkdownText(content string, lines *[]string) {
 		}
 
 		// Regular text with inline formatting
-		*lines = append(*lines, "  "+renderInlineStyle(trimmedLine))
+		*lines = append(*lines, "  "+renderInlineStyleWithScheme(trimmedLine, styles))
 	}
 }
 
@@ -149,13 +166,13 @@ func renderTableLine(matches [][]string) string {
 	return "  │" + strings.Join(parts, "│") + "│"
 }
 
-// renderInlineStyle applies bold, italic, and code formatting to a string.
-func renderInlineStyle(s string) string {
+// renderInlineStyleWithScheme applies bold, italic, and code formatting to a string using the provided styles.
+func renderInlineStyleWithScheme(s string, styles map[string]lipgloss.Style) string {
 	// Code inline
 	s = reCodeInline.ReplaceAllStringFunc(s, func(match string) string {
 		code := strings.TrimPrefix(match, "`")
 		code = strings.TrimSuffix(code, "`")
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#a8e6cf")).Render("`" + code + "`")
+		return styles["inline-code"].Render("`" + code + "`")
 	})
 
 	// Bold

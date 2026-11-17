@@ -957,12 +957,12 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 		}
 
 		// Granular event: turn.completed (stored + pushed via scope=events WebSocket clients)
-		l.emitStored(task.ID, protocol.WebSocketEvent{
+		l.emitStoredWithRichOutput(task.ID, protocol.WebSocketEvent{
 			Event:     protocol.TurnCompleted,
 			TaskId:    &task.ID,
 			SessionId: &task.SessionId,
 			Message:   strPtr(fmt.Sprintf("turn %d/%d completed with %d bytes output", turn+1, l.config.System.MaxTurns, len(task.Output))),
-		})
+		}, task.RichOutput)
 
 		return task.Output, nil
 	}
@@ -1004,6 +1004,39 @@ func (l *Loop) emitStored(taskID string, evt protocol.WebSocketEvent) {
 		task.events = append(task.events, evt)
 	}
 	l.wsHub.BroadcastGranular(evt.Event, taskID, *evt.SessionId, *evt.Message)
+}
+
+// emitStoredWithRichOutput records a granular event in the task's event log
+// and broadcasts to scope=events clients, including RichOutput data if available.
+func (l *Loop) emitStoredWithRichOutput(taskID string, evt protocol.WebSocketEvent, richOut *protocol.RichOutput) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if task, ok := l.tasks[taskID]; ok {
+		task.events = append(task.events, evt)
+	}
+
+	// Include rich_output in the event if available
+	if richOut != nil {
+		evt.RichOutput = richOut
+	}
+
+	// Debug log: log RichOutput data
+	if richOut != nil {
+		contentType := "<nil>"
+		if richOut.ContentType != nil {
+			contentType = *richOut.ContentType
+		}
+		renderHint := "<nil>"
+		if richOut.RenderHint != nil {
+			renderHint = string(*richOut.RenderHint)
+		}
+		log.Printf("agent: emitStoredWithRichOutput - taskID=%s, contentType=%s, renderHint=%s, structuredData=%v",
+			taskID, contentType, renderHint, richOut.StructuredData,
+		)
+	}
+
+	// Broadcast the event with all its fields (including rich_output and session_id) to all clients
+	l.wsHub.BroadcastEvent(evt)
 }
 
 // detectRichOutput analyzes accumulated task output and returns a RichOutput struct
@@ -1629,10 +1662,27 @@ func (l *Loop) pushCompletion(task *Task) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// Debug log: log RichOutput data for task completion
+	if task.RichOutput != nil {
+		contentType := "<nil>"
+		if task.RichOutput.ContentType != nil {
+			contentType = *task.RichOutput.ContentType
+		}
+		renderHint := "<nil>"
+		if task.RichOutput.RenderHint != nil {
+			renderHint = string(*task.RichOutput.RenderHint)
+		}
+		log.Printf("agent: pushCompletion - taskID=%s, contentType=%s, renderHint=%s, structuredData=%v",
+			task.ID, contentType, renderHint, task.RichOutput.StructuredData,
+		)
+	}
+
 	completionEvent := protocol.WebSocketEvent{
-		Event:   protocol.TaskComplete,
-		TaskId:  &task.ID,
-		Message: strPtr(fmt.Sprintf("Task %s completed with status: %s", task.ID[:8], task.Status)),
+		Event:      protocol.TaskComplete,
+		TaskId:     &task.ID,
+		SessionId:  &task.SessionId,
+		Message:    strPtr(fmt.Sprintf("Task %s completed with status: %s", task.ID[:8], task.Status)),
+		RichOutput: task.RichOutput,
 	}
 
 	if task.Error != "" {
@@ -1640,7 +1690,8 @@ func (l *Loop) pushCompletion(task *Task) {
 		completionEvent.Message = strPtr(task.Error)
 	}
 
-	l.wsHub.BroadcastSession(task.SessionId, completionEvent)
+	// Broadcast the event with all its fields (including rich_output and session_id) to all clients
+	l.wsHub.BroadcastEvent(completionEvent)
 
 	// Push notification via notifier (if configured)
 	if l.notifier != nil {

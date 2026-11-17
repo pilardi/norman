@@ -3,7 +3,6 @@ package tui
 import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // helpOverlay renders a modal-style help overlay on top of the TUI.
@@ -45,12 +44,14 @@ func (k tuiKeyMap) ShortFull() bool { return true }
 
 // newHelpOverlay creates a new help overlay with the given content.
 func newHelpOverlay(content string) helpOverlay {
+	cs := DefaultDarkColorScheme()
+	styles := cs.ToLipglossStyles()
 	h := help.New()
 	h.Styles = help.Styles{
-		ShortKey:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ff6b6b")),
-		ShortDesc: lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc")),
-		FullKey:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ff6b6b")),
-		FullDesc:  lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc")),
+		ShortKey:  styles["help-key"],
+		ShortDesc: styles["help-desc"],
+		FullKey:   styles["help-key"],
+		FullDesc:  styles["help-desc"],
 	}
 	return helpOverlay{help: h, showing: true}
 }

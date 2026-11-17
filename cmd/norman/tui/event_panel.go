@@ -57,13 +57,18 @@ func (p *EventPanel) Blur() {
 
 // Render renders the event panel view with focus-aware border.
 func (p *EventPanel) Render() string {
-	borderColor := lipgloss.Color("#585858")
+	cs := DefaultDarkColorScheme()
+	styles := cs.ToLipglossStyles()
+
+	borderStyle := styles["border-default"]
 	if p.focused {
-		borderColor = lipgloss.Color("#4a9eff")
+		borderStyle = styles["border-focused"]
 	}
-	header := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(borderColor).Render(
-		lipgloss.NewStyle().Foreground(borderColor).Render("Events / Tasks"),
-	)
+
+	// Create header style with border, primary foreground, and bold
+	headerStyle := borderStyle.Border(lipgloss.RoundedBorder()).Foreground(lipgloss.Color(cs.Primary)).Bold(true)
+	header := headerStyle.Render("Events / Tasks")
+
 	return lipgloss.JoinVertical(lipgloss.Left, header, p.list.View())
 }
 
