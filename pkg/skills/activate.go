@@ -92,7 +92,7 @@ func (a *Activator) DeployToWorkspace(name string, session *env.Session) (*Skill
 		return nil, fmt.Errorf("DeployToWorkspace requires a non-nil session")
 	}
 
-	sandboxName := session.SessionID()
+	workspaceName := session.Workspace()
 	ctx := context.Background()
 
 	// Get entry from registry to find source_url/version/binary_path
@@ -107,71 +107,71 @@ func (a *Activator) DeployToWorkspace(name string, session *env.Session) (*Skill
 	}
 
 	// Git-based skill: clone into /workspace/<ws-id>/skills/<name>/
-	skillDir := filepath.Join("/workspace", sandboxName, "skills", name)
+	skillDir := filepath.Join("/workspace", workspaceName, "skills", name)
 
-	// Check if skill is already deployed in this sandbox
+	// Check if skill is already deployed in this workspace
 	checkCmd := fmt.Sprintf("test -d %s && echo 'exists'", skillDir)
 	output, err := session.Exec(ctx, []string{"bash", "-c", checkCmd})
 	if err == nil && strings.Contains(strings.TrimSpace(output), "exists") {
-		log.Printf("[skills] '%s' already deployed in sandbox '%s', skipping clone", name, sandboxName)
+		log.Printf("[skills] '%s' already deployed in workspace '%s', skipping clone", name, workspaceName)
 		entry, err := readSkillMetadata(skillDir)
 		if err != nil {
-			return nil, fmt.Errorf("parse SKILL.md in sandbox '%s': %w", sandboxName, err)
+			return nil, fmt.Errorf("parse SKILL.md in workspace '%s': %w", workspaceName, err)
 		}
 		return &entry, nil
 	}
 
-	// Clone into sandbox via session.Exec
+	// Clone into workspace via session.Exec
 	cloneCmd := fmt.Sprintf("git clone --depth 1 %s %s && cd %s && git checkout %s 2>/dev/null || true",
 		entry.SourceURL, skillDir, skillDir, entry.Version)
 	output, err = session.Exec(ctx, []string{"bash", "-c", cloneCmd})
 	if err != nil {
-		return nil, fmt.Errorf("git clone into sandbox '%s': %w (output: %s)", sandboxName, err, output)
+		return nil, fmt.Errorf("git clone into workspace '%s': %w (output: %s)", workspaceName, err, output)
 	}
 
 	// Run platform-specific install if SKILL.md references it (e.g., graphify install --platform agents)
 	installCmd := fmt.Sprintf("cd %s && if [ -f install.sh ]; then bash install.sh; fi", skillDir)
 	output, err = session.Exec(ctx, []string{"bash", "-c", installCmd})
 	if err != nil {
-		log.Printf("[skills] platform install step for '%s' in sandbox '%s': %v", name, sandboxName, output)
+		log.Printf("[skills] platform install step for '%s' in workspace '%s': %v", name, workspaceName, output)
 	}
 
 	// Parse and return the deployed entry
 	entry, err = readSkillMetadata(skillDir)
 	if err != nil {
-		return nil, fmt.Errorf("parse SKILL.md in sandbox '%s': %w", sandboxName, err)
+		return nil, fmt.Errorf("parse SKILL.md in workspace '%s': %w", workspaceName, err)
 	}
 	return &entry, nil
 }
 
 // deployBinary copies a pre-built host binary into the sandbox at ~/.local/bin/<name>.
 func (a *Activator) deployBinary(name string, session *env.Session, entry *SkillEntry, ctx context.Context) (*SkillEntry, error) {
-	sandboxName := session.SessionID()
+	workspaceName := session.Workspace()
 	targetPath := filepath.Join("~", ".local", "bin", name)
 
 	// Check if already deployed (idempotent)
 	checkCmd := fmt.Sprintf("test -f %s && echo 'exists'", targetPath)
 	output, err := session.Exec(ctx, []string{"bash", "-c", checkCmd})
 	if err == nil && strings.Contains(strings.TrimSpace(output), "exists") {
-		log.Printf("[skills] '%s' already deployed in sandbox '%s', skipping copy", name, sandboxName)
+		log.Printf("[skills] '%s' already deployed in workspace '%s', skipping copy", name, workspaceName)
 		return entry, nil
 	}
 
-	// Copy binary from host path into sandbox home directory
+	// Copy binary from host path into workspace home directory
 	copyCmd := fmt.Sprintf("cp %s %s && chmod +x %s", entry.BinaryPath, targetPath, targetPath)
 	output, err = session.Exec(ctx, []string{"bash", "-c", copyCmd})
 	if err != nil {
-		return nil, fmt.Errorf("copy binary '%s' into sandbox '%s': %w (output: %s)", name, sandboxName, err, output)
+		return nil, fmt.Errorf("copy binary '%s' into workspace '%s': %w (output: %s)", name, workspaceName, err, output)
 	}
 
 	// Ensure ~/.local/bin is in PATH by appending to .bashrc
 	pathCmd := `grep -q '$HOME/.local/bin' "$HOME/.bashrc" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"`
 	output, err = session.Exec(ctx, []string{"bash", "-c", pathCmd})
 	if err != nil {
-		log.Printf("[skills] PATH injection for '%s' in sandbox '%s': %v", name, sandboxName, output)
+		log.Printf("[skills] PATH injection for '%s' in workspace '%s': %v", name, workspaceName, output)
 	}
 
-	log.Printf("[skills] deployed binary skill '%s' → %s in sandbox '%s'", name, targetPath, sandboxName)
+	log.Printf("[skills] deployed binary skill '%s' → %s in workspace '%s'", name, targetPath, workspaceName)
 	return entry, nil
 }
 

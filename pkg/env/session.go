@@ -41,6 +41,11 @@ func (s *Session) SessionID() string {
 	return s.sessionId
 }
 
+// Workspace returns the workspace this session belongs to.
+func (s *Session) Workspace() string {
+	return s.workspace
+}
+
 // LastActivity returns the timestamp of the last activity, or nil if never set.
 func (s *Session) LastActivity() *time.Time {
 	return s.lastActivity
