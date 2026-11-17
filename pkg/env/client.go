@@ -147,15 +147,6 @@ func NewClientWithTLS(gateway string, tlsCfg *v1.TLSConfig) (*Client, error) {
 	return &Client{client: c, gateway: gateway, tlsCfg: tlsCfg}, nil
 }
 
-// GetMTLSPaths returns the mTLS certificate and key paths configured on this client,
-// or empty strings if mTLS is not configured.
-func (c *Client) GetMTLSPaths() (certPath, keyPath string) {
-	if c.tlsCfg == nil {
-		return "", ""
-	}
-	return c.tlsCfg.CertFile, c.tlsCfg.KeyFile
-}
-
 // CreateSandbox creates a persistent sandbox (session) for the given workspace.
 // If ctxFile is non-nil, a context.json file is injected into the sandbox.
 func (c *Client) CreateSandbox(ctx context.Context, workspace, name string, ctxFile *ContextFile, sessionId string) (*v1.Sandbox, error) {
