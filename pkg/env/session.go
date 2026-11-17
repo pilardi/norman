@@ -17,11 +17,12 @@ type Session struct {
 	sandbox      string
 	namespace    string
 	sessionId    string // The session ID; set at creation, never the sandbox name
+	workspace    string // The workspace this session belongs to
 	lastActivity *time.Time
 }
 
 // NewSession creates a new session bound to a specific sandbox and Norman API session.
-func NewSession(client *Client, provider, sandbox, sessionId string) *Session {
+func NewSession(client *Client, provider, sandbox, workspace, sessionId string) *Session {
 	now := time.Now()
 	return &Session{
 		client:       client,
@@ -29,6 +30,7 @@ func NewSession(client *Client, provider, sandbox, sessionId string) *Session {
 		sandbox:      sandbox,
 		namespace:    "default",
 		sessionId:    sessionId,
+		workspace:    workspace,
 		lastActivity: &now,
 	}
 }

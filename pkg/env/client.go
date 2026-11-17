@@ -186,7 +186,7 @@ func (c *Client) CreateSandbox(ctx context.Context, workspace, name string, ctxF
 
 	// Inject context file if provided
 	if ctxFile != nil {
-		session := NewSession(c, defaultProvider, sandbox.Name, sessionId)
+		session := NewSession(c, defaultProvider, sandbox.Name, ctxFile.WorkspaceName, sessionId)
 		if injectErr := WriteContextFile(ctx, session, *ctxFile); injectErr != nil {
 			log.Printf("[env] WARNING: failed to inject context into workspace %s: %v", name, injectErr)
 		}
