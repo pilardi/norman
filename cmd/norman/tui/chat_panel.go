@@ -25,6 +25,8 @@ type ChatPanel struct {
 
 // NewChatPanel creates a new chat panel with default settings.
 func NewChatPanel() ChatPanel {
+	cs := DefaultDarkColorScheme()
+	styles := cs.ToLipglossStyles()
 	ti := textarea.New()
 	ti.Placeholder = "Type a message..."
 	ti.CharLimit = 10000
@@ -32,7 +34,7 @@ func NewChatPanel() ChatPanel {
 	ti.ShowLineNumbers = false
 
 	viewportModel := viewport.New(78, 30)
-	viewportModel.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858"))
+	viewportModel.Style = styles["border-default"].Border(lipgloss.RoundedBorder())
 
 	return ChatPanel{
 		width:     80,
@@ -44,12 +46,14 @@ func NewChatPanel() ChatPanel {
 
 // setStyles applies focused/blurred border styles to the textarea and viewport.
 func (p *ChatPanel) setStyles() {
+	cs := DefaultDarkColorScheme()
+	styles := cs.ToLipglossStyles()
 	if p.focused {
-		p.textInput.FocusedStyle.Base = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#4a9eff"))
-		p.viewport.Style.BorderForeground(lipgloss.Color("#4a9eff"))
+		p.textInput.FocusedStyle.Base = styles["border-focused"].Border(lipgloss.RoundedBorder())
+		p.viewport.Style = styles["border-focused"].Border(lipgloss.RoundedBorder())
 	} else {
-		p.textInput.BlurredStyle.Base = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858"))
-		p.viewport.Style.BorderForeground(lipgloss.Color("#585858"))
+		p.textInput.BlurredStyle.Base = styles["border-default"].Border(lipgloss.RoundedBorder())
+		p.viewport.Style = styles["border-default"].Border(lipgloss.RoundedBorder())
 	}
 }
 
@@ -60,7 +64,9 @@ func (p *ChatPanel) updateViewportHeight() {
 	if vh < 1 {
 		vh = 1
 	}
-	p.viewport.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#585858")).MaxHeight(vh)
+	cs := DefaultDarkColorScheme()
+	styles := cs.ToLipglossStyles()
+	p.viewport.Style = styles["border-default"].Border(lipgloss.RoundedBorder()).MaxHeight(vh)
 	// Also set a fixed height so the viewport always takes exactly this much space,
 	// guaranteeing the text input is visible below it.
 	p.viewport.Height = vh
@@ -328,7 +334,9 @@ func joinLines(lines []string) string {
 
 // Render returns the chat panel view.
 func (p *ChatPanel) Render() string {
-	header := lipgloss.NewStyle().Bold(true).PaddingTop(1).PaddingLeft(2).Render("Chat")
+	cs := DefaultDarkColorScheme()
+	styles := cs.ToLipglossStyles()
+	header := styles["primary"].Bold(true).PaddingTop(1).PaddingLeft(2).Render("Chat")
 	return lipgloss.JoinVertical(lipgloss.Left, header, p.viewport.View(), p.textInput.View())
 }
 
