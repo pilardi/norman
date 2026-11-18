@@ -3,6 +3,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -58,11 +59,19 @@ func CreateNewSession(workspaceName string) (string, error) {
 
 	sess := parsedSess.GetJSON201()
 	if sess == nil {
-		bodyStr := string(parsedSess.GetBody())
-		if bodyStr == "" {
-			bodyStr = parsedSess.Status()
+		// Server returned an error response (e.g., 409 max sessions reached).
+		body := string(parsedSess.GetBody())
+		if body == "" {
+			body = parsedSess.Status()
 		}
-		return "", fmt.Errorf("session creation failed: %s", bodyStr)
+		// Try to extract the "error" field from JSON body for a clean message.
+		var errResp map[string]any
+		if json.Unmarshal([]byte(body), &errResp) == nil {
+			if e, ok := errResp["error"].(string); ok {
+				body = e
+			}
+		}
+		return "", fmt.Errorf("session creation failed (status %d): %s", parsedSess.StatusCode(), body)
 	}
 
 	fmt.Printf("New session '%s' created.\n", strVal(sess.Name))
