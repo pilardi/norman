@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -35,6 +34,7 @@ type Model struct {
 	initialWorkspace string
 	events           []EventItem
 	done             bool
+	fatalError       error
 
 	// Phase 3 overlays
 	helpOverlay     helpOverlay
@@ -95,7 +95,6 @@ func createSessionCmd(model *Model) tea.Cmd {
 	return func() tea.Msg {
 		sessID, err := client.CreateNewSession(model.initialWorkspace)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: session creation failed: %v\n", err)
 			return WSMessageEvent{Event: "error", Message: err.Error()}
 		}
 		model.sessionID = sessID
@@ -193,15 +192,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			input := m.chatPanel.textInput.Value()
 			if input == "" {
-				return m, nil
-			}
-			if m.sessionID == "" {
-				m.statusBar.SetConnection("✗ No active session. Cannot send messages.")
-				m.chatPanel.AppendMessage(ChatMessage{
-					Role:      "system",
-					Content:   "No active session. Please ensure a session was created successfully.",
-					Timestamp: time.Now(),
-				})
 				return m, nil
 			}
 			m.chatPanel.AppendMessage(ChatMessage{
@@ -379,6 +369,7 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Timestamp: time.Now(),
 		})
 		m.done = true // TUI will quit after current view render.
+		m.fatalError = fmt.Errorf("%s", msg.Message)
 	case "assistant_response":
 		m.chatPanel.AppendMessage(ChatMessage{
 			Role:      "assistant",

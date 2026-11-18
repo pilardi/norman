@@ -49,10 +49,18 @@ func Main(workspaceName, sessionID string, provider string) {
 	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
-	_, err = p.Run()
+	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "TUI error: program was killed: %v\n", err)
 		os.Exit(1)
+	}
+	if m, ok := finalModel.(*Model); ok && m.fatalError != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", m.fatalError)
+		os.Exit(1)
+	}
+	if m, ok := finalModel.(*Model); ok && m.done {
+		fmt.Fprintf(os.Stderr, "Session closed.\n")
+		os.Exit(0)
 	}
 }
 
