@@ -238,6 +238,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Forward keys to event panel when it's focused
+		if !m.chatPanel.focused {
+			_, cmd := m.eventPanel.Update(msg)
+			return m, cmd
+		}
+
 	default:
 		switch msg := msg.(type) {
 		case sessionListMsg:
