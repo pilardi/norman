@@ -223,13 +223,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "/":
-			m.commandMode = !m.commandMode
-			if m.commandMode {
-				m.statusBar.SetConnection("⊶ Command mode — type a command")
-			} else {
-				m.statusBar.SetConnection(fmt.Sprintf("Connected (%s)", strings.TrimPrefix(m.connectionState, "●")))
+			// Only toggle command mode if chat panel is focused.
+			// If event panel is focused, let it handle '/' for filtering.
+			if m.chatPanel.focused {
+				m.commandMode = !m.commandMode
+				if m.commandMode {
+					m.statusBar.SetConnection("⊶ Command mode — type a command")
+				} else {
+					m.statusBar.SetConnection(fmt.Sprintf("Connected (%s)", strings.TrimPrefix(m.connectionState, "●")))
+				}
+				return m, nil
 			}
-			return m, nil
+			// Fall through to forwarding if event panel is focused
 		}
 
 		// Forward all other keys to textinput when focused (arrows, backspace, etc.)
