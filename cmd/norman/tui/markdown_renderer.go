@@ -9,24 +9,24 @@ import (
 )
 
 // renderMarkdownString renders a markdown string as styled terminal text using the default dark color scheme.
-func renderMarkdownString(content string) string {
-	return renderMarkdownStringWithScheme(content, DefaultDarkColorScheme())
+func renderMarkdownString(content string, maxWidth int) string {
+	return renderMarkdownStringWithScheme(content, DefaultDarkColorScheme(), maxWidth)
 }
 
 // renderMarkdownStringWithScheme renders a markdown string as styled terminal text using the provided color scheme.
-func renderMarkdownStringWithScheme(content string, cs *ColorScheme) string {
+func renderMarkdownStringWithScheme(content string, cs *ColorScheme, maxWidth int) string {
 	var lines []string
-	renderMarkdownTextWithScheme(content, &lines, cs)
+	renderMarkdownTextWithScheme(content, &lines, cs, maxWidth)
 	return strings.Join(lines, "\n")
 }
 
 // renderMarkdown renders basic Markdown content as styled terminal text using the default dark color scheme.
-func renderMarkdown(data *map[string]interface{}) string {
-	return renderMarkdownWithScheme(data, DefaultDarkColorScheme())
+func renderMarkdown(data *map[string]interface{}, maxWidth int) string {
+	return renderMarkdownWithScheme(data, DefaultDarkColorScheme(), maxWidth)
 }
 
 // renderMarkdownWithScheme renders basic Markdown content as styled terminal text using the provided color scheme.
-func renderMarkdownWithScheme(data *map[string]interface{}, cs *ColorScheme) string {
+func renderMarkdownWithScheme(data *map[string]interface{}, cs *ColorScheme, maxWidth int) string {
 	if data == nil || (*data)["content"] == nil {
 		return "┌─ Markdown ─────────────────────────────────────────┐\n│  (no content)                                       │\n└─────────────────────────────────────────────────────┘"
 	}
@@ -39,7 +39,7 @@ func renderMarkdownWithScheme(data *map[string]interface{}, cs *ColorScheme) str
 	var lines []string
 	lines = append(lines, "┌─ Markdown ─────────────────────────────────────────┐")
 
-	renderMarkdownTextWithScheme(content, &lines, cs)
+	renderMarkdownTextWithScheme(content, &lines, cs, maxWidth)
 
 	lines = append(lines, "└─────────────────────────────────────────────────────┘")
 	return strings.Join(lines, "\n")
@@ -56,7 +56,7 @@ var (
 )
 
 // renderMarkdownTextWithScheme processes a markdown string line by line using the provided color scheme.
-func renderMarkdownTextWithScheme(content string, lines *[]string, cs *ColorScheme) {
+func renderMarkdownTextWithScheme(content string, lines *[]string, cs *ColorScheme, maxWidth int) {
 	styles := cs.ToLipglossStyles()
 	linesSlice := strings.Split(content, "\n")
 
@@ -111,7 +111,8 @@ func renderMarkdownTextWithScheme(content string, lines *[]string, cs *ColorSche
 			default:
 				style = styles["heading-4-plus"]
 			}
-			*lines = append(*lines, "  "+style.Render(headerMatches[2]))
+			wrappedLine := wrapStyledLine("  "+headerMatches[2], style, maxWidth)
+			*lines = append(*lines, wrappedLine)
 			continue
 		}
 
@@ -123,18 +124,21 @@ func renderMarkdownTextWithScheme(content string, lines *[]string, cs *ColorSche
 
 		// List items
 		if listMatches := reListItem.FindStringSubmatch(trimmedLine); listMatches != nil {
-			*lines = append(*lines, "  • "+renderInlineStyleWithScheme(listMatches[1], styles))
+			wrappedLine := wrapStyledLine("  • "+renderInlineStyleWithScheme(listMatches[1], styles), lipgloss.NewStyle(), maxWidth)
+			*lines = append(*lines, wrappedLine)
 			continue
 		}
 
 		// Ordered list
 		if olMatches := reOrderedList.FindStringSubmatch(trimmedLine); olMatches != nil {
-			*lines = append(*lines, "  "+olMatches[1])
+			wrappedLine := wrapStyledLine("  "+olMatches[1], lipgloss.NewStyle(), maxWidth)
+			*lines = append(*lines, wrappedLine)
 			continue
 		}
 
 		// Regular text with inline formatting
-		*lines = append(*lines, "  "+renderInlineStyleWithScheme(trimmedLine, styles))
+		wrappedLine := wrapStyledLine("  "+renderInlineStyleWithScheme(trimmedLine, styles), lipgloss.NewStyle(), maxWidth)
+		*lines = append(*lines, wrappedLine)
 	}
 }
 
@@ -186,4 +190,59 @@ func renderInlineStyleWithScheme(s string, styles map[string]lipgloss.Style) str
 	})
 
 	return s
+}
+
+// wrapStyledLine wraps a styled line (with lipgloss ANSI codes) to fit within maxWidth characters,
+// breaking on word boundaries while preserving ANSI styling.
+func wrapStyledLine(s string, style lipgloss.Style, maxWidth int) string {
+	if maxWidth <= 0 || len(s) == 0 {
+		return s
+	}
+
+	// Process line by line to preserve newlines
+	lines := strings.Split(s, "\n")
+	var result strings.Builder
+
+	for i, line := range lines {
+		if i > 0 {
+			result.WriteByte('\n')
+		}
+
+		// Wrap this line using words
+		words := strings.Fields(line)
+		var lineBuilder strings.Builder
+		var currentLineVisibleWidth int
+
+		for _, w := range words {
+			// Calculate visible width of the word (excluding ANSI codes)
+			wordVisibleWidth := lipgloss.Width(w)
+			spaceNeeded := 0
+			if lineBuilder.Len() > 0 {
+				spaceNeeded = 1 // space before word
+			}
+
+			// Check if adding this word would exceed maxWidth
+			if currentLineVisibleWidth+spaceNeeded+wordVisibleWidth > maxWidth && lineBuilder.Len() > 0 {
+				// Render the current line with style and add to result
+				renderedLine := style.Render(lineBuilder.String())
+				result.WriteString(renderedLine)
+				result.WriteByte('\n')
+				lineBuilder.Reset()
+				currentLineVisibleWidth = 0
+			}
+
+			if lineBuilder.Len() > 0 {
+				lineBuilder.WriteByte(' ')
+				currentLineVisibleWidth += 1
+			}
+			lineBuilder.WriteString(w)
+			currentLineVisibleWidth += wordVisibleWidth
+		}
+		if lineBuilder.Len() > 0 {
+			renderedLine := style.Render(lineBuilder.String())
+			result.WriteString(renderedLine)
+		}
+	}
+
+	return result.String()
 }
