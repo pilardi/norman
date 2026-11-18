@@ -287,6 +287,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, startWebSocket(m)
 			}
 			m.handleWSMessage(msg)
+			if m.done {
+				return m, tea.Quit
+			}
 		}
 
 		// Drain ALL pending events from the channel before returning.
@@ -300,6 +303,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.handleWSMessage(msg)
 			default:
+				if m.done {
+					return m, tea.Quit
+				}
 				return m, nil
 			}
 		}
@@ -453,10 +459,6 @@ func (m *Model) isSessionScoped(msg WSMessageEvent) bool {
 
 // View renders the TUI layout.
 func (m *Model) View() string {
-	if m.done {
-		return "Session closed.\n"
-	}
-
 	var out string
 
 	// Status bar at top
@@ -479,6 +481,10 @@ func (m *Model) View() string {
 	// Phase 3: session switcher modal on top (takes full width)
 	if m.sessionSwitcher.IsShowing() {
 		out = m.sessionSwitcher.showModal() + "\n"
+	}
+
+	if m.done {
+		out += "\nSession closed.\n"
 	}
 
 	return out
