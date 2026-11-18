@@ -135,6 +135,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
 	case tea.KeyMsg:
 		// Phase 3: help overlay dismissal (always handled first)
 		if m.helpOverlay.IsShowing() {
@@ -200,7 +205,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Timestamp: time.Now(),
 			})
 			m.chatPanel.textInput.SetValue("")
-			m.statusBar.SetConnection("● Sending...")
+			m.statusBar.SetConnection("Sending")
 			go sendChatMessage(m, m.sessionID, input)
 
 		case "ctrl+l":
@@ -461,7 +466,7 @@ func (m *Model) View() string {
 	var out string
 
 	// Status bar at top
-	out += m.statusBar.Render(m.workspaceName, m.sessionID) + "\n"
+	out += m.statusBar.Render(m.workspaceName, m.sessionID, m.spinner.View()) + "\n"
 
 	// Two-column layout: chat on left (~70%), events on right (~30%)
 	eventView := m.eventPanel.Render()

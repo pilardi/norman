@@ -210,6 +210,8 @@ func sendChatMessage(model *Model, sessionID, message string) {
 		case model.wsMsg <- WSMessageEvent{Event: "chat_updated"}:
 		default:
 		}
+		// Update status bar to Connected
+		model.statusBar.SetConnection("Connected")
 		return
 	}
 

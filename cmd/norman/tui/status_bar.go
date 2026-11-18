@@ -27,26 +27,52 @@ func (s *StatusBar) SetConnection(state string) {
 }
 
 // Render returns the status bar view with session and workspace info.
-func (s *StatusBar) Render(workspaceName, sessionID string) string {
+func (s *StatusBar) Render(workspaceName, sessionID string, spinnerView string) string {
 	cs := DefaultDarkColorScheme()
 	styles := cs.ToLipglossStyles()
 
-	// Connection state indicator
-	connStyle := styles["status-connected"]
-	if s.connection != "" && (strings.HasPrefix(s.connection, "✗") || strings.HasPrefix(s.connection, "⚠")) {
-		connStyle = styles["status-disconnected"]
-	}
+	var parts []string
 
-	bar := lipgloss.JoinHorizontal(lipgloss.Left, connStyle.Render(s.connection))
-
+	// 1. Workspace name
 	if workspaceName != "" {
 		wsStyle := styles["on-surface-variant"].Bold(true)
-		bar = lipgloss.JoinHorizontal(lipgloss.Left, bar, wsStyle.Render("workspace: "+workspaceName))
+		parts = append(parts, wsStyle.Render("workspace: "+workspaceName))
 	}
 
+	// 2. Session ID
 	if sessionID != "" {
 		sidStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cs.HelpFooter))
-		bar = lipgloss.JoinHorizontal(lipgloss.Left, bar, sidStyle.Render("session: "+client.ShortID(sessionID)))
+		parts = append(parts, sidStyle.Render("session: "+client.ShortID(sessionID)))
+	}
+
+	// 3. Connection state indicator or spinner
+	connPart := ""
+	if s.connection != "" {
+		if s.connection == "Sending" {
+			// Combine "Sending" with the spinner view
+			connStyle := styles["status-connected"]
+			connPart = connStyle.Render("Sending " + spinnerView)
+		} else {
+			connStyle := styles["status-connected"]
+			if strings.HasPrefix(s.connection, "✗") || strings.HasPrefix(s.connection, "⚠") {
+				connStyle = styles["status-disconnected"]
+			}
+			connPart = connStyle.Render(s.connection)
+		}
+	}
+
+	if connPart != "" {
+		parts = append(parts, connPart)
+	}
+
+	// Join with a separator
+	separator := lipgloss.NewStyle().Foreground(lipgloss.Color(cs.OnSurfaceVariant)).Render(" • ")
+	bar := ""
+	if len(parts) > 0 {
+		bar = parts[0]
+		for i := 1; i < len(parts); i++ {
+			bar = lipgloss.JoinHorizontal(lipgloss.Left, bar, separator, parts[i])
+		}
 	}
 
 	return lipgloss.NewStyle().Width(s.width).Height(1).Foreground(lipgloss.Color(cs.OnSurfaceVariant)).Render(bar)

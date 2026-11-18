@@ -207,7 +207,7 @@ func (p *ChatPanel) updateStreamingViewport() {
 	content := joinLines(lines)
 	p.viewport.SetContent(content)
 	// Scroll to bottom of visible area.
-	p.viewport.YOffset = max(0, strings.Count(content, "\n")-p.height)
+	p.viewport.GotoBottom()
 }
 
 func (p *ChatPanel) updateViewport() {
@@ -297,7 +297,7 @@ func (p *ChatPanel) updateViewport() {
 	content := joinLines(lines)
 	p.viewport.SetContent(content)
 	// Scroll to bottom of visible area.
-	p.viewport.YOffset = max(0, strings.Count(content, "\n")-p.height)
+	p.viewport.GotoBottom()
 }
 
 // wrapString wraps a long string to fit within maxWidth characters,

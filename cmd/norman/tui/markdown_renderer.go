@@ -227,10 +227,11 @@ func wrapStyledLine(s string, style lipgloss.Style, maxWidth int) string {
 				renderedLine := style.Render(lineBuilder.String())
 				result.WriteString(renderedLine)
 				result.WriteByte('\n')
-				lineBuilder.Reset()
+				lineBuilder = strings.Builder{}
 				currentLineVisibleWidth = 0
 			}
 
+			// Add space before word if not the first word on the line
 			if lineBuilder.Len() > 0 {
 				lineBuilder.WriteByte(' ')
 				currentLineVisibleWidth += 1
