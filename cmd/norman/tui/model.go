@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -94,6 +95,7 @@ func createSessionCmd(model *Model) tea.Cmd {
 	return func() tea.Msg {
 		sessID, err := client.CreateNewSession(model.initialWorkspace)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: session creation failed: %v\n", err)
 			return WSMessageEvent{Event: "error", Message: err.Error()}
 		}
 		model.sessionID = sessID
@@ -287,9 +289,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, startWebSocket(m)
 			}
 			m.handleWSMessage(msg)
-			if m.done {
-				return m, tea.Quit
-			}
 		}
 
 		// Drain ALL pending events from the channel before returning.
@@ -303,9 +302,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.handleWSMessage(msg)
 			default:
-				if m.done {
-					return m, tea.Quit
-				}
 				return m, nil
 			}
 		}
