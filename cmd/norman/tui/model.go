@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -93,6 +94,7 @@ func (m *Model) Init() tea.Cmd {
 // createSessionCmd creates a new session and sets the sessionID on the model.
 func createSessionCmd(model *Model) tea.Cmd {
 	return func() tea.Msg {
+		fmt.Fprintf(os.Stderr, "Resolving workspace '%s'...\n", model.initialWorkspace)
 		sessID, err := client.CreateNewSession(model.initialWorkspace)
 		if err != nil {
 			return WSMessageEvent{Event: "error", Message: err.Error()}

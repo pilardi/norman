@@ -17,13 +17,13 @@ import (
 func CreateNewSession(workspaceName string) (string, error) {
 	c, err := GetProtocolClient()
 	if err != nil {
-		return "", fmt.Errorf("failed to create client: %w", err)
+		return "", fmt.Errorf("error creating API client: %v", err)
 	}
 
 	// Resolve workspace name to ID.
 	wsRsp, err := c.ListWorkspaces(context.Background(), nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to list workspaces: %w", err)
+		return "", fmt.Errorf("error fetching workspaces: %v", err)
 	}
 	parsedWS, err := protocol.ParseListWorkspacesResponse(wsRsp)
 	if err != nil {
