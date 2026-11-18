@@ -386,6 +386,13 @@ Examples:
 							mode := cmd.String("mode")
 							if mode == "" || mode == "auto" {
 								if term.IsTerminal(int(os.Stdout.Fd())) {
+									// Check terminal size for TUI
+									width, height, err := term.GetSize(int(os.Stdout.Fd()))
+									if err != nil || width < 80 || height < 24 {
+										fmt.Fprintf(os.Stderr, "Warning: Terminal size %dx%d is too small for TUI. Fallback to REPL mode.\n", width, height)
+										handleChat(args)
+										return nil
+									}
 									tui.Main(workspaceName, sessionID, selectedProvider)
 									return nil
 								}
@@ -395,6 +402,13 @@ Examples:
 
 							switch strings.ToLower(mode) {
 							case "tui":
+								// Check terminal size for TUI
+								width, height, err := term.GetSize(int(os.Stdout.Fd()))
+								if err != nil || width < 80 || height < 24 {
+									fmt.Fprintf(os.Stderr, "Error: TUI requires a terminal size of at least 80x24. Current size: %dx%d\n", width, height)
+									fmt.Fprintf(os.Stderr, "Please resize your terminal or use the REPL mode with --mode=repl\n")
+									os.Exit(1)
+								}
 								tui.Main(workspaceName, sessionID, selectedProvider)
 								return nil
 							case "repl":
