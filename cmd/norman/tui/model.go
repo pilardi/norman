@@ -195,6 +195,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if input == "" {
 				return m, nil
 			}
+			if m.sessionID == "" {
+				m.statusBar.SetConnection("✗ No active session. Cannot send messages.")
+				m.chatPanel.AppendMessage(ChatMessage{
+					Role:      "system",
+					Content:   "No active session. Please ensure a session was created successfully.",
+					Timestamp: time.Now(),
+				})
+				return m, nil
+			}
 			m.chatPanel.AppendMessage(ChatMessage{
 				Role:      "user",
 				Content:   input,
