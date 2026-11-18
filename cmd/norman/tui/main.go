@@ -28,10 +28,18 @@ func Main(workspaceName, sessionID string, provider string) {
 	defer cancel()
 	c, err := client.GetProtocolClient()
 	if err != nil || c == nil {
-		model.statusBar.SetConnection("✗ Server not reachable")
 		p := tea.NewProgram(model, tea.WithAltScreen())
-		if _, err = p.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		finalModel, runErr := p.Run()
+		if runErr != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: program was killed: %v\n", runErr)
+			os.Exit(1)
+		}
+		if m, ok := finalModel.(*Model); ok && m.fatalError != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", m.fatalError)
+			os.Exit(1)
+		}
+		if m, ok := finalModel.(*Model); ok && m.done && m.fatalError == nil {
+			fmt.Fprintf(os.Stderr, "Error: server not reachable\n")
 			os.Exit(1)
 		}
 		return
@@ -39,20 +47,36 @@ func Main(workspaceName, sessionID string, provider string) {
 
 	// Test a quick RPC call to confirm the server is actually responding.
 	if _, err = c.GetVersion(ctx); err != nil {
-		model.statusBar.SetConnection("✗ Server error: " + err.Error())
 		p := tea.NewProgram(model, tea.WithAltScreen())
-		if _, err = p.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		finalModel, runErr := p.Run()
+		if runErr != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: program was killed: %v\n", runErr)
+			os.Exit(1)
+		}
+		if m, ok := finalModel.(*Model); ok && m.fatalError != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", m.fatalError)
+			os.Exit(1)
+		}
+		if m, ok := finalModel.(*Model); ok && m.done && m.fatalError == nil {
+			fmt.Fprintf(os.Stderr, "Error: server error: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
-	_, err = p.Run()
+	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "TUI error: program was killed: %v\n", err)
 		os.Exit(1)
+	}
+	if m, ok := finalModel.(*Model); ok && m.fatalError != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", m.fatalError)
+		os.Exit(1)
+	}
+	if m, ok := finalModel.(*Model); ok && m.done {
+		fmt.Fprintf(os.Stderr, "Session closed.\n")
+		os.Exit(0)
 	}
 }
 

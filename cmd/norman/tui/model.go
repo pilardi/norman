@@ -34,6 +34,7 @@ type Model struct {
 	initialWorkspace string
 	events           []EventItem
 	done             bool
+	fatalError       error
 
 	// Phase 3 overlays
 	helpOverlay     helpOverlay
@@ -134,6 +135,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
 	case tea.KeyMsg:
 		// Phase 3: help overlay dismissal (always handled first)
 		if m.helpOverlay.IsShowing() {
@@ -199,7 +205,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Timestamp: time.Now(),
 			})
 			m.chatPanel.textInput.SetValue("")
-			m.statusBar.SetConnection("● Sending...")
+			m.statusBar.SetConnection("Sending")
 			go sendChatMessage(m, m.sessionID, input)
 
 		case "ctrl+l":
@@ -223,18 +229,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "/":
-			m.commandMode = !m.commandMode
-			if m.commandMode {
-				m.statusBar.SetConnection("⊶ Command mode — type a command")
-			} else {
-				m.statusBar.SetConnection(fmt.Sprintf("Connected (%s)", strings.TrimPrefix(m.connectionState, "●")))
+			// Only toggle command mode if chat panel is focused.
+			// If event panel is focused, let it handle '/' for filtering.
+			if m.chatPanel.focused {
+				m.commandMode = !m.commandMode
+				if m.commandMode {
+					m.statusBar.SetConnection("⊶ Command mode — type a command")
+				} else {
+					m.statusBar.SetConnection(fmt.Sprintf("Connected (%s)", strings.TrimPrefix(m.connectionState, "●")))
+				}
+				return m, nil
 			}
-			return m, nil
+			// Fall through to forwarding if event panel is focused
 		}
 
 		// Forward all other keys to textinput when focused (arrows, backspace, etc.)
 		if m.chatPanel.focused {
 			_, cmd := m.chatPanel.Update(msg)
+			return m, cmd
+		}
+
+		// Forward keys to event panel when it's focused
+		if !m.chatPanel.focused {
+			_, cmd := m.eventPanel.Update(msg)
 			return m, cmd
 		}
 
@@ -276,6 +293,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, startWebSocket(m)
 			}
 			m.handleWSMessage(msg)
+			if m.done {
+				return m, tea.Quit
+			}
 		}
 
 		// Drain ALL pending events from the channel before returning.
@@ -354,6 +374,7 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Timestamp: time.Now(),
 		})
 		m.done = true // TUI will quit after current view render.
+		m.fatalError = fmt.Errorf("%s", msg.Message)
 	case "assistant_response":
 		m.chatPanel.AppendMessage(ChatMessage{
 			Role:      "assistant",
@@ -442,14 +463,10 @@ func (m *Model) isSessionScoped(msg WSMessageEvent) bool {
 
 // View renders the TUI layout.
 func (m *Model) View() string {
-	if m.done {
-		return "Session closed.\n"
-	}
-
 	var out string
 
 	// Status bar at top
-	out += m.statusBar.Render(m.workspaceName, m.sessionID) + "\n"
+	out += m.statusBar.Render(m.workspaceName, m.sessionID, m.spinner.View()) + "\n"
 
 	// Two-column layout: chat on left (~70%), events on right (~30%)
 	eventView := m.eventPanel.Render()
@@ -468,6 +485,10 @@ func (m *Model) View() string {
 	// Phase 3: session switcher modal on top (takes full width)
 	if m.sessionSwitcher.IsShowing() {
 		out = m.sessionSwitcher.showModal() + "\n"
+	}
+
+	if m.done {
+		out += "\nSession closed.\n"
 	}
 
 	return out

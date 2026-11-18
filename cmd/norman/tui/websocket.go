@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -13,15 +12,6 @@ import (
 	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
 )
-
-// keysFromMap returns a slice of keys from a map[string]interface{}.
-func keysFromMap(m map[string]interface{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
 
 // WSMessageEvent represents a parsed WebSocket event message.
 type WSMessageEvent struct {
@@ -110,9 +100,6 @@ func startWebSocket(model *Model) tea.Cmd {
 				if step, ok := event["step"].(float64); ok {
 					wsEvt.Step = int(step)
 				}
-
-				// Debug log: print all event keys to see what's available
-				fmt.Fprintf(os.Stderr, "TUI WebSocket event keys: %v\n", keysFromMap(event))
 
 				// Non-blocking send to avoid goroutine blocking if channel is full.
 				select {
@@ -223,6 +210,8 @@ func sendChatMessage(model *Model, sessionID, message string) {
 		case model.wsMsg <- WSMessageEvent{Event: "chat_updated"}:
 		default:
 		}
+		// Update status bar to Connected
+		model.statusBar.SetConnection("Connected")
 		return
 	}
 

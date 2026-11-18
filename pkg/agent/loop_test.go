@@ -895,11 +895,6 @@ func (f *FakeOpenShellClient) KeepAlive(_ context.Context, sandboxName string) e
 	return nil
 }
 
-func (f *FakeOpenShellClient) GetMTLSPaths() (certPath, keyPath string) {
-	// Fake client has no mTLS config
-	return "", ""
-}
-
 // --- env.Workspace interface methods ---
 
 func (f *FakeOpenShellClient) SessionWorkspace(sessionId string) (string, error) {

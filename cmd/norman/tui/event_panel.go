@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -53,6 +54,23 @@ func (p *EventPanel) Focus() {
 // Blur removes focus from the event panel.
 func (p *EventPanel) Blur() {
 	p.focused = false
+}
+
+// Init implements tea.Model interface.
+func (p *EventPanel) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles messages for this panel.
+func (p *EventPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	p.list, cmd = p.list.Update(msg)
+	return p, cmd
+}
+
+// View implements tea.Model interface.
+func (p *EventPanel) View() string {
+	return p.Render()
 }
 
 // Render renders the event panel view with focus-aware border.

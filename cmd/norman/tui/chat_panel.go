@@ -176,7 +176,12 @@ func (p *ChatPanel) updateStreamingViewport() {
 		contentMap := map[string]interface{}{
 			"content": p.streamingMessage.Content,
 		}
-		lines = append(lines, renderMarkdown(&contentMap))
+		allocatedWidth := int(float64(p.width) * 0.7)
+		maxWidth := allocatedWidth - 23
+		if maxWidth < 0 {
+			maxWidth = 0
+		}
+		lines = append(lines, renderMarkdown(&contentMap, maxWidth))
 	case protocol.Text:
 		// For text, wrap and display as plain text
 		content := p.streamingMessage.Content
@@ -202,7 +207,7 @@ func (p *ChatPanel) updateStreamingViewport() {
 	content := joinLines(lines)
 	p.viewport.SetContent(content)
 	// Scroll to bottom of visible area.
-	p.viewport.YOffset = max(0, strings.Count(content, "\n")-p.height)
+	p.viewport.GotoBottom()
 }
 
 func (p *ChatPanel) updateViewport() {
@@ -248,7 +253,12 @@ func (p *ChatPanel) updateViewport() {
 				contentMap := map[string]interface{}{
 					"content": p.streamingMessage.Content,
 				}
-				lines = append(lines, renderMarkdown(&contentMap))
+				allocatedWidth := int(float64(p.width) * 0.7)
+				maxWidth := allocatedWidth - 23
+				if maxWidth < 0 {
+					maxWidth = 0
+				}
+				lines = append(lines, renderMarkdown(&contentMap, maxWidth))
 			case protocol.Text:
 				fallthrough
 			default:
@@ -274,7 +284,12 @@ func (p *ChatPanel) updateViewport() {
 			lines = append(lines, "["+ts+"] "+speaker+":")
 
 			// Render content using markdown renderer to properly handle code blocks
-			renderedContent := renderMarkdownString(msg.Content)
+			// Pass viewport width for proper text wrapping
+			viewportWidth := p.viewport.Width
+			if viewportWidth <= 0 {
+				viewportWidth = 78 // fallback to default width
+			}
+			renderedContent := renderMarkdownString(msg.Content, viewportWidth)
 			lines = append(lines, renderedContent)
 			lines = append(lines, "")
 		}
@@ -282,7 +297,7 @@ func (p *ChatPanel) updateViewport() {
 	content := joinLines(lines)
 	p.viewport.SetContent(content)
 	// Scroll to bottom of visible area.
-	p.viewport.YOffset = max(0, strings.Count(content, "\n")-p.height)
+	p.viewport.GotoBottom()
 }
 
 // wrapString wraps a long string to fit within maxWidth characters,

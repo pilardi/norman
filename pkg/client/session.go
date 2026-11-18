@@ -3,6 +3,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,13 +17,13 @@ import (
 func CreateNewSession(workspaceName string) (string, error) {
 	c, err := GetProtocolClient()
 	if err != nil {
-		return "", fmt.Errorf("failed to create client: %w", err)
+		return "", fmt.Errorf("error creating API client: %v", err)
 	}
 
 	// Resolve workspace name to ID.
 	wsRsp, err := c.ListWorkspaces(context.Background(), nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to list workspaces: %w", err)
+		return "", fmt.Errorf("error fetching workspaces: %v", err)
 	}
 	parsedWS, err := protocol.ParseListWorkspacesResponse(wsRsp)
 	if err != nil {
@@ -58,11 +59,19 @@ func CreateNewSession(workspaceName string) (string, error) {
 
 	sess := parsedSess.GetJSON201()
 	if sess == nil {
-		bodyStr := string(parsedSess.GetBody())
-		if bodyStr == "" {
-			bodyStr = parsedSess.Status()
+		// Server returned an error response (e.g., 409 max sessions reached).
+		body := string(parsedSess.GetBody())
+		if body == "" {
+			body = parsedSess.Status()
 		}
-		return "", fmt.Errorf("session creation failed: %s", bodyStr)
+		// Try to extract the "error" field from JSON body for a clean message.
+		var errResp map[string]any
+		if json.Unmarshal([]byte(body), &errResp) == nil {
+			if e, ok := errResp["error"].(string); ok {
+				body = e
+			}
+		}
+		return "", fmt.Errorf("session creation failed (status %d): %s", parsedSess.StatusCode(), body)
 	}
 
 	fmt.Printf("New session '%s' created.\n", strVal(sess.Name))

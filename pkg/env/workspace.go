@@ -187,7 +187,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 	sb, err := m.client.GetSandbox(ctx, defaultProvider, sandboxName)
 	if err == nil && sb != nil {
 		log.Printf("[env] Found existing sandbox '%s' for workspace '%s' (session %s)", sandboxName, workspace, sessionId[:8])
-		session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
+		session = NewSession(m.client, defaultProvider, sb.Name, workspace, sessionId)
 
 		// Attempt recovery with retries
 		for attempt := 0; attempt < maxRetries; attempt++ {
@@ -216,7 +216,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 		if err != nil {
 			return nil, err
 		}
-		session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
+		session = NewSession(m.client, defaultProvider, sb.Name, workspace, sessionId)
 		m.sessions[sessionId] = session
 		return session, nil
 	}
@@ -227,7 +227,7 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 	if err != nil {
 		return nil, err
 	}
-	session = NewSession(m.client, defaultProvider, sb.Name, sessionId)
+	session = NewSession(m.client, defaultProvider, sb.Name, workspace, sessionId)
 	m.sessions[sessionId] = session
 	return session, nil
 }

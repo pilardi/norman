@@ -36,7 +36,11 @@ func resolveSessionID(input string) (string, bool, error) {
 	for _, s := range *sessions {
 		name := client.StrVal(s.Name)
 		id := s.Id.String()
-		if name == input || strings.HasPrefix(id[:8], input[:8]) {
+		if name == input {
+			return id, true, nil
+		}
+		// Check if input matches the prefix of the session ID
+		if len(id) >= len(input) && strings.HasPrefix(id, input) {
 			return id, true, nil
 		}
 	}
