@@ -289,6 +289,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, startWebSocket(m)
 			}
 			m.handleWSMessage(msg)
+			if m.done {
+				return m, tea.Quit
+			}
 		}
 
 		// Drain ALL pending events from the channel before returning.
