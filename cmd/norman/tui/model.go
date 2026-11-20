@@ -39,7 +39,6 @@ type Model struct {
 	// Phase 3 overlays
 	helpOverlay     helpOverlay
 	sessionSwitcher sessionSwitcher
-	commandMode     bool
 
 	// WebSocket message channel for persistent event streaming.
 	wsMsg chan WSMessageEvent
@@ -228,19 +227,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sessionSwitcher.showing = false
 			return m, nil
 
-		case "/":
-			// Only toggle command mode if chat panel is focused.
-			// If event panel is focused, let it handle '/' for filtering.
-			if m.chatPanel.focused {
-				m.commandMode = !m.commandMode
-				if m.commandMode {
-					m.statusBar.SetConnection("⊶ Command mode — type a command")
-				} else {
-					m.statusBar.SetConnection(fmt.Sprintf("Connected (%s)", strings.TrimPrefix(m.connectionState, "●")))
-				}
-				return m, nil
+		case "ctrl+n":
+			// Create new session
+			if !m.sessionSwitcher.IsShowing() && !m.helpOverlay.IsShowing() {
+				return m, createNewSession(m)
 			}
-			// Fall through to forwarding if event panel is focused
+			return m, nil
+
+		case "ctrl+t":
+			// Focus event panel
+			if !m.sessionSwitcher.IsShowing() && !m.helpOverlay.IsShowing() {
+				m.chatPanel.Blur()
+				m.eventPanel.Focus()
+			}
+			return m, nil
+
+		case "/":
+			// Open help overlay with command list
+			if !m.helpOverlay.IsShowing() {
+				m.helpOverlay = newHelpOverlay(helpText())
+			} else {
+				m.helpOverlay.showing = false
+			}
+			return m, nil
 		}
 
 		// Forward all other keys to textinput when focused (arrows, backspace, etc.)

@@ -21,7 +21,8 @@ func (k tuiKeyMap) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys("ctrl+l"), key.WithHelp("ctrl+l", "Clear chat")),
 		key.NewBinding(key.WithKeys("ctrl+h"), key.WithHelp("ctrl+h", "Show help")),
 		key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "Sessions")),
-		key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "Command mode")),
+		key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "New session")),
+		key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "Focus events")),
 	}
 }
 
@@ -35,7 +36,8 @@ func (k tuiKeyMap) FullHelp() [][]key.Binding {
 		{
 			key.NewBinding(key.WithKeys("ctrl+h"), key.WithHelp("ctrl+h", "Show help overlay")),
 			key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "Open session switcher")),
-			key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "Toggle command mode")),
+			key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "Create new session")),
+			key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "Focus event panel")),
 		},
 	}
 }

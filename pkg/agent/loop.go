@@ -38,6 +38,7 @@ type Task struct {
 	RetryCount   int
 	CreatedAt    time.Time
 	RichOutput   *protocol.RichOutput      // structured metadata about the final output
+	TokenUsage   *llm.Usage                // token usage for this task
 	events       []protocol.WebSocketEvent // granular event log for ?type=events REST access
 }
 
@@ -348,11 +349,12 @@ func (l *Loop) GetLogs(ctx context.Context, sessionId string) ([]string, error) 
 
 // AgentResponse represents the structured response from processing a chat message.
 type AgentResponse struct {
-	SessionID   string   `json:"session_id"`
-	Response    string   `json:"response,omitempty"`
-	ToolsUsed   []string `json:"tools_used,omitempty"`
-	TaskCreated bool     `json:"task_created"`
-	TaskID      string   `json:"task_id,omitempty"`
+	SessionID   string     `json:"session_id"`
+	Response    string     `json:"response,omitempty"`
+	ToolsUsed   []string   `json:"tools_used,omitempty"`
+	TaskCreated bool       `json:"task_created"`
+	TaskID      string     `json:"task_id,omitempty"`
+	TokenUsage  *llm.Usage `json:"token_usage,omitempty"`
 }
 
 // SendMessage processes a chat message and returns a structured response.
@@ -401,9 +403,12 @@ func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string
 
 	// Build response.
 	resp := &AgentResponse{
-		SessionID: sessionID,
-		Response:  string(task.Output),
+		SessionID:  sessionID,
+		Response:   string(task.Output),
+		TokenUsage: task.TokenUsage,
 	}
+
+	log.Printf("agent: sendMessage response for session %s - response_len=%d, token_usage=%+v", sessionID, len(task.Output), task.TokenUsage)
 
 	if task.Error != "" {
 		resp.Response = fmt.Sprintf("Error: %s", task.Error)
@@ -743,6 +748,13 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 				_ = stream.Close()
 				return nil, fmt.Errorf("streaming failed at turn %d: %v", turn, err)
 			}
+			// Track token usage if available (including from [DONE] chunk)
+			if chunk.Usage != nil {
+				usage.PromptTokens += chunk.Usage.PromptTokens
+				usage.CompletionTokens += chunk.Usage.CompletionTokens
+				usage.TotalTokens += chunk.Usage.TotalTokens
+			}
+
 			// Only stop reading at the [DONE] sentinel.
 			// finish_reason="tool_calls"/"stop" signals the model is done generating,
 			// but arguments stream incrementally as delta content — we must keep
@@ -797,13 +809,6 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 					}
 				}
 			}
-
-			// Track token usage if available
-			if chunk.Usage != nil {
-				usage.PromptTokens += chunk.Usage.PromptTokens
-				usage.CompletionTokens += chunk.Usage.CompletionTokens
-				usage.TotalTokens += chunk.Usage.TotalTokens
-			}
 		}
 
 		_ = stream.Close()
@@ -811,10 +816,33 @@ func (l *Loop) executeWithLLM(ctx context.Context, task *Task) ([]byte, error) {
 		responseText := fullText.String()
 		l.logf("accumulated response text: %q", responseText)
 
-		// Track token usage for budget
-		if l.budget != nil {
-			l.budget.TokenCount += usage.TotalTokens
-			log.Printf("agent: turn %d used %d tokens (total session: %d)", turn+1, usage.TotalTokens, l.budget.TokenCount)
+		// Store task token usage
+		task.TokenUsage = &usage
+
+		// Track token usage for budget and save to session JSON
+		if l.store != nil && task.SessionId != "" {
+			maxTokens := l.MaxTokens(task.Workspace)
+
+			// Calculate cumulative token usage
+			cumulativeTokens := usage.TotalTokens
+			if l.budget != nil {
+				cumulativeTokens = l.budget.TokenCount + usage.TotalTokens
+			} else {
+				// If budget is not configured, read current token_budget_used from session JSON
+				sessionData, err := l.store.LoadSession(task.SessionId)
+				if err == nil {
+					if tokenBudgetUsed, ok := sessionData["token_budget_used"].(float64); ok {
+						cumulativeTokens = int(tokenBudgetUsed) + usage.TotalTokens
+					}
+				}
+			}
+
+			log.Printf("agent: turn %d used %d tokens (cumulative session: %d)", turn+1, usage.TotalTokens, cumulativeTokens)
+
+			// Save budget state to session JSON
+			if err := l.store.SaveSessionBudget(task.SessionId, cumulativeTokens, maxTokens); err != nil {
+				log.Printf("agent: failed to save budget state to session %s: %v", task.SessionId, err)
+			}
 		}
 
 		// Build final tool calls by concatenating streamed arguments per ID.

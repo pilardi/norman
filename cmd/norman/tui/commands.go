@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,8 +26,10 @@ func Commands() []Command {
 		{Key: "ctrl+s", Action: openSessionSwitcher, Help: "Open session switcher"},
 		{Key: "ctrl+n", Action: createNewSession, Help: "Create new session"},
 		{Key: "ctrl+t", Action: focusEventPanel, Help: "Focus event panel"},
-		{Key: "ctrl+c", Action: closeSession, Help: "Close current session"},
-		{Key: "/", Action: enterCommandMode, Help: "Enter command mode"},
+		{Key: "ctrl+c", Action: closeTUI, Help: "Close TUI"},
+		{Key: "tab", Action: toggleFocus, Help: "Toggle focus between chat and events"},
+		{Key: "enter", Action: sendMessage, Help: "Send message"},
+		{Key: "ctrl+l", Action: clearChat, Help: "Clear chat"},
 	}
 }
 
@@ -86,44 +89,44 @@ func focusEventPanel(m *Model) tea.Cmd {
 	return nil
 }
 
-// closeSession sends a close command to the current session.
-func closeSession(m *Model) tea.Cmd {
-	m.statusBar.SetConnection("● Closing session...")
-	return func() tea.Msg {
-		c, err := client.GetProtocolClient()
-		if err != nil {
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
-		}
-
-		resp, err := c.ArchiveSessionByID(context.Background(), m.sessionID)
-		if err != nil {
-			m.statusBar.SetConnection("✗ Failed to close session")
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Archive session failed: %v", err)}
-		}
-
-		parsed, err := protocol.ParseArchiveSessionByIDResponse(resp)
-		if err != nil {
-			m.statusBar.SetConnection("✗ Parse error: " + err.Error())
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Parse error: %v", err)}
-		}
-
-		if parsed.HTTPResponse != nil && parsed.HTTPResponse.StatusCode == 204 {
-			m.statusBar.SetConnection(fmt.Sprintf("✓ Session closed: %s", client.ShortID(m.sessionID)))
-			return WSMessageEvent{Event: "session_closed", Message: fmt.Sprintf("Closed session %s", client.ShortID(m.sessionID))}
-		}
-
-		return WSMessageEvent{Event: "error", Message: "Unexpected response from archive"}
-	}
+// closeTUI closes the TUI application.
+func closeTUI(m *Model) tea.Cmd {
+	m.done = true
+	return tea.Quit
 }
 
-// enterCommandMode enters command mode (reserves the `/` key).
-func enterCommandMode(m *Model) tea.Cmd {
-	m.commandMode = !m.commandMode
-	if m.commandMode {
-		m.statusBar.SetConnection("⊶ Command mode — type a command")
+// toggleFocus switches focus between chat and event panels.
+func toggleFocus(m *Model) tea.Cmd {
+	if m.chatPanel.focused {
+		m.chatPanel.Blur()
+		m.eventPanel.Focus()
 	} else {
-		m.statusBar.SetConnection(fmt.Sprintf("● Connected (%s)", m.connectionState))
+		m.chatPanel.Focus()
+		m.eventPanel.Blur()
 	}
+	return nil
+}
+
+// sendMessage sends the current message in the chat input.
+func sendMessage(m *Model) tea.Cmd {
+	input := m.chatPanel.textInput.Value()
+	if input == "" {
+		return nil
+	}
+	m.chatPanel.AppendMessage(ChatMessage{
+		Role:      "user",
+		Content:   input,
+		Timestamp: time.Now(),
+	})
+	m.chatPanel.textInput.SetValue("")
+	m.statusBar.SetConnection("Sending")
+	go sendChatMessage(m, m.sessionID, input)
+	return nil
+}
+
+// clearChat clears the chat panel.
+func clearChat(m *Model) tea.Cmd {
+	m.chatPanel.Clear()
 	return nil
 }
 
