@@ -214,6 +214,8 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	log.Printf("server: sendMessage response for session %s - response_len=%d, token_usage=%+v", id, len(resp.Response), resp.TokenUsage)
+
 	// Persist conversation turns to disk (user + assistant).
 	if err := s.store.PersistSessionTurn(id, map[string]interface{}{
 		"role":    "user",
@@ -222,10 +224,19 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 		log.Printf("warn: failed to persist user turn for session %s: %v", id, err)
 	}
 	if resp.Response != "" {
-		if err := s.store.PersistSessionTurn(id, map[string]interface{}{
+		turn := map[string]interface{}{
 			"role":    "assistant",
 			"content": resp.Response,
-		}); err != nil {
+		}
+		if resp.TokenUsage != nil {
+			turn["token_usage"] = map[string]interface{}{
+				"prompt_tokens":     resp.TokenUsage.PromptTokens,
+				"completion_tokens": resp.TokenUsage.CompletionTokens,
+				"total_tokens":      resp.TokenUsage.TotalTokens,
+				"cached_tokens":     resp.TokenUsage.CachedTokens,
+			}
+		}
+		if err := s.store.PersistSessionTurn(id, turn); err != nil {
 			log.Printf("warn: failed to persist assistant turn for session %s: %v", id, err)
 		}
 	}
@@ -279,55 +290,24 @@ func (s *server) HealthCheck(c echo.Context) error {
 
 // DeleteSession removes a session file from disk.
 func (s *server) DeleteSession(c echo.Context, id string) error {
-	var fullPath string
-	dir := filepath.Join(s.store.Base(), "sessions")
-	entries, err := os.ReadDir(dir)
+	// Resolve session ID (short UUID prefix or full name) to actual session ID
+	resolvedID, err := s.resolveSessionID(id)
 	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	// Delegate session deletion to the store
+	if err := s.store.DeleteSession(resolvedID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), id+"-") || entry.Name() == id+".json" {
-			fullPath = filepath.Join(dir, entry.Name())
-			break
-		}
-	}
-
-	if fullPath == "" {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
-	}
-
-	if err := os.Remove(fullPath); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	// Remove the session's .jsonl turns file.
-	turnsPath := filepath.Join(s.store.Base(), "turns", id+".jsonl")
-	if err := os.Remove(turnsPath); err != nil && !os.IsNotExist(err) {
-		log.Printf("warn: failed to remove turns file for session %s: %v", id, err)
-	}
-
-	// Delete all task files associated with this session.
-	tasks, err := s.store.ListTasks()
-	if err == nil {
-		for _, taskMap := range tasks {
-			sid, _ := taskMap["session_id"].(string)
-			taskID, _ := taskMap["id"].(string)
-			if sid == id && taskID != "" {
-				if delErr := s.store.DeleteTask(taskID); delErr != nil {
-					log.Printf("warn: failed to delete task %s for session %s: %v", taskID, id, delErr)
-				}
-			}
-		}
 	}
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.SessionEvent,
-		Message: strPtr("Session " + id[:8] + " closed"),
+		Message: strPtr("Session " + resolvedID[:8] + " closed"),
 	})
 
 	// Check if this was the last session for its workspace and mark idle
-	s.checkWorkspaceIdle(id)
+	s.checkWorkspaceIdle(resolvedID)
 
 	return c.NoContent(http.StatusOK)
 }

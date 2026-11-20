@@ -28,7 +28,7 @@ func NewChatPanel() ChatPanel {
 	cs := DefaultDarkColorScheme()
 	styles := cs.ToLipglossStyles()
 	ti := textarea.New()
-	ti.Placeholder = "Type a message..."
+	ti.Placeholder = "Type a message... [Tab: toggle focus, Enter: send, Ctrl+L: clear, Ctrl+H or /: help, Ctrl+S: sessions, Ctrl+N: new session, Ctrl+T: focus events]"
 	ti.CharLimit = 10000
 	ti.SetWidth(78)
 	ti.ShowLineNumbers = false
@@ -213,9 +213,7 @@ func (p *ChatPanel) updateStreamingViewport() {
 func (p *ChatPanel) updateViewport() {
 	var lines []string
 	if len(p.messages) == 0 && p.streamingMessage == nil {
-		lines = append(lines, "Type a message below to start chatting.")
-		lines = append(lines, "")
-		lines = append(lines, "Keyboard: Tab = toggle focus | Ctrl+L = clear | Ctrl+H = help | Ctrl+S = sessions | / = command mode")
+		// No initial message, rely on textarea placeholder for commands
 	} else {
 		// First, render streaming message if it exists
 		if p.streamingMessage != nil {

@@ -1672,6 +1672,18 @@ components:
           type: string
           format: date-time
           nullable: true
+        token_usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+            cached_tokens:
+              type: integer
+          nullable: true
 
     HealthStatus:
       type: object

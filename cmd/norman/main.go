@@ -328,6 +328,22 @@ Pass a workspace name (e.g., 'norman sessions ls test-ws') to show only sessions
 						},
 					},
 					{
+						Name:  "show",
+						Usage: "Show session details including status, token usage, etc.",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman sessions show <session_id>\n")
+								return fmt.Errorf("usage: norman sessions show <session_id>")
+							}
+							err := handleSessionShow(cmd.Args().First())
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+								return fmt.Errorf("show failed: %v", err)
+							}
+							return nil
+						},
+					},
+					{
 						Name:    "open",
 						Aliases: []string{"chat"},
 						Usage:   "Open an interactive chat session (TUI or REPL)",
@@ -345,7 +361,8 @@ Slash-commands (prefix with /):
   /close            Close the current session (save transcript)
   /new              Start a new chat session
   /history [N]      Show last N messages of current session
-  /sessions         List all active sessions
+  /sessions list    List all active sessions
+  /sessions show <id>  Show session details
   /switch <id>      Switch to another session by ID
   /archive <id>     Archive a session's transcript by session ID
 

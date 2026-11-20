@@ -43,7 +43,25 @@ func dispatchSlashCommand(cmd string, args []string, sessionID string, workspace
 	case "history":
 		showHistory(sessionID, args)
 	case "sessions":
-		_ = handleSessionList([]string{})
+		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "Usage: /sessions list | /sessions show <session-id>")
+			return sessionID, true
+		}
+		switch args[0] {
+		case "list":
+			_ = handleSessionList(args[1:])
+		case "show":
+			if len(args) < 2 {
+				fmt.Fprintln(os.Stderr, "Usage: /sessions show <session-id>")
+				return sessionID, true
+			}
+			if err := handleSessionShow(args[1]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error showing session: %v\n", err)
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown sessions subcommand: %s. Use 'list' or 'show'.\n", args[0])
+			return sessionID, true
+		}
 	case "switch":
 		if len(args) == 0 {
 			fmt.Fprintln(os.Stderr, "Usage: /switch <session-id>")

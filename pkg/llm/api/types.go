@@ -10,12 +10,25 @@ import (
 	"time"
 )
 
+// ContentPart represents a part of a message's content (used for OpenAI prompt caching, etc.)
+type ContentPart struct {
+	Type         string        `json:"type"`
+	Text         string        `json:"text,omitempty"`
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
+}
+
+// CacheControl represents cache control configuration for a content part
+type CacheControl struct {
+	Type string `json:"type"`
+}
+
 // Message represents a single chat message in the conversation.
 type Message struct {
-	Role    string `json:"role"`           // "system", "user", "assistant", "tool"
-	Content string `json:"content"`        // The message content
-	Name    string `json:"name,omitempty"` // For tool messages: the tool name
-	ID      string `json:"id,omitempty"`   // Tool call ID (for response)
+	Role         string        `json:"role"`           // "system", "user", "assistant", "tool"
+	Content      string        `json:"content"`        // The message content (string format for llamacpp, legacy)
+	ContentParts []ContentPart `json:"-"`              // Array format for OpenAI advanced features like cache_control
+	Name         string        `json:"name,omitempty"` // For tool messages: the tool name
+	ID           string        `json:"id,omitempty"`   // Tool call ID (for response)
 }
 
 // Schema represents a JSON Schema node for tool parameters.
@@ -67,6 +80,7 @@ type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	CachedTokens     int `json:"cached_tokens,omitempty"`
 }
 
 // LLM provides text completion with optional tool-calling support.

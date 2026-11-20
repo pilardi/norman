@@ -151,6 +151,9 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 
 	requestBody := buildRequestBody(req)
 	requestBody["stream"] = true
+	requestBody["stream_options"] = map[string]interface{}{
+		"include_usage": true,
+	}
 	payload, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request body: %w", err)
@@ -221,6 +224,7 @@ type sseStreamReader struct {
 	resp         *http.Response
 	done         chan struct{}
 	providerName string
+	usage        *Usage // accumulated usage from SSE stream
 }
 
 func (s *sseStreamReader) Next() (Chunk, error) {
@@ -234,7 +238,11 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 		}
 
 		if line == "data: [DONE]" {
-			return Chunk{FinishReason: "[done]"}, nil
+			chunk := Chunk{FinishReason: "[done]"}
+			if s.usage != nil {
+				chunk.Usage = s.usage
+			}
+			return chunk, nil
 		}
 
 		if !bytes.HasPrefix([]byte(line), []byte("data: ")) {
@@ -307,6 +315,52 @@ func (s *sseStreamReader) Next() (Chunk, error) {
 			}
 		}
 
+		// Extract usage from SSE event if present at root level or in choices
+		if usageMap, ok := delta["usage"].(map[string]interface{}); ok {
+			s.usage = &Usage{}
+			if promptTokens, ok := usageMap["prompt_tokens"].(float64); ok {
+				s.usage.PromptTokens = int(promptTokens)
+			}
+			if completionTokens, ok := usageMap["completion_tokens"].(float64); ok {
+				s.usage.CompletionTokens = int(completionTokens)
+			}
+			if totalTokens, ok := usageMap["total_tokens"].(float64); ok {
+				s.usage.TotalTokens = int(totalTokens)
+			}
+			// Extract cached_tokens from usage or prompt_tokens_details
+			if cachedTokens, ok := usageMap["cached_tokens"].(float64); ok {
+				s.usage.CachedTokens = int(cachedTokens)
+			} else if promptTokensDetails, ok := usageMap["prompt_tokens_details"].(map[string]interface{}); ok {
+				if cachedTokens, ok := promptTokensDetails["cached_tokens"].(float64); ok {
+					s.usage.CachedTokens = int(cachedTokens)
+				}
+			}
+		} else if choices, ok := delta["choices"].([]interface{}); ok && len(choices) > 0 {
+			// Check if usage is embedded in the choices object
+			if choice, ok := choices[0].(map[string]interface{}); ok {
+				if usageMap, ok := choice["usage"].(map[string]interface{}); ok {
+					s.usage = &Usage{}
+					if promptTokens, ok := usageMap["prompt_tokens"].(float64); ok {
+						s.usage.PromptTokens = int(promptTokens)
+					}
+					if completionTokens, ok := usageMap["completion_tokens"].(float64); ok {
+						s.usage.CompletionTokens = int(completionTokens)
+					}
+					if totalTokens, ok := usageMap["total_tokens"].(float64); ok {
+						s.usage.TotalTokens = int(totalTokens)
+					}
+					// Extract cached_tokens from usage or prompt_tokens_details
+					if cachedTokens, ok := usageMap["cached_tokens"].(float64); ok {
+						s.usage.CachedTokens = int(cachedTokens)
+					} else if promptTokensDetails, ok := usageMap["prompt_tokens_details"].(map[string]interface{}); ok {
+						if cachedTokens, ok := promptTokensDetails["cached_tokens"].(float64); ok {
+							s.usage.CachedTokens = int(cachedTokens)
+						}
+					}
+				}
+			}
+		}
+
 		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls))
 
 		return chunk, nil
@@ -346,7 +400,7 @@ func buildRequestBody(req CompletionRequest) map[string]interface{} {
 		"model":       req.Model,
 		"temperature": req.Temperature,
 		"max_tokens":  req.MaxTokens,
-		"messages":    messagesToMap(req.Messages),
+		"messages":    messagesToJSON(req.Messages),
 	}
 
 	if len(req.StopSequences) > 0 {
@@ -366,19 +420,44 @@ func buildRequestBody(req CompletionRequest) map[string]interface{} {
 	return body
 }
 
-func messagesToMap(msgs []Message) []map[string]string {
-	result := make([]map[string]string, len(msgs))
+func messagesToJSON(msgs []Message) []map[string]any {
+	result := make([]map[string]any, len(msgs))
 	for i, m := range msgs {
-		result[i] = map[string]string{
-			"role":    m.Role,
-			"content": m.Content,
+		msgMap := map[string]any{
+			"role": m.Role,
 		}
+
+		// If ContentParts is provided, use it for the content array
+		if len(m.ContentParts) > 0 {
+			contentParts := make([]map[string]any, len(m.ContentParts))
+			for j, cp := range m.ContentParts {
+				cpMap := map[string]any{
+					"type": cp.Type,
+				}
+				if cp.Text != "" {
+					cpMap["text"] = cp.Text
+				}
+				if cp.CacheControl != nil {
+					cpMap["cache_control"] = map[string]string{
+						"type": cp.CacheControl.Type,
+					}
+				}
+				contentParts[j] = cpMap
+			}
+			msgMap["content"] = contentParts
+		} else {
+			// Fallback to string content
+			msgMap["content"] = m.Content
+		}
+
 		if m.Name != "" {
-			result[i]["name"] = m.Name
+			msgMap["name"] = m.Name
 		}
 		if m.ID != "" {
-			result[i]["id"] = m.ID
+			msgMap["id"] = m.ID
 		}
+
+		result[i] = msgMap
 	}
 	return result
 }

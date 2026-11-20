@@ -1041,9 +1041,15 @@ type SessionStatusStatus string
 
 // SessionTurn defines model for SessionTurn.
 type SessionTurn struct {
-	Content   *string          `json:"content,omitempty"`
-	Role      *SessionTurnRole `json:"role,omitempty"`
-	Timestamp *time.Time       `json:"timestamp,omitempty"`
+	Content    *string          `json:"content,omitempty"`
+	Role       *SessionTurnRole `json:"role,omitempty"`
+	Timestamp  *time.Time       `json:"timestamp,omitempty"`
+	TokenUsage *struct {
+		CachedTokens     *int `json:"cached_tokens,omitempty"`
+		CompletionTokens *int `json:"completion_tokens,omitempty"`
+		PromptTokens     *int `json:"prompt_tokens,omitempty"`
+		TotalTokens      *int `json:"total_tokens,omitempty"`
+	} `json:"token_usage,omitempty"`
 }
 
 // SessionTurnRole defines model for SessionTurn.Role.

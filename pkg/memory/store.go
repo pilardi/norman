@@ -344,6 +344,50 @@ func (s *Store) SaveSession(sessionID string, data map[string]interface{}) error
 	return nil
 }
 
+// SaveSessionBudget updates a session's state with budget/token usage information.
+func (s *Store) SaveSessionBudget(sessionID string, tokenCount int, maxTokens int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.base, "sessions", sessionID+".json")
+
+	// Read existing session data
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("session %s not found", sessionID)
+		}
+		return fmt.Errorf("read session file: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("parse session data: %w", err)
+	}
+
+	// Add budget/token usage information
+	result["token_budget_used"] = tokenCount
+	result["token_budget_remaining"] = maxTokens - tokenCount
+	result["updated_at"] = time.Now().Format(time.RFC3339)
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal session data: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, content, 0644); err != nil {
+		return fmt.Errorf("write session file: %w", err)
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename session file: %w", err)
+	}
+
+	return nil
+}
+
 // LoadSession reads a session's state from disk.
 func (s *Store) LoadSession(sessionID string) (map[string]interface{}, error) {
 	s.mu.RLock()
@@ -367,17 +411,49 @@ func (s *Store) LoadSession(sessionID string) (map[string]interface{}, error) {
 	return result, nil
 }
 
-// DeleteSession removes a session's state from disk.
+// DeleteSession removes a session's state from disk including turns and associated tasks.
 func (s *Store) DeleteSession(sessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path := filepath.Join(s.base, "sessions", sessionID+".json")
-	if err := os.Remove(path); err != nil {
+	// Remove the original active session file.
+	activePath := filepath.Join(s.base, "sessions", sessionID+".json")
+	if err := os.Remove(activePath); err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("session %s not found", sessionID)
 		}
 		return fmt.Errorf("delete session file: %w", err)
+	}
+
+	// Remove the session's .jsonl turns file.
+	turnsPath := filepath.Join(s.base, "turns", sessionID+".jsonl")
+	if err := os.Remove(turnsPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("warn: failed to remove turns file for session %s: %v", sessionID, err)
+	}
+
+	// Delete all task files associated with this session (inline to avoid deadlock).
+	tasksDir := filepath.Join(s.base, "tasks")
+	if entries, err := os.ReadDir(tasksDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(tasksDir, entry.Name()))
+			if err != nil {
+				continue // skip unreadable files
+			}
+			var task map[string]interface{}
+			if err := json.Unmarshal(data, &task); err != nil {
+				continue // skip corrupt files
+			}
+			sid, _ := task["session_id"].(string)
+			taskIDInner, _ := task["id"].(string)
+			if sid == sessionID && taskIDInner != "" {
+				if delErr := os.Remove(filepath.Join(tasksDir, entry.Name())); delErr != nil {
+					log.Printf("warn: failed to delete task %s for session %s: %v", taskIDInner, sessionID, delErr)
+				}
+			}
+		}
 	}
 
 	return nil
@@ -894,6 +970,9 @@ func (s *Store) PersistSessionTurn(sessionID string, turn map[string]interface{}
 	}
 	if id, ok := turn["id"].(string); ok {
 		entry["id"] = id
+	}
+	if tokenUsage, ok := turn["token_usage"].(map[string]interface{}); ok {
+		entry["token_usage"] = tokenUsage
 	}
 
 	line, err := json.Marshal(entry)

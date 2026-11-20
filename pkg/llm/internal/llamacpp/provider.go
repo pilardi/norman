@@ -352,14 +352,53 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 	// Debug: expose raw SSE data for troubleshooting.
 	log.Printf("[llm][%s] SSE raw data: %s", s.providerName, rawData)
 
-	// Native /completion format: {"content":"...","stop_reason":"..."}
+	// Native /completion format: {"content":"...","stop_reason":"..."} or final chunk with token usage
 	var nativeResp struct {
-		Content    string `json:"content"`
-		StopReason string `json:"stop_reason,omitempty"`
+		Content         string `json:"content"`
+		StopReason      string `json:"stop_reason,omitempty"`
+		TokensEvaluated int    `json:"tokens_evaluated,omitempty"`
+		TokensCached    int    `json:"tokens_cached,omitempty"`
+		Timings         *struct {
+			PromptN   int `json:"prompt_n,omitempty"`
+			PredictN  int `json:"predict_n,omitempty"`
+			PromptMS  int `json:"prompt_ms,omitempty"`
+			PredictMS int `json:"predict_ms,omitempty"`
+		} `json:"timings,omitempty"`
 	}
-	if err := json.Unmarshal([]byte(rawData), &nativeResp); err == nil && nativeResp.Content != "" {
-		log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
-		return api.Chunk{Delta: nativeResp.Content, FinishReason: nativeResp.StopReason}, nil
+	if err := json.Unmarshal([]byte(rawData), &nativeResp); err == nil {
+		chunk := api.Chunk{FinishReason: nativeResp.StopReason}
+		if nativeResp.Content != "" {
+			chunk.Delta = nativeResp.Content
+			log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
+		} else if nativeResp.StopReason != "" {
+			// Final chunk with token usage
+			log.Printf("[llm][%s] SSE parsed (native final): stop_reason=%q tokens_evaluated=%d tokens_cached=%d", s.providerName, nativeResp.StopReason, nativeResp.TokensEvaluated, nativeResp.TokensCached)
+
+			// Extract token usage from tokens_evaluated/tokens_cached or timings
+			promptTokens := nativeResp.TokensEvaluated
+			if promptTokens == 0 && nativeResp.Timings != nil {
+				promptTokens = nativeResp.Timings.PromptN
+			}
+
+			completionTokens := 0
+			if nativeResp.TokensEvaluated > 0 && nativeResp.TokensCached > 0 {
+				completionTokens = nativeResp.TokensEvaluated - nativeResp.TokensCached
+			} else if nativeResp.Timings != nil && nativeResp.Timings.PredictN > 0 {
+				completionTokens = nativeResp.Timings.PredictN
+			}
+
+			totalTokens := promptTokens + completionTokens
+			if totalTokens > 0 {
+				chunk.Usage = &api.Usage{
+					PromptTokens:     promptTokens,
+					CompletionTokens: completionTokens,
+					TotalTokens:      totalTokens,
+					CachedTokens:     nativeResp.TokensCached,
+				}
+				log.Printf("[llm][%s] SSE parsed (native final) usage: prompt=%d completion=%d total=%d cached=%d", s.providerName, promptTokens, completionTokens, totalTokens, nativeResp.TokensCached)
+			}
+		}
+		return chunk, nil
 	}
 
 	// Fallback to OpenAI-compatible format for backward compat

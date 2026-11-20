@@ -253,11 +253,42 @@ func showHistory(sessionID string, args []string) {
 		if t.Timestamp != nil {
 			ts = t.Timestamp.Format(time.RFC3339)
 		}
+
+		// Build output line
+		out := ""
 		if ts != "" {
-			fmt.Printf("[%s] %s: %s\n", ts, role, content)
+			out = fmt.Sprintf("[%s] %s: %s", ts, role, content)
 		} else {
-			fmt.Printf("%s: %s\n", role, content)
+			out = fmt.Sprintf("%s: %s", role, content)
 		}
+
+		// Append token usage if present
+		if t.TokenUsage != nil {
+			promptTokens := 0
+			if t.TokenUsage.PromptTokens != nil {
+				promptTokens = *t.TokenUsage.PromptTokens
+			}
+			completionTokens := 0
+			if t.TokenUsage.CompletionTokens != nil {
+				completionTokens = *t.TokenUsage.CompletionTokens
+			}
+			totalTokens := 0
+			if t.TokenUsage.TotalTokens != nil {
+				totalTokens = *t.TokenUsage.TotalTokens
+			}
+			cachedTokens := 0
+			if t.TokenUsage.CachedTokens != nil {
+				cachedTokens = *t.TokenUsage.CachedTokens
+			}
+
+			out = fmt.Sprintf("%s [tokens: prompt=%d, completion=%d, total=%d", out, promptTokens, completionTokens, totalTokens)
+			if cachedTokens > 0 {
+				out = fmt.Sprintf("%s, cached=%d", out, cachedTokens)
+			}
+			out = fmt.Sprintf("%s]", out)
+		}
+
+		fmt.Println(out)
 		if i < len(*turns)-1 {
 			fmt.Println("---")
 		}
@@ -290,4 +321,51 @@ func listEmergentTasks(sessionID string) {
 	for _, t := range *tasks {
 		fmt.Printf("  Task %s\n", t.Id.String())
 	}
+}
+
+// handleSessionShow shows session information including status, token usage, etc.
+func handleSessionShow(sessionID string) error {
+	actualID, found, err := resolveSessionID(sessionID)
+	if err != nil {
+		return fmt.Errorf("resolve session '%s': %w", sessionID, err)
+	}
+	if !found {
+		return fmt.Errorf("session '%s' not found, run 'norman sessions list' to see available sessions", sessionID)
+	}
+
+	detail, err := client.GetSession(actualID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch session details: %w", err)
+	}
+
+	fmt.Printf("Session: %s\n", client.ShortID(actualID))
+	if detail.Id != nil {
+		fmt.Printf("  ID:      %s\n", detail.Id.String())
+	}
+	if detail.Name != nil {
+		fmt.Printf("  Name:    %s\n", *detail.Name)
+	}
+	if detail.WorkspaceId != nil {
+		fmt.Printf("  Workspace: %s\n", *detail.WorkspaceId)
+	}
+	if detail.Status != nil {
+		fmt.Printf("  Status:  %s\n", *detail.Status)
+	}
+	if detail.CreatedAt != nil {
+		fmt.Printf("  Created: %s\n", detail.CreatedAt.Format(time.RFC3339))
+	}
+	if detail.LastMessageAt != nil {
+		fmt.Printf("  LastMsg: %s\n", detail.LastMessageAt.Format(time.RFC3339))
+	}
+	if detail.TokenBudgetUsed != nil {
+		fmt.Printf("  TokensUsed: %d\n", *detail.TokenBudgetUsed)
+	}
+	if detail.TokenBudgetRemaining != nil {
+		fmt.Printf("  TokensRemaining: %d\n", *detail.TokenBudgetRemaining)
+	}
+	if detail.ActiveSkills != nil && len(*detail.ActiveSkills) > 0 {
+		fmt.Printf("  ActiveSkills: %v\n", *detail.ActiveSkills)
+	}
+
+	return nil
 }
