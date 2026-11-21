@@ -194,6 +194,8 @@ func renderInlineStyleWithScheme(s string, styles map[string]lipgloss.Style) str
 
 // wrapStyledLine wraps a styled line (with lipgloss ANSI codes) to fit within maxWidth characters,
 // breaking on word boundaries while preserving ANSI styling.
+// Long words (e.g., hyphenated UUIDs or workspace IDs) are not broken and are allowed to overflow
+// or be placed on a new line as a whole unit.
 func wrapStyledLine(s string, style lipgloss.Style, maxWidth int) string {
 	if maxWidth <= 0 || len(s) == 0 {
 		return s
@@ -223,12 +225,29 @@ func wrapStyledLine(s string, style lipgloss.Style, maxWidth int) string {
 
 			// Check if adding this word would exceed maxWidth
 			if currentLineVisibleWidth+spaceNeeded+wordVisibleWidth > maxWidth && lineBuilder.Len() > 0 {
-				// Render the current line with style and add to result
-				renderedLine := style.Render(lineBuilder.String())
-				result.WriteString(renderedLine)
-				result.WriteByte('\n')
-				lineBuilder = strings.Builder{}
-				currentLineVisibleWidth = 0
+				// Check if the word itself is longer than or equal to maxWidth
+				if wordVisibleWidth >= maxWidth {
+					// Word is too long to fit on a single line with other content, render the current line first
+					if lineBuilder.Len() > 0 {
+						renderedLine := style.Render(lineBuilder.String())
+						result.WriteString(renderedLine)
+						result.WriteByte('\n')
+						lineBuilder = strings.Builder{}
+						currentLineVisibleWidth = 0
+					}
+					// Render the long word as-is without breaking it
+					renderedWord := style.Render(w)
+					result.WriteString(renderedWord)
+					// Skip adding to lineBuilder since we already rendered it
+					continue
+				} else {
+					// Render the current line with style and add to result
+					renderedLine := style.Render(lineBuilder.String())
+					result.WriteString(renderedLine)
+					result.WriteByte('\n')
+					lineBuilder = strings.Builder{}
+					currentLineVisibleWidth = 0
+				}
 			}
 
 			// Add space before word if not the first word on the line

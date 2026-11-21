@@ -49,35 +49,12 @@ func openSessionSwitcher(m *Model) tea.Cmd {
 func createNewSession(m *Model) tea.Cmd {
 	m.statusBar.SetConnection("● Creating session...")
 	return func() tea.Msg {
-		c, err := client.GetProtocolClient()
-		if err != nil {
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
-		}
-
-		cliType := protocol.Cli
-		body := protocol.CreateSessionJSONRequestBody{
-			ClientType: &cliType,
-		}
-
-		resp, err := c.CreateSession(context.Background(), body)
+		newID, err := client.CreateNewSession(m.workspaceName)
 		if err != nil {
 			m.statusBar.SetConnection("✗ Failed to create session")
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Create session failed: %v", err)}
+			return WSMessageEvent{Event: "session_create_error", Message: fmt.Sprintf("Create session failed: %v", err)}
 		}
 
-		parsed, err := protocol.ParseCreateSessionResponse(resp)
-		if err != nil {
-			m.statusBar.SetConnection("✗ Parse error: " + err.Error())
-			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("Parse error: %v", err)}
-		}
-
-		result := parsed.GetJSON201()
-		if result == nil || result.Id == nil {
-			m.statusBar.SetConnection("✗ No session ID returned")
-			return WSMessageEvent{Event: "error", Message: "No session ID in response"}
-		}
-
-		newID := result.Id.String()
 		m.sessionID = newID
 		m.statusBar.SetConnection(fmt.Sprintf("● New session created: %s", client.ShortID(newID)))
 		return WSMessageEvent{Event: "session_created", Message: fmt.Sprintf("Created session %s", client.ShortID(newID))}

@@ -328,7 +328,7 @@ func showHistory(sessionID string, args []string) {
 }
 
 // listEmergentTasks lists tasks for the given session.
-func listEmergentTasks(sessionID string) {
+func nlistEmergentTasks(sessionID string) {
 	c, err := client.GetProtocolClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create client: %v\n", err)

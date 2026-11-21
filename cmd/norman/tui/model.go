@@ -411,6 +411,13 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 			Content:   msg.Message,
 			Timestamp: time.Now(),
 		})
+	case "session_create_error":
+		m.statusBar.SetConnection("✗ " + msg.Message)
+		m.chatPanel.AppendMessage(ChatMessage{
+			Role:      "system",
+			Content:   msg.Message,
+			Timestamp: time.Now(),
+		})
 	case "error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
 		m.chatPanel.AppendMessage(ChatMessage{
