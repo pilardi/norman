@@ -525,7 +525,7 @@ func (s *server) createSessionInternal(workspaceID string, clientType string) (*
 }
 
 // idleCleanupLoop periodically scans sessions and deletes those that have been
-// active for longer than the given timeout. Runs in a background goroutine.
+// inactive for longer than the given timeout. Runs in a background goroutine.
 func (s *server) idleCleanupLoop(timeout time.Duration) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -535,19 +535,19 @@ func (s *server) idleCleanupLoop(timeout time.Duration) {
 
 		now := time.Now()
 		for _, sessMap := range sessions {
-			createdAtStr, ok := sessMap["created_at"].(string)
+			updatedAtStr, ok := sessMap["updated_at"].(string)
 			if !ok {
 				continue
 			}
-			createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+			updatedAt, err := time.Parse(time.RFC3339, updatedAtStr)
 			if err != nil {
-				log.Printf("idle cleanup: bad created_at in session file: %v", err)
+				log.Printf("idle cleanup: bad updated_at in session file: %v", err)
 				continue
 			}
 
-			if now.Sub(createdAt) > timeout {
+			if now.Sub(updatedAt) > timeout {
 				sessionID, _ := sessMap["id"].(string)
-				log.Printf("idle cleanup: deleting session %s (inactive for %v)", sessionID[:8], now.Sub(createdAt).Round(time.Minute))
+				log.Printf("idle cleanup: deleting session %s (inactive for %v)", sessionID[:8], now.Sub(updatedAt).Round(time.Minute))
 				if err := s.store.DeleteSession(sessionID); err != nil {
 					log.Printf("idle cleanup: failed to delete session %s: %v", sessionID, err)
 				} else {

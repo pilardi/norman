@@ -1229,8 +1229,11 @@ type SystemConfig struct {
 	Openshell *OpenShellConfig `json:"openshell,omitempty"`
 
 	// ServerPort HTTP server port number
-	ServerPort *int          `json:"server_port,omitempty"`
-	Skills     *SkillsConfig `json:"skills,omitempty"`
+	ServerPort *int `json:"server_port,omitempty"`
+
+	// SessionIdleTimeout Duration after which an idle session is auto-closed (e.g., "30m")
+	SessionIdleTimeout *string       `json:"session_idle_timeout,omitempty"`
+	Skills             *SkillsConfig `json:"skills,omitempty"`
 
 	// Temperature Global default temperature (0 = use model default)
 	Temperature *float32 `json:"temperature,omitempty"`
