@@ -87,6 +87,14 @@ func dispatchSlashCommand(cmd string, args []string, sessionID string, workspace
 		if err := handleSessionArchive(id); err != nil {
 			fmt.Fprintf(os.Stderr, "Error archiving session: %v\n", err)
 		}
+	case "compress":
+		aggressive := false
+		if len(args) > 0 && args[0] == "--aggressive" {
+			aggressive = true
+		}
+		if err := handleSessionCompress(sessionID, aggressive); err != nil {
+			fmt.Fprintf(os.Stderr, "Error compressing session: %v\n", err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown slash-command: /%s\n", cmd)
 		return sessionID, true

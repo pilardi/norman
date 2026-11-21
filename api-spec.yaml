@@ -362,6 +362,33 @@ paths:
         "404":
           description: Session not found
 
+  /api/sessions/{id}/compress:
+    post:
+      tags: [session]
+      summary: Compress a session's conversation history
+      operationId: compressSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: aggressive
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Whether to use aggressive compression mode
+      responses:
+        "200":
+          description: Session compressed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompressionResult"
+        "404":
+          description: Session not found
+
   /api/tasks/archive:
     post:
       tags: [task]
@@ -1636,6 +1663,22 @@ components:
         task_id:
           type: string
           description: ID of the task to archive
+
+    CompressionResult:
+      type: object
+      properties:
+        compressed_count:
+          type: integer
+          description: Number of turns compressed
+        kept_count:
+          type: integer
+          description: Number of turns retained
+        summary:
+          type: string
+          description: The generated summary text
+        tokens_saved:
+          type: integer
+          description: Estimated tokens saved by compression
 
     NotificationEntry:
       type: object

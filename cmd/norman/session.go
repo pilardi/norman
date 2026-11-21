@@ -184,6 +184,37 @@ func handleSessionArchive(sessionID string) error {
 	return nil
 }
 
+// handleSessionCompress compresses a session's conversation history via POST /api/sessions/{id}/compress.
+func handleSessionCompress(sessionID string, aggressive bool) error {
+	actualID, found, err := resolveSessionID(sessionID)
+	if err != nil {
+		return fmt.Errorf("resolve session '%s': %w", sessionID, err)
+	}
+	if !found {
+		return fmt.Errorf("session '%s' not found, run 'norman sessions list' to see available sessions", sessionID)
+	}
+
+	result, err := client.CompressSession(context.Background(), actualID, aggressive)
+	if err != nil {
+		return fmt.Errorf("compress failed for session %s: %w", client.ShortID(actualID), err)
+	}
+
+	compressedCount := client.DerefInt(result.CompressedCount)
+	keptCount := client.DerefInt(result.KeptCount)
+	tokensSaved := client.DerefInt(result.TokensSaved)
+	summary := client.StrPtrVal(result.Summary)
+
+	fmt.Printf("Session '%s' compressed successfully.\n", client.ShortID(actualID))
+	fmt.Printf("  Compressed: %d turns\n", compressedCount)
+	fmt.Printf("  Kept: %d turns\n", keptCount)
+	fmt.Printf("  Tokens saved: ~%d\n", tokensSaved)
+	if summary != "" {
+		fmt.Printf("  Summary: %s\n", summary)
+	}
+
+	return nil
+}
+
 // showHistory displays the last N messages of a session.
 func showHistory(sessionID string, args []string) {
 	n := 10 // default

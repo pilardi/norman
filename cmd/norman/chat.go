@@ -13,7 +13,7 @@ import (
 	"github.com/norman/norman/pkg/protocol"
 )
 
-const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)"
+const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>, /compress [--aggressive])"
 
 // CreateNewSession creates a new session for the given workspace and returns its ID.
 // Used by both REPL and TUI.
@@ -198,7 +198,7 @@ func handleChat(args []string) {
 		sessionName = *sess.Name
 	}
 	fmt.Printf("Session: %s | Workspace resolved\n", sessionName)
-	fmt.Println("Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>)")
+	fmt.Println("Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>, /compress [--aggressive])")
 
 	// Track turns for server-side transcript persistence.
 	var turns []map[string]interface{}

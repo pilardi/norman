@@ -670,6 +670,21 @@ type AvailableModelsResponse struct {
 	ProviderName *string `json:"provider_name,omitempty"`
 }
 
+// CompressionResult defines model for CompressionResult.
+type CompressionResult struct {
+	// CompressedCount Number of turns compressed
+	CompressedCount *int `json:"compressed_count,omitempty"`
+
+	// KeptCount Number of turns retained
+	KeptCount *int `json:"kept_count,omitempty"`
+
+	// Summary The generated summary text
+	Summary *string `json:"summary,omitempty"`
+
+	// TokensSaved Estimated tokens saved by compression
+	TokensSaved *int `json:"tokens_saved,omitempty"`
+}
+
 // DeferTaskRequest defines model for DeferTaskRequest.
 type DeferTaskRequest struct {
 	// Command Shell command to execute when the task fires
@@ -1449,6 +1464,12 @@ type GetConfigParams struct {
 // PutConfigJSONBody defines parameters for PutConfig.
 type PutConfigJSONBody map[string]interface{}
 
+// CompressSessionParams defines parameters for CompressSession.
+type CompressSessionParams struct {
+	// Aggressive Whether to use aggressive compression mode
+	Aggressive *bool `form:"aggressive,omitempty" json:"aggressive,omitempty"`
+}
+
 // SessionHistoryParams defines parameters for SessionHistory.
 type SessionHistoryParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1607,6 +1628,9 @@ type ServerInterface interface {
 	// ArchiveSessionByID Archive a session by its ID
 	// (POST /api/sessions/{id}/archive)
 	ArchiveSessionByID(ctx echo.Context, id string) error
+	// CompressSession Compress a session's conversation history
+	// (POST /api/sessions/{id}/compress)
+	CompressSession(ctx echo.Context, id string, params CompressSessionParams) error
 	// SessionHistory Get conversation history turns for a session
 	// (GET /api/sessions/{id}/history)
 	SessionHistory(ctx echo.Context, id string, params SessionHistoryParams) error
@@ -1938,6 +1962,31 @@ func (w *ServerInterfaceWrapper) ArchiveSessionByID(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ArchiveSessionByID(ctx, id)
+	return err
+}
+
+// CompressSession converts echo context to params.
+func (w *ServerInterfaceWrapper) CompressSession(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompressSessionParams
+	// ------------- Optional query parameter "aggressive" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "aggressive", ctx.QueryParams(), &params.Aggressive, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter aggressive: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CompressSession(ctx, id, params)
 	return err
 }
 
@@ -2405,6 +2454,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/api/sessions/:id/messages", wrapper.SendMessage, options.OperationMiddlewares["sendMessage"]...)
 	router.GET(options.BaseURL+"/api/sessions/:id/history", wrapper.SessionHistory, options.OperationMiddlewares["sessionHistory"]...)
 	router.POST(options.BaseURL+"/api/sessions/:id/archive", wrapper.ArchiveSessionByID, options.OperationMiddlewares["archiveSessionByID"]...)
+	router.POST(options.BaseURL+"/api/sessions/:id/compress", wrapper.CompressSession, options.OperationMiddlewares["compressSession"]...)
 	router.POST(options.BaseURL+"/api/tasks/archive", wrapper.ArchiveTask, options.OperationMiddlewares["archiveTask"]...)
 	router.GET(options.BaseURL+"/api/notifications", wrapper.ListNotifications, options.OperationMiddlewares["listNotifications"]...)
 	router.POST(options.BaseURL+"/api/notifications", wrapper.CreateNotification, options.OperationMiddlewares["createNotification"]...)

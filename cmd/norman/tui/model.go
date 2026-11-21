@@ -35,6 +35,7 @@ type Model struct {
 	events           []EventItem
 	done             bool
 	fatalError       error
+	isWorking        bool // true while a command that makes a server request is in progress
 
 	// Phase 3 overlays
 	helpOverlay     helpOverlay
@@ -194,6 +195,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 
 		case "enter":
+			if m.isWorking {
+				m.statusBar.SetConnection("Working, please wait...")
+				return m, nil
+			}
 			input := m.chatPanel.textInput.Value()
 			if input == "" {
 				return m, nil
@@ -222,6 +227,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+s":
 			if !m.sessionSwitcher.IsShowing() {
+				if m.isWorking {
+					m.statusBar.SetConnection("Working, please wait...")
+					return m, nil
+				}
 				return m, loadSessionsList(m)
 			}
 			m.sessionSwitcher.showing = false
@@ -230,6 +239,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+n":
 			// Create new session
 			if !m.sessionSwitcher.IsShowing() && !m.helpOverlay.IsShowing() {
+				if m.isWorking {
+					m.statusBar.SetConnection("Working, please wait...")
+					return m, nil
+				}
 				return m, createNewSession(m)
 			}
 			return m, nil
@@ -239,6 +252,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.sessionSwitcher.IsShowing() && !m.helpOverlay.IsShowing() {
 				m.chatPanel.Blur()
 				m.eventPanel.Focus()
+			}
+			return m, nil
+
+		case "ctrl+z":
+			// Compress session
+			if !m.sessionSwitcher.IsShowing() && !m.helpOverlay.IsShowing() {
+				if m.isWorking {
+					m.statusBar.SetConnection("Working, please wait...")
+					return m, nil
+				}
+				return m, compressSession(m)
 			}
 			return m, nil
 
@@ -327,6 +351,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleWSMessage(msg WSMessageEvent) {
+	// Reset working state for command completion or error events
+	if msg.Event == "compress_completed" || msg.Event == "error" {
+		m.isWorking = false
+	}
+
 	switch msg.Event {
 	case "item_started":
 		if m.isSessionScoped(msg) {
@@ -375,6 +404,13 @@ func (m *Model) handleWSMessage(msg WSMessageEvent) {
 		m.statusBar.SetConnection(fmt.Sprintf("✗ Session closed: %s", truncate(msg.Message, 20)))
 	case "session_compressed":
 		m.statusBar.SetConnection("⚠ Session compressed — context trimmed")
+	case "compress_completed":
+		m.statusBar.SetConnection("✓ Session compressed")
+		m.chatPanel.AppendMessage(ChatMessage{
+			Role:      "system",
+			Content:   msg.Message,
+			Timestamp: time.Now(),
+		})
 	case "error":
 		m.statusBar.SetConnection("✗ " + msg.Message)
 		m.chatPanel.AppendMessage(ChatMessage{

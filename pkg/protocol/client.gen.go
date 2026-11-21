@@ -248,6 +248,11 @@ type ClientInterface interface {
 	// Corresponds with POST /api/sessions/{id}/archive (the `ArchiveSessionByID` operationId).
 	ArchiveSessionByID(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CompressSession Compress a session's conversation history
+	//
+	// Corresponds with POST /api/sessions/{id}/compress (the `CompressSession` operationId).
+	CompressSession(ctx context.Context, id string, params *CompressSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SessionHistory Get conversation history turns for a session
 	//
 	// Corresponds with GET /api/sessions/{id}/history (the `SessionHistory` operationId).
@@ -923,6 +928,21 @@ func (c *Client) GetSession(ctx context.Context, id string, reqEditors ...Reques
 // Corresponds with POST /api/sessions/{id}/archive (the `ArchiveSessionByID` operationId).
 func (c *Client) ArchiveSessionByID(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewArchiveSessionByIDRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompressSession Compress a session's conversation history
+//
+// Corresponds with POST /api/sessions/{id}/compress (the `CompressSession` operationId).
+func (c *Client) CompressSession(ctx context.Context, id string, params *CompressSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompressSessionRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2303,6 +2323,67 @@ func NewArchiveSessionByIDRequest(server string, id string) (*http.Request, erro
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompressSessionRequest constructs an http.Request for the CompressSession method
+func NewCompressSessionRequest(server string, id string, params *CompressSessionParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sessions/%s/compress", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Aggressive != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "aggressive", *params.Aggressive, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
@@ -3718,6 +3799,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/sessions/{id}/archive (the `ArchiveSessionByID` operationId).
 	ArchiveSessionByIDWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*ArchiveSessionByIDResponse, error)
 
+	// CompressSessionWithResponse Compress a session's conversation history
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/sessions/{id}/compress (the `CompressSession` operationId).
+	CompressSessionWithResponse(ctx context.Context, id string, params *CompressSessionParams, reqEditors ...RequestEditorFn) (*CompressSessionResponse, error)
+
 	// SessionHistoryWithResponse Get conversation history turns for a session
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4773,6 +4861,47 @@ func (r ArchiveSessionByIDResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ArchiveSessionByIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompressSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CompressionResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompressSessionResponse) GetJSON200() *CompressionResult {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r CompressSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompressSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompressSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompressSessionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6262,6 +6391,19 @@ func (c *ClientWithResponses) ArchiveSessionByIDWithResponse(ctx context.Context
 	return ParseArchiveSessionByIDResponse(rsp)
 }
 
+// CompressSessionWithResponse Compress a session's conversation history
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/sessions/{id}/compress (the `CompressSession` operationId).
+func (c *ClientWithResponses) CompressSessionWithResponse(ctx context.Context, id string, params *CompressSessionParams, reqEditors ...RequestEditorFn) (*CompressSessionResponse, error) {
+	rsp, err := c.CompressSession(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompressSessionResponse(rsp)
+}
+
 // SessionHistoryWithResponse Get conversation history turns for a session
 //
 // Returns a wrapper object for the known response body format(s).
@@ -7298,6 +7440,35 @@ func ParseArchiveSessionByIDResponse(rsp *http.Response) (*ArchiveSessionByIDRes
 	response := &ArchiveSessionByIDResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseCompressSessionResponse parses an HTTP response from a CompressSessionWithResponse call
+func ParseCompressSessionResponse(rsp *http.Response) (*CompressSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompressSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CompressionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 404:
+		break // No content-type
+
 	}
 
 	return response, nil

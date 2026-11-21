@@ -344,6 +344,40 @@ Pass a workspace name (e.g., 'norman sessions ls test-ws') to show only sessions
 						},
 					},
 					{
+						Name:  "compress",
+						Usage: "Compress a session's conversation history via POST /api/sessions/{id}/compress",
+						Description: `sessions compress — Compress a session's conversation history
+
+Usage: norman sessions compress <session_id_or_alias> [--aggressive]
+
+Options:
+  --aggressive    Use aggressive compression mode
+
+Examples:
+  norman sessions compress ab953ff5
+  norman sessions compress ab953ff5 --aggressive`,
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							if cmd.Args().Len() < 1 {
+								fmt.Fprintf(os.Stderr, "Error: usage: norman sessions compress <session_id_or_alias> [--aggressive]\n")
+								return fmt.Errorf("usage: norman sessions compress <session_id_or_alias> [--aggressive]")
+							}
+							sessionID := cmd.Args().First()
+							aggressive := cmd.Bool("aggressive")
+							err := handleSessionCompress(sessionID, aggressive)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: compress failed: %v\n", err)
+								return fmt.Errorf("compress failed: %v", err)
+							}
+							return nil
+						},
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "aggressive",
+								Usage: "Use aggressive compression mode",
+							},
+						},
+					},
+					{
 						Name:    "open",
 						Aliases: []string{"chat"},
 						Usage:   "Open an interactive chat session (TUI or REPL)",
@@ -365,6 +399,7 @@ Slash-commands (prefix with /):
   /sessions show <id>  Show session details
   /switch <id>      Switch to another session by ID
   /archive <id>     Archive a session's transcript by session ID
+  /compress [--aggressive]  Compress the session's conversation history
 
 Examples:
   norman sessions open my-project

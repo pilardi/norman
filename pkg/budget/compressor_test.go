@@ -36,11 +36,23 @@ func TestSummarizeEmpty(t *testing.T) {
 	c := NewCompressor(&mockLLMClient{response: "summary"}, cfg)
 
 	result, err := c.Summarize(state, false)
-	if err != ErrNoTurns {
-		t.Errorf("expected ErrNoTurns, got %v", err)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
 	}
-	if result != nil {
-		t.Error("expected nil result for empty state")
+	if result == nil {
+		t.Error("expected non-nil result for empty state")
+	}
+	if result.CompressedCount != 0 {
+		t.Errorf("expected CompressedCount 0, got %d", result.CompressedCount)
+	}
+	if result.KeptCount != 0 {
+		t.Errorf("expected KeptCount 0, got %d", result.KeptCount)
+	}
+	if result.Summary != "No turns to compress." {
+		t.Errorf("expected Summary 'No turns to compress.', got '%s'", result.Summary)
+	}
+	if result.TokensSaved != 0 {
+		t.Errorf("expected TokensSaved 0, got %d", result.TokensSaved)
 	}
 }
 

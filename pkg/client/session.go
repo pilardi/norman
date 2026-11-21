@@ -192,3 +192,34 @@ func VerifyProviderConfig(ctx context.Context, body protocol.ProviderConfig) (*h
 
 	return c.VerifyProviderConfig(ctx, body)
 }
+
+// CompressSession compresses a session's conversation history via the /api/sessions/{id}/compress endpoint.
+// Returns the CompressionResult and an error if the request fails.
+func CompressSession(ctx context.Context, sessionID string, aggressive bool) (*protocol.CompressionResult, error) {
+	c, err := protocol.NewClientWithResponses(ServerURL())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	// Escape the session ID for use in URL path.
+	escapedID := url.PathEscape(sessionID)
+	params := &protocol.CompressSessionParams{
+		Aggressive: &aggressive,
+	}
+
+	rsp, err := c.CompressSessionWithResponse(ctx, escapedID, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compress session: %w", err)
+	}
+
+	result := rsp.GetJSON200()
+	if result == nil {
+		bodyStr := string(rsp.GetBody())
+		if bodyStr == "" {
+			bodyStr = rsp.Status()
+		}
+		return nil, fmt.Errorf("session compression failed (status %d): %s", rsp.StatusCode(), strings.TrimSpace(bodyStr))
+	}
+
+	return result, nil
+}

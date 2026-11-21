@@ -222,6 +222,11 @@ func (l *Loop) WithLLMClient(client llm.LLM) *Loop {
 	return l
 }
 
+// GetLLMClient returns the LLM API client used by the loop, or nil if not configured.
+func (l *Loop) GetLLMClient() llm.LLM {
+	return l.llmClient
+}
+
 // getProvider returns the ClientAdapter for a given provider name.
 // It caches created clients to avoid recreating them on each task execution.
 // If the requested name matches the loop's default llmClient, it returns that directly.
