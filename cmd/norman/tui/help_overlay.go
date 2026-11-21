@@ -23,6 +23,7 @@ func (k tuiKeyMap) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "Sessions")),
 		key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "New session")),
 		key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "Focus events")),
+		key.NewBinding(key.WithKeys("ctrl+z"), key.WithHelp("ctrl+z", "Compress session")),
 	}
 }
 
@@ -38,6 +39,7 @@ func (k tuiKeyMap) FullHelp() [][]key.Binding {
 			key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "Open session switcher")),
 			key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "Create new session")),
 			key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "Focus event panel")),
+			key.NewBinding(key.WithKeys("ctrl+z"), key.WithHelp("ctrl+z", "Compress session")),
 		},
 	}
 }

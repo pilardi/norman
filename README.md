@@ -15,7 +15,7 @@ Norman runs as a **client–server** pair:
 | Component | Role |
 |---|---|
 | `norman-server` | Long-lived HTTP + WebSocket daemon (Echo). Manages sessions, skills, memory, scheduler. Lives inside an OpenShell sandbox. |
-| `norman` | CLI client. Sends messages to the server and displays responses. Supports interactive REPL chat with slash-commands (`/help`, `/close`, `/new`, `/switch`, `/history`). |
+| `norman` | CLI client. Sends messages to the server and displays responses. Supports interactive REPL chat with slash-commands (`/help`, `/close`, `/new`, `/switch`, `/history`, `/sessions list`, `/sessions show`). Also supports a TUI client with keyboard shortcuts. |
 
 You start the server, then use the CLI (or any HTTP/WebSocket client) to talk to it. Planned future distribution: a Docker image and a web interface (the CLI is the primary interface today). For now you run the binaries directly from `dist/`.
 
@@ -46,14 +46,55 @@ echo "What files changed this week?" | ./dist/norman sessions open my-project
 | `/tasks` | List emergent scheduled tasks |
 | `/close` | Close session (save transcript) |
 | `/new` | Start a new session |
-| `/history [N]` | Show last N messages |
-| `/sessions` | List all active sessions |
+| `/history [N]` | Show last N messages with per-turn token usage |
+| `/sessions list` | List all active sessions |
+| `/sessions show <id>` | Show session information including token budget |
 | `/switch <id>` | Switch to another session |
 | `/archive <id>` | Archive a session's transcript |
+| `/compress [--aggressive]` | Compress the session's conversation history |
 
 **Real-time events:** While in the REPL, you'll also see server push events streamed live — task progress updates (`[ws] task_progress step=N`), budget compression notifications (`[ws] session_compressed budget threshold: 75%`), and system notifications.
 
-**4. Manage providers, workspaces and skills:**
+**4. TUI Client (Terminal User Interface):**
+For a richer terminal experience, you can use the TUI client which provides a visual interface with chat and event panels:
+```bash
+# Start the TUI client for a workspace
+./dist/norman tui open my-project
+```
+
+**TUI Keyboard shortcuts:**
+| Shortcut | Effect |
+|---|---|
+| `Tab` | Toggle focus between chat and events panels |
+| `Enter` | Send message |
+| `Ctrl+L` | Clear chat |
+| `Ctrl+H or /` | Open help overlay (shows full command list) |
+| `Ctrl+S` | Open sessions switcher |
+| `Ctrl+N` | Create new session |
+| `Ctrl+T` | Focus event panel |
+| `Ctrl+Z` | Compress session |
+
+Commands are also displayed in the textarea placeholder for immediate visibility.
+
+**5. Manage sessions via CLI:**
+```bash
+# List active sessions
+./dist/norman sessions list
+
+# Show session details
+./dist/norman sessions show <id>
+
+# Show conversation history for a session
+./dist/norman sessions history <id>
+
+# Archive a session's transcript
+./dist/norman sessions archive <id>
+
+# Compress a session's conversation history
+./dist/norman sessions compress <id> [--aggressive]
+```
+
+**6. Manage providers, workspaces and skills:**
 ```bash
 # LLM provider configuration (type, endpoint, model, API key)
 ./dist/norman providers add myprovider --type openai --endpoint https://api.openai.com/v1 --model gpt-4o
@@ -69,7 +110,7 @@ echo "What files changed this week?" | ./dist/norman sessions open my-project
 ./dist/norman skills install ./path/to/skill-folder
 ```
 
-**5. API reference docs:**
+**7. API reference docs:**
 The server exposes a live Scalar-powered API reference at `http://localhost:8080/docs`. You can also generate a static HTML file with `make generate-docs`.
 
 **CLI flags (global):**

@@ -42,7 +42,12 @@ type CompressionResult struct {
 // with a single compressed summary turn.
 func (c *Compressor) Summarize(state *SessionState, aggressive bool) (*CompressionResult, error) {
 	if len(state.Turns) == 0 {
-		return nil, ErrNoTurns
+		return &CompressionResult{
+			CompressedCount: 0,
+			KeptCount:       0,
+			Summary:         "No turns to compress.",
+			TokensSaved:     0,
+		}, nil
 	}
 
 	// Determine which turns to keep (not compress)

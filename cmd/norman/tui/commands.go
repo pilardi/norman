@@ -30,6 +30,7 @@ func Commands() []Command {
 		{Key: "tab", Action: toggleFocus, Help: "Toggle focus between chat and events"},
 		{Key: "enter", Action: sendMessage, Help: "Send message"},
 		{Key: "ctrl+l", Action: clearChat, Help: "Clear chat"},
+		{Key: "ctrl+z", Action: compressSession, Help: "Compress session"},
 	}
 }
 
@@ -128,6 +129,32 @@ func sendMessage(m *Model) tea.Cmd {
 func clearChat(m *Model) tea.Cmd {
 	m.chatPanel.Clear()
 	return nil
+}
+
+// compressSession compresses the current session's conversation history.
+func compressSession(m *Model) tea.Cmd {
+	m.statusBar.SetConnection("● Compressing session...")
+	m.isWorking = true
+	return func() tea.Msg {
+		// Use the client.CompressSession function
+		escapedID := client.UrlPathEscape(m.sessionID)
+		result, err := client.CompressSession(context.Background(), escapedID, false)
+		if err != nil {
+			return WSMessageEvent{Event: "error", Message: fmt.Sprintf("compress failed: %v", err)}
+		}
+
+		compressedCount := client.DerefInt(result.CompressedCount)
+		keptCount := client.DerefInt(result.KeptCount)
+		tokensSaved := client.DerefInt(result.TokensSaved)
+		summary := client.StrPtrVal(result.Summary)
+
+		msg := fmt.Sprintf("Session compressed: %d turns → %d kept, saved ~%d tokens", compressedCount, keptCount, tokensSaved)
+		if summary != "" {
+			msg += fmt.Sprintf(" | Summary: %s", summary)
+		}
+
+		return WSMessageEvent{Event: "compress_completed", Message: msg}
+	}
 }
 
 // loadSessionsList fetches available sessions and opens the session switcher.

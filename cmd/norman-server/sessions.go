@@ -12,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/norman/norman/pkg/agent"
+	"github.com/norman/norman/pkg/budget"
 	"github.com/norman/norman/pkg/protocol"
 	"github.com/norman/norman/pkg/version"
 )
@@ -180,6 +182,111 @@ func (s *server) ArchiveSessionByID(c echo.Context, id string) error {
 	})
 
 	return c.NoContent(http.StatusNoContent)
+}
+
+// CompressSession compresses a session's conversation history.
+func (s *server) CompressSession(c echo.Context, id string, params protocol.CompressSessionParams) error {
+	// Resolve session ID (short UUID prefix or full name) to actual session ID
+	resolvedID, err := s.resolveSessionID(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found: " + id})
+	}
+
+	// Load turns from JSONL file on disk
+	turns, err := s.store.LoadSessionTurns(resolvedID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "failed to load session turns: " + err.Error()})
+	}
+
+	// Convert turns to budget.Turn format
+	var budgetTurns []budget.Turn
+	for _, turn := range turns {
+		role, _ := turn["role"].(string)
+		content, _ := turn["content"].(string)
+		tokens := 0
+		if t, ok := turn["tokens"].(int); ok {
+			tokens = t
+		} else if t, ok := turn["tokens"].(float64); ok {
+			tokens = int(t)
+		}
+
+		pinned := false
+		if p, ok := turn["pinned"].(bool); ok {
+			pinned = p
+		}
+
+		createdAt := time.Now()
+		if t, ok := turn["created_at"].(string); ok {
+			if ct, err := time.Parse(time.RFC3339, t); err == nil {
+				createdAt = ct
+			}
+		}
+
+		budgetTurns = append(budgetTurns, budget.Turn{
+			Role:      role,
+			Content:   content,
+			Tokens:    tokens,
+			Pinned:    pinned,
+			CreatedAt: createdAt,
+		})
+	}
+
+	// Create session state
+	budgetConfig := budget.NewBudgetConfig(128000) // default max tokens
+	sessionState := budget.NewSessionState(budgetConfig)
+	sessionState.Turns = budgetTurns
+	sessionState.TokenCount = budget.CountTokensFromTurns(budgetTurns)
+
+	// Create compressor with LLM client adapter
+	if s.loop == nil || s.loop.GetLLMClient() == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "LLM client not available for compression"})
+	}
+
+	adapter := agent.NewLLMClientAdapter(s.loop.GetLLMClient())
+	compressor := budget.NewCompressor(adapter, budgetConfig)
+
+	// Perform compression
+	aggressive := params.Aggressive != nil && *params.Aggressive
+	result, err := compressor.Summarize(sessionState, aggressive)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "compression failed: " + err.Error()})
+	}
+
+	// Save compressed turns back to the store
+	for _, t := range sessionState.Turns {
+		turn := map[string]interface{}{
+			"role":    t.Role,
+			"content": t.Content,
+			"tokens":  t.Tokens,
+			"pinned":  t.Pinned,
+		}
+		if !t.CreatedAt.IsZero() {
+			turn["created_at"] = t.CreatedAt.Format(time.RFC3339)
+		}
+		if err := s.store.PersistSessionTurn(resolvedID, turn); err != nil {
+			log.Printf("warn: failed to persist compressed turn for session %s: %v", resolvedID, err)
+		}
+	}
+
+	// Broadcast compression event
+	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
+		Event:   protocol.SessionCompressed,
+		TaskId:  &resolvedID,
+		Message: strPtr(fmt.Sprintf("Session compressed: %d turns → %d kept, saved ~%d tokens", result.CompressedCount, result.KeptCount, result.TokensSaved)),
+	})
+
+	// Return compression result
+	compressedCount := result.CompressedCount
+	keptCount := result.KeptCount
+	tokensSaved := result.TokensSaved
+	summary := result.Summary
+
+	return c.JSON(http.StatusOK, protocol.CompressionResult{
+		CompressedCount: &compressedCount,
+		KeptCount:       &keptCount,
+		Summary:         &summary,
+		TokensSaved:     &tokensSaved,
+	})
 }
 
 // GetSession returns session data by ID.

@@ -149,6 +149,11 @@ func DerefFloat32(f *float32) float64 {
 	return float64(*f)
 }
 
+// BoolPtr returns a pointer to b.
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
 // ShortID truncates a session ID for display.
 func ShortID(id string) string {
 	if len(id) > 8 {
