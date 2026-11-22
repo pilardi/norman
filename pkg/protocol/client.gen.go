@@ -6,7 +6,6 @@ package protocol
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -1695,7 +1694,7 @@ func NewGetConfigRequest(server string, params *GetConfigParams) (*http.Request,
 // NewPutConfigRequest calls the generic PutConfig builder with application/json body
 func NewPutConfigRequest(server string, body PutConfigJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -1762,7 +1761,7 @@ func NewListNotificationsRequest(server string) (*http.Request, error) {
 // NewCreateNotificationRequest calls the generic CreateNotification builder with application/json body
 func NewCreateNotificationRequest(server string, body CreateNotificationJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -1863,7 +1862,7 @@ func NewListProvidersRequest(server string) (*http.Request, error) {
 // NewCreateProviderRequest calls the generic CreateProvider builder with application/json body
 func NewCreateProviderRequest(server string, body CreateProviderJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -1903,7 +1902,7 @@ func NewCreateProviderRequestWithBody(server string, contentType string, body io
 // NewQueryProviderModelsRequest calls the generic QueryProviderModels builder with application/json body
 func NewQueryProviderModelsRequest(server string, body QueryProviderModelsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -1943,7 +1942,7 @@ func NewQueryProviderModelsRequestWithBody(server string, contentType string, bo
 // NewVerifyProviderConfigRequest calls the generic VerifyProviderConfig builder with application/json body
 func NewVerifyProviderConfigRequest(server string, body VerifyProviderConfigJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2051,7 +2050,7 @@ func NewGetProviderRequest(server string, name string) (*http.Request, error) {
 // NewUpdateProviderRequest calls the generic UpdateProvider builder with application/json body
 func NewUpdateProviderRequest(server string, name string, body UpdateProviderJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2193,7 +2192,7 @@ func NewListSessionsRequest(server string) (*http.Request, error) {
 // NewCreateSessionRequest calls the generic CreateSession builder with application/json body
 func NewCreateSessionRequest(server string, body CreateSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2457,7 +2456,7 @@ func NewSessionHistoryRequest(server string, id string, params *SessionHistoryPa
 // NewSendMessageRequest calls the generic SendMessage builder with application/json body
 func NewSendMessageRequest(server string, id string, body SendMessageJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2531,7 +2530,7 @@ func NewListSkillsRequest(server string) (*http.Request, error) {
 // NewInstallSkillRequest calls the generic InstallSkill builder with application/json body
 func NewInstallSkillRequest(server string, body InstallSkillJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2571,7 +2570,7 @@ func NewInstallSkillRequestWithBody(server string, contentType string, body io.R
 // NewAddDiscoveryPathsRequest calls the generic AddDiscoveryPaths builder with application/json body
 func NewAddDiscoveryPathsRequest(server string, body AddDiscoveryPathsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2611,7 +2610,7 @@ func NewAddDiscoveryPathsRequestWithBody(server string, contentType string, body
 // NewUploadSkillRequest calls the generic UploadSkill builder with application/json body
 func NewUploadSkillRequest(server string, body UploadSkillJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2685,7 +2684,7 @@ func NewRemoveSkillRequest(server string, name string) (*http.Request, error) {
 // NewUpdateSkillRequest calls the generic UpdateSkill builder with application/json body
 func NewUpdateSkillRequest(server string, name string, body UpdateSkillJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2820,7 +2819,7 @@ func NewListTasksRequest(server string, params *ListTasksParams) (*http.Request,
 // NewCreateTaskRequest calls the generic CreateTask builder with application/json body
 func NewCreateTaskRequest(server string, body CreateTaskJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2860,7 +2859,7 @@ func NewCreateTaskRequestWithBody(server string, contentType string, body io.Rea
 // NewArchiveTaskRequest calls the generic ArchiveTask builder with application/json body
 func NewArchiveTaskRequest(server string, body ArchiveTaskJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -2900,7 +2899,7 @@ func NewArchiveTaskRequestWithBody(server string, contentType string, body io.Re
 // NewDeferTaskRequest calls the generic DeferTask builder with application/json body
 func NewDeferTaskRequest(server string, body DeferTaskJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -3001,7 +3000,7 @@ func NewGetTaskRequest(server string, id string) (*http.Request, error) {
 // NewReportTaskCompleteRequest calls the generic ReportTaskComplete builder with application/json body
 func NewReportTaskCompleteRequest(server string, id string, body ReportTaskCompleteJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -3175,7 +3174,7 @@ func NewListWorkspacesRequest(server string, params *ListWorkspacesParams) (*htt
 // NewCreateWorkspaceRequest calls the generic CreateWorkspace builder with application/json body
 func NewCreateWorkspaceRequest(server string, body CreateWorkspaceJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -3283,7 +3282,7 @@ func NewGetWorkspaceRequest(server string, name string) (*http.Request, error) {
 // NewUpdateWorkspaceRequest calls the generic UpdateWorkspace builder with application/json body
 func NewUpdateWorkspaceRequest(server string, name string, body UpdateWorkspaceJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -3330,7 +3329,7 @@ func NewUpdateWorkspaceRequestWithBody(server string, name string, contentType s
 // NewPurgeWorkspaceRequest calls the generic PurgeWorkspace builder with application/json body
 func NewPurgeWorkspaceRequest(server string, name string, body PurgeWorkspaceJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -3377,7 +3376,7 @@ func NewPurgeWorkspaceRequestWithBody(server string, name string, contentType st
 // NewRestoreWorkspaceRequest calls the generic RestoreWorkspace builder with application/json body
 func NewRestoreWorkspaceRequest(server string, name string, body RestoreWorkspaceJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -3424,7 +3423,7 @@ func NewRestoreWorkspaceRequestWithBody(server string, name string, contentType 
 // NewStopWorkspaceRequest calls the generic StopWorkspace builder with application/json body
 func NewStopWorkspaceRequest(server string, name string, body StopWorkspaceJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+	buf, err := runtime.JSONMarshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -6965,7 +6964,7 @@ func ParseGetConfigResponse(rsp *http.Response) (*GetConfigResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SystemConfig
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7007,7 +7006,7 @@ func ParseListNotificationsResponse(rsp *http.Response) (*ListNotificationsRespo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []NotificationEntry
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7037,7 +7036,7 @@ func ParseCreateNotificationResponse(rsp *http.Response) (*CreateNotificationRes
 			Severity any     `json:"severity,omitempty"`
 			Title    *string `json:"title,omitempty"`
 		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -7079,7 +7078,7 @@ func ParseListProvidersResponse(rsp *http.Response) (*ListProvidersResponse, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []ProviderResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7105,21 +7104,21 @@ func ParseCreateProviderResponse(rsp *http.Response) (*CreateProviderResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest ProviderResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON409 = &dest
@@ -7145,7 +7144,7 @@ func ParseQueryProviderModelsResponse(rsp *http.Response) (*QueryProviderModelsR
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AvailableModelsResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7177,7 +7176,7 @@ func ParseVerifyProviderConfigResponse(rsp *http.Response) (*VerifyProviderConfi
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest VerifyResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7225,7 +7224,7 @@ func ParseGetProviderResponse(rsp *http.Response) (*GetProviderResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ProviderResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7254,7 +7253,7 @@ func ParseUpdateProviderResponse(rsp *http.Response) (*UpdateProviderResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ProviderResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7286,7 +7285,7 @@ func ParseListProviderModelsResponse(rsp *http.Response) (*ListProviderModelsRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AvailableModelsResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7318,7 +7317,7 @@ func ParseVerifyProviderResponse(rsp *http.Response) (*VerifyProviderResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest VerifyResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7347,7 +7346,7 @@ func ParseListSessionsResponse(rsp *http.Response) (*ListSessionsResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []Session
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7373,7 +7372,7 @@ func ParseCreateSessionResponse(rsp *http.Response) (*CreateSessionResponse, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest Session
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -7415,7 +7414,7 @@ func ParseGetSessionResponse(rsp *http.Response) (*GetSessionResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SessionDetail
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7460,7 +7459,7 @@ func ParseCompressSessionResponse(rsp *http.Response) (*CompressSessionResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest CompressionResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7489,7 +7488,7 @@ func ParseSessionHistoryResponse(rsp *http.Response) (*SessionHistoryResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []SessionTurn
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7515,7 +7514,7 @@ func ParseSendMessageResponse(rsp *http.Response) (*SendMessageResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7547,7 +7546,7 @@ func ParseListSkillsResponse(rsp *http.Response) (*ListSkillsResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []Skill
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7578,7 +7577,7 @@ func ParseInstallSkillResponse(rsp *http.Response) (*InstallSkillResponse, error
 			// Path Server-side path where skill was installed
 			Path *string `json:"path,omitempty"`
 		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -7607,7 +7606,7 @@ func ParseAddDiscoveryPathsResponse(rsp *http.Response) (*AddDiscoveryPathsRespo
 			Added *int      `json:"added,omitempty"`
 			Paths *[]string `json:"paths,omitempty"`
 		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -7638,7 +7637,7 @@ func ParseUploadSkillResponse(rsp *http.Response) (*UploadSkillResponse, error) 
 			// Path Server-side path where skill was written
 			Path *string `json:"path,omitempty"`
 		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -7680,7 +7679,7 @@ func ParseUpdateSkillResponse(rsp *http.Response) (*UpdateSkillResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SkillEntry
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7706,7 +7705,7 @@ func ParseCheckSkillVersionResponse(rsp *http.Response) (*CheckSkillVersionRespo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SkillVersionCheck
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7735,7 +7734,7 @@ func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []Task
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7761,7 +7760,7 @@ func ParseCreateTaskResponse(rsp *http.Response) (*CreateTaskResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest Task
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -7803,7 +7802,7 @@ func ParseDeferTaskResponse(rsp *http.Response) (*DeferTaskResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest Task
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -7829,7 +7828,7 @@ func ParseListScheduledTasksResponse(rsp *http.Response) (*ListScheduledTasksRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []ScheduledTask
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7855,7 +7854,7 @@ func ParseGetTaskResponse(rsp *http.Response) (*GetTaskResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Task
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7887,7 +7886,7 @@ func ParseReportTaskCompleteResponse(rsp *http.Response) (*ReportTaskCompleteRes
 			Message *string `json:"message,omitempty"`
 			Status  *string `json:"status,omitempty"`
 		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7929,7 +7928,7 @@ func ParseListWorkspacesResponse(rsp *http.Response) (*ListWorkspacesResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -7955,7 +7954,7 @@ func ParseCreateWorkspaceResponse(rsp *http.Response) (*CreateWorkspaceResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON201 = &dest
@@ -8003,7 +8002,7 @@ func ParseGetWorkspaceResponse(rsp *http.Response) (*GetWorkspaceResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -8032,7 +8031,7 @@ func ParseUpdateWorkspaceResponse(rsp *http.Response) (*UpdateWorkspaceResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -8077,7 +8076,7 @@ func ParseRestoreWorkspaceResponse(rsp *http.Response) (*RestoreWorkspaceRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -8109,7 +8108,7 @@ func ParseStopWorkspaceResponse(rsp *http.Response) (*StopWorkspaceResponse, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Workspace
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -8141,7 +8140,7 @@ func ParseHealthCheckResponse(rsp *http.Response) (*HealthCheckResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest HealthStatus
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -8167,7 +8166,7 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ServerVersion
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
@@ -8193,7 +8192,7 @@ func ParseConnectWebSocketResponse(rsp *http.Response) (*ConnectWebSocketRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 101:
 		var dest WebSocketEvent
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+		if err := runtime.JSONUnmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON101 = &dest
