@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	v1 "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1"
 )
 
 // SandboxName generates the OpenShell sandbox name from a workspace ID.
@@ -128,18 +126,19 @@ func NewWorkspaceManager(client *Client, serverURL string) *WorkspaceManager {
 
 // CreateWorkspace creates a persistent OpenShell sandbox for the given workspace name.
 // No session is created — sessions are created when a user opens a new session.
-func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string, sessionId string) (*v1.Sandbox, error) {
+// Returns the sandbox name on success.
+func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string, sessionId string) (string, error) {
 	ctxFile := &ContextFile{
 		WorkspaceID:   workspace,
 		WorkspaceName: workspace,
 	}
 	sandboxName, err := SandboxName(workspace)
 	if err != nil {
-		return nil, fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+		return "", fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
 	}
 	sb, err := m.client.CreateSandbox(ctx, defaultProvider, sandboxName, ctxFile, sessionId)
 	if err != nil {
-		return nil, fmt.Errorf("create workspace %s: %w", workspace, err)
+		return "", fmt.Errorf("create workspace %s: %w", workspace, err)
 	}
 
 	// Wait for readiness with timeout
@@ -148,16 +147,16 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, workspace string
 
 	_, err = m.client.WaitReadyWithTimeout(waitCtx, defaultProvider, sb.Name, 2*time.Minute)
 	if err != nil {
-		return nil, fmt.Errorf("wait ready workspace %s: %w", workspace, err)
+		return "", fmt.Errorf("wait ready workspace %s: %w", workspace, err)
 	}
 
 	log.Printf("[env] Created workspace '%s' → sandbox name='%s' (passed: %q)", workspace, sb.Name, sandboxName)
 
-	return sb, nil
+	return sb.Name, nil
 }
 
-// GetSession returns an existing session for the workspace, or creates one if needed.
-func (m *WorkspaceManager) GetSession(ctx context.Context, workspace string, sessionId string) (*Session, error) {
+// GetOrCreateSession returns an existing session for the workspace, or creates one if needed.
+func (m *WorkspaceManager) GetOrCreateSession(ctx context.Context, workspace string, sessionId string) (*Session, error) {
 	// Check cache first — sessions are always created with a valid sessionId.
 	if session, ok := m.sessions[sessionId]; ok {
 		return session, nil
@@ -212,22 +211,22 @@ func (m *WorkspaceManager) recoverOrCreate(ctx context.Context, workspace string
 
 		// All retries exhausted — create a new sandbox
 		log.Printf("[env] All recovery attempts failed for '%s', creating new sandbox", sandboxName)
-		sb, err = m.CreateWorkspace(ctx, workspace, sessionId)
+		sandboxNameCreated, err := m.CreateWorkspace(ctx, workspace, sessionId)
 		if err != nil {
 			return nil, err
 		}
-		session = NewSession(m.client, defaultProvider, sb.Name, workspace, sessionId)
+		session = NewSession(m.client, defaultProvider, sandboxNameCreated, workspace, sessionId)
 		m.sessions[sessionId] = session
 		return session, nil
 	}
 
 	// No existing sandbox found — create a new one.
 	log.Printf("[env] No existing sandbox for '%s' (session %s), creating new one", sandboxName, sessionId[:8])
-	sb, err = m.CreateWorkspace(ctx, workspace, sessionId)
+	sandboxNameCreated, err := m.CreateWorkspace(ctx, workspace, sessionId)
 	if err != nil {
 		return nil, err
 	}
-	session = NewSession(m.client, defaultProvider, sb.Name, workspace, sessionId)
+	session = NewSession(m.client, defaultProvider, sandboxNameCreated, workspace, sessionId)
 	m.sessions[sessionId] = session
 	return session, nil
 }
@@ -243,33 +242,33 @@ func (m *WorkspaceManager) CloseAll(ctx context.Context) {
 	m.definitions = make(map[string]*WorkspaceDefinition)
 }
 
-// CloseSandbox deletes the sandbox associated with a workspace by name.
-func (m *WorkspaceManager) CloseSandbox(ctx context.Context, workspace string) error {
+// StopWorkspace stops a running workspace environment (preserves it for later start).
+func (m *WorkspaceManager) StopWorkspace(ctx context.Context, workspace string) error {
+	sandboxName, err := m.SandboxName(workspace)
+	if err != nil {
+		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+	}
+	log.Printf("[env] StopWorkspace: workspace=%s sandboxName=%s", workspace, sandboxName)
+	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
+}
+
+// StartWorkspace starts a stopped workspace environment. Returns error if environment doesn't exist.
+func (m *WorkspaceManager) StartWorkspace(ctx context.Context, workspace string) error {
+	sandboxName, err := m.SandboxName(workspace)
+	if err != nil {
+		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
+	}
+	log.Printf("[env] StartWorkspace: workspace=%s sandboxName=%s", workspace, sandboxName)
+	return m.client.StartSandbox(ctx, defaultProvider, sandboxName)
+}
+
+// DeleteWorkspaceResources deletes the workspace's underlying environment resources.
+func (m *WorkspaceManager) DeleteWorkspaceResources(ctx context.Context, workspace string) error {
 	sandboxName, err := m.SandboxName(workspace)
 	if err != nil {
 		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
 	}
 	return m.client.DeleteSandbox(ctx, defaultProvider, sandboxName)
-}
-
-// StopSandbox stops a running sandbox (preserves it for later start).
-func (m *WorkspaceManager) StopSandbox(ctx context.Context, workspace string) error {
-	sandboxName, err := m.SandboxName(workspace)
-	if err != nil {
-		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
-	}
-	log.Printf("[env] StopSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
-	return m.client.StopSandbox(ctx, defaultProvider, sandboxName)
-}
-
-// StartSandbox starts a stopped sandbox. Returns error if sandbox doesn't exist.
-func (m *WorkspaceManager) StartSandbox(ctx context.Context, workspace string) error {
-	sandboxName, err := m.SandboxName(workspace)
-	if err != nil {
-		return fmt.Errorf("resolve sandbox name for workspace %s: %w", workspace, err)
-	}
-	log.Printf("[env] StartSandbox: workspace=%s sandboxName=%s", workspace, sandboxName)
-	return m.client.StartSandbox(ctx, defaultProvider, sandboxName)
 }
 
 // SetDefinition assigns a workspace definition to the manager's cache.
@@ -315,17 +314,6 @@ func (m *WorkspaceManager) IsIdle(workspace string, threshold time.Duration) boo
 	return time.Since(*lastUsed) > threshold
 }
 
-// UpdateLastActivity updates the last activity timestamp for a workspace session.
-func (m *WorkspaceManager) UpdateLastActivity(workspace string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if session, ok := m.sessions[workspace]; ok {
-		now := time.Now()
-		session.lastActivity = &now
-	}
-}
-
 // UpdateActivity updates the last activity timestamp for a session by its ID.
 func (m *WorkspaceManager) UpdateActivity(ctx context.Context, sessionId string) {
 	m.mu.Lock()
@@ -334,6 +322,7 @@ func (m *WorkspaceManager) UpdateActivity(ctx context.Context, sessionId string)
 	if session, ok := m.sessions[sessionId]; ok {
 		now := time.Now()
 		session.lastActivity = &now
+		session.MarkActive()
 	}
 }
 
@@ -350,6 +339,9 @@ func (m *WorkspaceManager) StartIdleCleanupLoop(timeout time.Duration, stopCh ch
 				m.mu.Lock()
 				for name, session := range m.sessions {
 					if session.LastActivity() != nil && time.Since(*session.lastActivity) > timeout {
+						// Mark as idle first, then stopped when auto-stopping
+						session.MarkIdle()
+						session.MarkStopped()
 						log.Printf("[env] Auto-stopping idle workspace '%s' (threshold: %v)", name, timeout)
 						delete(m.sessions, name)
 					}
@@ -401,8 +393,8 @@ func (w *WorkspaceDefinition) AsSystemPrompt() string {
 // Compile-time interface satisfaction check.
 var _ Workspace = (*WorkspaceManager)(nil)
 
-// Get retrieves an existing session by ID. Returns NotFound error if non-existent.
-func (m *WorkspaceManager) Get(ctx context.Context, sessionId string) (*Session, error) {
+// GetSession retrieves an existing session by ID. Returns NotFound error if non-existent.
+func (m *WorkspaceManager) GetSession(ctx context.Context, sessionId string) (*Session, error) {
 	m.mu.Lock()
 	session, ok := m.sessions[sessionId]
 	m.mu.Unlock()
@@ -414,8 +406,8 @@ func (m *WorkspaceManager) Get(ctx context.Context, sessionId string) (*Session,
 	return session, nil
 }
 
-// Delete removes a workspace and its associated sandbox.
-func (m *WorkspaceManager) Delete(ctx context.Context, sessionId string) error {
+// DeleteSession removes a session.
+func (m *WorkspaceManager) DeleteSession(ctx context.Context, sessionId string) error {
 	m.mu.Lock()
 	session, ok := m.sessions[sessionId]
 	delete(m.sessions, sessionId)
@@ -426,6 +418,33 @@ func (m *WorkspaceManager) Delete(ctx context.Context, sessionId string) error {
 	}
 
 	return session.delete(ctx)
+}
+
+// DeleteSessionsByWorkspace deletes all sessions associated with a given workspace name.
+func (m *WorkspaceManager) DeleteSessionsByWorkspace(workspaceName string) error {
+	// Match sessions by sandbox name pattern: "ws-" + workspace_name_without_dashes[:15]
+	cleanName := strings.ReplaceAll(workspaceName, "-", "")
+	if len(cleanName) > 15 {
+		cleanName = cleanName[:15]
+	}
+	pattern := "ws-" + cleanName
+
+	m.mu.Lock()
+	var sessionIDs []string
+	for id, session := range m.sessions {
+		if session.sandbox != "" && strings.HasPrefix(session.sandbox, pattern) {
+			sessionIDs = append(sessionIDs, id)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, id := range sessionIDs {
+		if err := m.DeleteSession(context.Background(), id); err != nil {
+			log.Printf("[env] Error deleting session %s: %v", id, err)
+		}
+	}
+
+	return nil
 }
 
 // RunCommand executes a command string in the active sandbox.
@@ -479,8 +498,8 @@ func (m *WorkspaceManager) GetLogs(ctx context.Context, sessionId string) ([]str
 	return lines, nil
 }
 
-// SessionWorkspace returns the workspace name for a given session ID.
-func (m *WorkspaceManager) SessionWorkspace(sessionId string) (string, error) {
+// GetSessionWorkspace returns the workspace name for a given session ID.
+func (m *WorkspaceManager) GetSessionWorkspace(sessionId string) (string, error) {
 	m.mu.Lock()
 	session, ok := m.sessions[sessionId]
 	m.mu.Unlock()
@@ -489,5 +508,5 @@ func (m *WorkspaceManager) SessionWorkspace(sessionId string) (string, error) {
 		return "", fmt.Errorf("session %s not found", sessionId)
 	}
 
-	return session.sessionId, nil
+	return session.workspace, nil
 }

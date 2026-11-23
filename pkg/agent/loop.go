@@ -158,7 +158,7 @@ func (l *Loop) resolveWorkspace(sessionID string) string {
 // GetSession returns a session for the given workspace ID.
 // Returns NotFound error if the session doesn't exist — no auto-creation.
 func (l *Loop) GetSession(workspaceID string, sessionId string) (*env.Session, error) {
-	session, err := l.Ws.Get(context.Background(), sessionId)
+	session, err := l.Ws.GetSession(context.Background(), sessionId)
 	if err != nil {
 		return nil, fmt.Errorf("session %s not found for workspace %s: %w", sessionId[:8], workspaceID, err)
 	}
