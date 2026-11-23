@@ -28,7 +28,7 @@ func dispatchSlashCommand(cmd string, args []string, sessionID string, workspace
 	switch cmd {
 	case "help":
 		fmt.Fprintln(os.Stderr, chatHelpText)
-	case "list", "tasks":
+	case "tasks":
 		nlistEmergentTasks(sessionID)
 	case "close":
 		fmt.Println("Closing session...")

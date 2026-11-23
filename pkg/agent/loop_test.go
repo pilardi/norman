@@ -897,7 +897,7 @@ func (f *FakeOpenShellClient) KeepAlive(_ context.Context, sandboxName string) e
 
 // --- env.Workspace interface methods ---
 
-func (f *FakeOpenShellClient) SessionWorkspace(sessionId string) (string, error) {
+func (f *FakeOpenShellClient) GetSessionWorkspace(sessionId string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if sid, ok := f.sandboxes[sessionId]; ok {
@@ -922,7 +922,7 @@ func (f *FakeOpenShellClient) Sessions() map[string]*env.Session {
 	return result
 }
 
-func (f *FakeOpenShellClient) Get(ctx context.Context, sessionId string) (*env.Session, error) {
+func (f *FakeOpenShellClient) GetSession(ctx context.Context, sessionId string) (*env.Session, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.sandboxes[sessionId]; !ok {
@@ -931,10 +931,17 @@ func (f *FakeOpenShellClient) Get(ctx context.Context, sessionId string) (*env.S
 	return &env.Session{}, nil
 }
 
-func (f *FakeOpenShellClient) Delete(ctx context.Context, sessionId string) error {
+func (f *FakeOpenShellClient) DeleteSession(ctx context.Context, sessionId string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.sandboxes, sessionId)
+	return nil
+}
+
+func (f *FakeOpenShellClient) DeleteSessionsByWorkspace(workspaceName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// no-op in fake client
 	return nil
 }
 
@@ -945,6 +952,67 @@ func (f *FakeOpenShellClient) GetSandboxName(ctx context.Context, sessionId stri
 		return name, nil
 	}
 	return "", fmt.Errorf("session %s not found", sessionId)
+}
+
+// --- Additional Workspace interface methods ---
+
+func (f *FakeOpenShellClient) CreateWorkspace(ctx context.Context, workspace string, sessionId string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sid := fmt.Sprintf("sb-%s", strings.ReplaceAll(workspace, "-", ""))
+	f.sandboxes[workspace] = sid
+	return sid, nil
+}
+
+func (f *FakeOpenShellClient) StopWorkspace(ctx context.Context, workspace string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// no-op in fake client
+	return nil
+}
+
+func (f *FakeOpenShellClient) StartWorkspace(ctx context.Context, workspace string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// no-op in fake client
+	return nil
+}
+
+func (f *FakeOpenShellClient) DeleteWorkspaceResources(ctx context.Context, workspace string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.sandboxes, workspace)
+	return nil
+}
+
+func (f *FakeOpenShellClient) SetDefinition(workspace string, def *env.WorkspaceDefinition) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// no-op in fake client
+}
+
+func (f *FakeOpenShellClient) GetDefinition(workspace string) *env.WorkspaceDefinition {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return nil
+}
+
+func (f *FakeOpenShellClient) GetIdleSince(workspace string) *time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return nil
+}
+
+func (f *FakeOpenShellClient) IsIdle(workspace string, threshold time.Duration) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return false
+}
+
+func (f *FakeOpenShellClient) StartIdleCleanupLoop(timeout time.Duration, stopCh chan struct{}) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// no-op in fake client
 }
 
 // --- Task Cap Tests (Phase 1) ---

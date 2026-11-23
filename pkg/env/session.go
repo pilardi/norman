@@ -10,6 +10,25 @@ import (
 	v1types "github.com/NVIDIA/OpenShell/sdk/go/openshell/v1/types"
 )
 
+// WorkspaceState represents the lifecycle state of a workspace session.
+type WorkspaceState string
+
+const (
+	WorkspaceActive  WorkspaceState = "active"
+	WorkspaceIdle    WorkspaceState = "idle"
+	WorkspaceStopped WorkspaceState = "stopped"
+)
+
+// Valid checks if the workspace state is a valid value.
+func (s WorkspaceState) Valid() bool {
+	switch s {
+	case WorkspaceActive, WorkspaceIdle, WorkspaceStopped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Session represents a single OpenShell sandbox session with command execution.
 type Session struct {
 	client       *Client
@@ -19,6 +38,7 @@ type Session struct {
 	sessionId    string // The session ID; set at creation, never the sandbox name
 	workspace    string // The workspace this session belongs to
 	lastActivity *time.Time
+	state        WorkspaceState
 }
 
 // NewSession creates a new session bound to a specific sandbox and Norman API session.
@@ -32,7 +52,40 @@ func NewSession(client *Client, provider, sandbox, workspace, sessionId string) 
 		sessionId:    sessionId,
 		workspace:    workspace,
 		lastActivity: &now,
+		state:        WorkspaceActive,
 	}
+}
+
+// MarkActive transitions the workspace state to active. Returns true if transition succeeded.
+func (s *Session) MarkActive() bool {
+	if s.state == WorkspaceIdle || s.state == WorkspaceStopped {
+		s.state = WorkspaceActive
+		return true
+	}
+	return false
+}
+
+// MarkIdle transitions the workspace state to idle. Returns true if transition succeeded.
+func (s *Session) MarkIdle() bool {
+	if s.state == WorkspaceActive {
+		s.state = WorkspaceIdle
+		return true
+	}
+	return false
+}
+
+// MarkStopped transitions the workspace state to stopped. Returns true if transition succeeded.
+func (s *Session) MarkStopped() bool {
+	if s.state == WorkspaceActive || s.state == WorkspaceIdle {
+		s.state = WorkspaceStopped
+		return true
+	}
+	return false
+}
+
+// State returns the current workspace state.
+func (s *Session) State() WorkspaceState {
+	return s.state
 }
 
 // SessionID returns the Norman API session UUID for this session.

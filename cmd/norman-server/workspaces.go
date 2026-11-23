@@ -103,7 +103,7 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 		Purpose:     "",
 		Scope:       nil,
 		Tags:        nil,
-		SandboxName: sb.Name,
+		SandboxName: sb,
 	}
 	if req.Purpose != nil {
 		def.Purpose = *req.Purpose
@@ -138,7 +138,7 @@ func (s *server) CreateWorkspace(c echo.Context) error {
 
 	s.wsHub.BroadcastEvent(protocol.WebSocketEvent{
 		Event:   protocol.TaskProgress,
-		Message: strPtr("Workspace created: " + req.Name + " (sandbox: " + sb.Name + ")"),
+		Message: strPtr("Workspace created: " + req.Name + " (sandbox: " + sb + ")"),
 	})
 
 	return c.JSON(http.StatusCreated, ws)
@@ -272,7 +272,7 @@ func (s *server) StopWorkspace(c echo.Context, name string) error {
 
 	// Close all sessions for this workspace (free agent loop resources).
 	s.closeWorkspaceSessions(name)
-	if err := s.workspaceManager.StopSandbox(context.Background(), name); err != nil {
+	if err := s.workspaceManager.StopWorkspace(context.Background(), name); err != nil {
 		msg := fmt.Sprintf("failed to stop sandbox for workspace %s: %v", name, err)
 		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "not found") {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": msg})
@@ -321,8 +321,8 @@ func (s *server) RestoreWorkspace(c echo.Context, name string) error {
 		log.Printf("[server] Restoring snapshot for workspace %s from %s", name, snapshotDir)
 	}
 
-	// Start sandbox (always needed when restoring from stopped).
-	if err := s.workspaceManager.StartSandbox(context.Background(), name); err != nil {
+	// Start workspace environment (always needed when restoring from stopped).
+	if err := s.workspaceManager.StartWorkspace(context.Background(), name); err != nil {
 		log.Printf("[server] Error starting sandbox for restored workspace %s: %v", name, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to start sandbox"})
 	}
@@ -350,9 +350,9 @@ func (s *server) PurgeWorkspace(c echo.Context, name string) error {
 		log.Printf("[server] Error removing snapshot dir for %s: %v", name, err)
 	}
 
-	// Close sessions and delete the sandbox to free resources.
+	// Close sessions and delete the workspace resources to free resources.
 	s.closeWorkspaceSessions(name)
-	if err := s.workspaceManager.CloseSandbox(context.Background(), name); err != nil {
+	if err := s.workspaceManager.DeleteWorkspaceResources(context.Background(), name); err != nil {
 		log.Printf("[server] Error deleting sandbox for workspace %s: %v", name, err)
 	}
 
@@ -385,24 +385,7 @@ func isValidWorkspaceName(name string) bool {
 
 // closeWorkspaceSessions finds and deletes all sessions associated with a workspace.
 func (s *server) closeWorkspaceSessions(workspaceName string) {
-	// Match sessions by sandbox name pattern: "ws-" + workspace_name_without_dashes[:15]
-	cleanName := strings.ReplaceAll(workspaceName, "-", "")
-	if len(cleanName) > 15 {
-		cleanName = cleanName[:15]
-	}
-	pattern := "ws-" + cleanName
-
-	for id := range s.workspaceManager.Sessions() {
-		workspaceName, err := s.loop.Ws.SessionWorkspace(id)
-		if err != nil {
-			log.Printf("[server] get sandbox name for session %s: %v", id, err)
-			continue
-		}
-		if strings.HasPrefix(workspaceName, pattern) {
-			log.Printf("[server] Closing session %s for workspace %s", id, workspaceName)
-			if err := s.loop.Ws.Delete(context.Background(), id); err != nil {
-				log.Printf("[server] Error closing session %s: %v", id, err)
-			}
-		}
+	if err := s.workspaceManager.DeleteSessionsByWorkspace(workspaceName); err != nil {
+		log.Printf("[server] Error deleting sessions for workspace %s: %v", workspaceName, err)
 	}
 }
