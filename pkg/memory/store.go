@@ -993,6 +993,25 @@ func (s *Store) PersistSessionTurn(sessionID string, turn map[string]interface{}
 		return fmt.Errorf("close session turns file: %w", err)
 	}
 
+	// Update session's updated_at timestamp
+	sessionPath := filepath.Join(s.base, "sessions", sessionID+".json")
+	sessionData, err := os.ReadFile(sessionPath)
+	if err == nil {
+		var result map[string]interface{}
+		if err := json.Unmarshal(sessionData, &result); err == nil {
+			result["updated_at"] = time.Now().Format(time.RFC3339)
+			content, err := json.MarshalIndent(result, "", "  ")
+			if err == nil {
+				tmp := sessionPath + ".tmp"
+				if err := os.WriteFile(tmp, content, 0644); err == nil {
+					_ = os.Rename(tmp, sessionPath)
+				} else {
+					_ = os.Remove(tmp)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

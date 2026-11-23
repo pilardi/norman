@@ -138,8 +138,21 @@ func runServer(verbose bool, selectedProvider string) error {
 	schedCtx, schedCancel := context.WithCancel(context.Background())
 	srv.scheduler.Start(schedCtx)
 
-	// Start idle timeout auto-cleanup goroutine (cleanup sessions inactive for >30min by default).
-	go srv.idleCleanupLoop(30 * time.Minute)
+	// Parse session idle timeout from config.
+	if srv.cfg.System.SessionIdleTimeout == "never" {
+		log.Printf("idle cleanup: session idle timeout is disabled (sessions will not expire due to inactivity)")
+	} else {
+		idleTimeout, err := time.ParseDuration(srv.cfg.System.SessionIdleTimeout)
+		if err != nil {
+			log.Fatalf("idle cleanup: invalid session_idle_timeout '%s': %v", srv.cfg.System.SessionIdleTimeout, err)
+		}
+		if idleTimeout <= 0 {
+			log.Fatalf("idle cleanup: session_idle_timeout must be greater than 0")
+		}
+
+		// Start idle timeout auto-cleanup goroutine.
+		go srv.idleCleanupLoop(idleTimeout)
+	}
 
 	// Graceful shutdown.
 	sigCh := make(chan os.Signal, 1)

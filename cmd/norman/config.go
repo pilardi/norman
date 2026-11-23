@@ -92,6 +92,8 @@ func handleConfigSet(ctx context.Context, args []string) error {
 			return fmt.Errorf("max_active_sessions must be >= 0, got %d", t)
 		}
 		update["max_active_sessions"] = float64(t)
+	case "session_idle_timeout":
+		update["session_idle_timeout"] = val
 	case "temperature":
 		t, err := strconv.ParseFloat(val, 64)
 		if err != nil {
@@ -139,6 +141,7 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 			"openshell_address":     resolvedGateway,
 			"max_turns":             client.DerefInt(cfg.MaxTurns),
 			"max_tasks_per_session": client.DerefInt(cfg.MaxTasksPerSession),
+			"session_idle_timeout":  client.StrPtrVal(cfg.SessionIdleTimeout),
 		}
 		if len(llmProviders) > 0 {
 			providers := make([]map[string]interface{}, len(llmProviders))
@@ -165,6 +168,9 @@ func printConfig(ctx context.Context, _ *cli.Command, asJSON bool) error {
 	fmt.Printf("  host:               %s\n", client.StrPtrVal(cfg.Host))
 	if cfg.DefaultProvider != nil {
 		fmt.Printf("  default_provider:   %s\n", *cfg.DefaultProvider)
+	}
+	if cfg.SessionIdleTimeout != nil {
+		fmt.Printf("  session_idle_timeout: %s\n", *cfg.SessionIdleTimeout)
 	}
 	if cfg.Skills != nil {
 		fmt.Printf("  max_active_skills:  %d\n", client.DerefInt(cfg.Skills.MaxActive))
@@ -282,6 +288,11 @@ func getConfig(ctx context.Context) (*protocol.SystemConfig, []providerEntry, st
 		if n, ok := v.(float64); ok {
 			val := int(n)
 			cfg.MaxTasksPerSession = &val
+		}
+	}
+	if v, ok := result.System["session_idle_timeout"]; ok && v != nil {
+		if s, ok := v.(string); ok {
+			cfg.SessionIdleTimeout = &s
 		}
 	}
 	if v, ok := result.System["Temperature"]; ok && v != nil {

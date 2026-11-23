@@ -1831,6 +1831,9 @@ components:
           type: integer
           minimum: 0
           description: Maximum number of tasks persisted per session before LRU eviction (0 = unlimited)
+        session_idle_timeout:
+          type: string
+          description: Duration after which an idle session is auto-closed (e.g., "30m")
         openshell:
           $ref: "#/components/schemas/OpenShellConfig"
 

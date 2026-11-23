@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/config"
@@ -174,6 +175,23 @@ func mergeUpdatesIntoSystem(cfg *config.SystemConfig, updates map[string]interfa
 				cfg.MaxActiveSessions = int(val)
 			default:
 				return fmt.Errorf("max_active_sessions must be an integer")
+			}
+		case "session_idle_timeout":
+			if s, ok := v.(string); ok {
+				if s == "never" {
+					cfg.SessionIdleTimeout = s
+				} else {
+					dur, err := time.ParseDuration(s)
+					if err != nil {
+						return fmt.Errorf("session_idle_timeout must be a valid duration (e.g., '30m') or 'never', got: %s", s)
+					}
+					if dur <= 0 {
+						return fmt.Errorf("session_idle_timeout must be greater than 0 or 'never'")
+					}
+					cfg.SessionIdleTimeout = s
+				}
+			} else {
+				return fmt.Errorf("session_idle_timeout must be a string")
 			}
 		default:
 			// Handle provider dot-path keys (e.g., "providers.0.name", "providers.1.temperature")

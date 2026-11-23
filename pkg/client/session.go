@@ -74,7 +74,6 @@ func CreateNewSession(workspaceName string) (string, error) {
 		return "", fmt.Errorf("session creation failed (status %d): %s", parsedSess.StatusCode(), body)
 	}
 
-	fmt.Printf("New session '%s' created.\n", strVal(sess.Name))
 	return sess.Id.String(), nil
 }
 

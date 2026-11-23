@@ -50,6 +50,10 @@ type SystemConfig struct {
 	// MaxTasksPerSession is the maximum number of tasks persisted per session.
 	// When exceeded, the oldest task is evicted (LRU). Default is 10 if unset.
 	MaxTasksPerSession int `yaml:"max_tasks_per_session,omitempty"`
+
+	// SessionIdleTimeout is the duration after which an idle session is auto-closed.
+	// Default is "30m" (30 minutes) if unset.
+	SessionIdleTimeout string `yaml:"session_idle_timeout,omitempty" json:"session_idle_timeout,omitempty"`
 }
 
 // ProviderConfig describes a named LLM/embedder provider endpoint.
@@ -293,6 +297,9 @@ func LoadDefault() (*Config, error) {
 	}
 	if len(c.System.Skills.BuiltInSkills) == 0 {
 		c.System.Skills.BuiltInSkills = append([]string{}, EmbeddedDefaults().System.Skills.BuiltInSkills...)
+	}
+	if c.System.SessionIdleTimeout == "" {
+		c.System.SessionIdleTimeout = EmbeddedDefaults().System.SessionIdleTimeout
 	}
 
 	// Step 2: Apply NORMAN_* env var overrides (highest priority).
