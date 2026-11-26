@@ -354,12 +354,13 @@ func (l *Loop) GetLogs(ctx context.Context, sessionId string) ([]string, error) 
 
 // AgentResponse represents the structured response from processing a chat message.
 type AgentResponse struct {
-	SessionID   string     `json:"session_id"`
-	Response    string     `json:"response,omitempty"`
-	ToolsUsed   []string   `json:"tools_used,omitempty"`
-	TaskCreated bool       `json:"task_created"`
-	TaskID      string     `json:"task_id,omitempty"`
-	TokenUsage  *llm.Usage `json:"token_usage,omitempty"`
+	SessionID       string     `json:"session_id"`
+	Response        string     `json:"response,omitempty"`
+	ThinkingContent string     `json:"thinking_content,omitempty"`
+	ToolsUsed       []string   `json:"tools_used,omitempty"`
+	TaskCreated     bool       `json:"task_created"`
+	TaskID          string     `json:"task_id,omitempty"`
+	TokenUsage      *llm.Usage `json:"token_usage,omitempty"`
 }
 
 // SendMessage processes a chat message and returns a structured response.
@@ -429,6 +430,7 @@ func (l *Loop) processChatMessage(ctx context.Context, sessionID string, workspa
 
 	// Multi-turn loop: max l.config.System.MaxTurns iterations to prevent infinite loops.
 	var fullOutput strings.Builder
+	var thinkingContentBuilder strings.Builder
 	tokenUsage := &llm.Usage{}
 	completedCleanly := false
 
@@ -508,8 +510,9 @@ func (l *Loop) processChatMessage(ctx context.Context, sessionID string, workspa
 			isThinking := chunk.ReasoningContent != ""
 
 			if isThinking {
-				// Broadcast thinking/reasoning chunk to client in real-time.
+				// Accumulate and broadcast thinking/reasoning chunk to client in real-time.
 				if chunk.ReasoningContent != "" {
+					thinkingContentBuilder.WriteString(chunk.ReasoningContent)
 					reasoningMsg := chunk.ReasoningContent
 					l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
 						Event:   protocol.ThinkingProgress,
@@ -635,18 +638,20 @@ func (l *Loop) processChatMessage(ctx context.Context, sessionID string, workspa
 		log.Printf("agent: reached max turns (%d) without completing", l.config.System.MaxTurns)
 		// Build response with max turns error message
 		resp := &AgentResponse{
-			SessionID:  sessionID,
-			Response:   fmt.Sprintf("Error: reached max turns (%d) without completing", l.config.System.MaxTurns),
-			TokenUsage: tokenUsage,
+			SessionID:       sessionID,
+			Response:        fmt.Sprintf("Error: reached max turns (%d) without completing", l.config.System.MaxTurns),
+			ThinkingContent: "",
+			TokenUsage:      tokenUsage,
 		}
 		return resp, nil
 	}
 
 	// Build response.
 	resp := &AgentResponse{
-		SessionID:  sessionID,
-		Response:   fullOutput.String(),
-		TokenUsage: tokenUsage,
+		SessionID:       sessionID,
+		Response:        fullOutput.String(),
+		ThinkingContent: thinkingContentBuilder.String(),
+		TokenUsage:      tokenUsage,
 	}
 
 	return resp, nil
