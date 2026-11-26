@@ -48,6 +48,7 @@ func openSessionSwitcher(m *Model) tea.Cmd {
 // createNewSession creates a new session for the current workspace.
 func createNewSession(m *Model) tea.Cmd {
 	m.statusBar.SetConnection("● Creating session...")
+	m.state = StateCreatingSession
 	return func() tea.Msg {
 		newID, err := client.CreateNewSession(m.workspaceName)
 		if err != nil {
@@ -98,7 +99,14 @@ func sendMessage(m *Model) tea.Cmd {
 	})
 	m.chatPanel.textInput.SetValue("")
 	m.statusBar.SetConnection("Sending")
-	go sendChatMessage(m, m.sessionID, input)
+
+	// Create a cancellable context for this request
+	sendCtx, sendCancel := context.WithCancel(context.Background())
+	m.sendCtx = sendCtx
+	m.sendCancel = sendCancel
+	m.state = StateSendingMessage
+
+	go sendChatMessage(m, sendCtx, m.sessionID, input)
 	return nil
 }
 
@@ -111,7 +119,7 @@ func clearChat(m *Model) tea.Cmd {
 // compressSession compresses the current session's conversation history.
 func compressSession(m *Model) tea.Cmd {
 	m.statusBar.SetConnection("● Compressing session...")
-	m.isWorking = true
+	m.state = StateCompressingSession
 	return func() tea.Msg {
 		// Use the client.CompressSession function
 		escapedID := client.UrlPathEscape(m.sessionID)
@@ -136,6 +144,8 @@ func compressSession(m *Model) tea.Cmd {
 
 // loadSessionsList fetches available sessions and opens the session switcher.
 func loadSessionsList(m *Model) tea.Cmd {
+	m.statusBar.SetConnection("● Loading sessions...")
+	m.state = StateLoadingSessions
 	return func() tea.Msg {
 		c, err := client.GetProtocolClient()
 		if err != nil {

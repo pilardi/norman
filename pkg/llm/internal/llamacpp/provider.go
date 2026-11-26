@@ -329,6 +329,9 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 	buf := make([]byte, 4096)
 	n, err := s.resp.Body.Read(buf)
 	if err != nil {
+		if err == io.EOF {
+			return api.Chunk{FinishReason: "[done]"}, nil
+		}
 		return api.Chunk{}, fmt.Errorf("read SSE: %w", err)
 	}
 
@@ -339,14 +342,22 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 	var rawData string
 	for i := len(parts) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(string(parts[i]))
-		if line == "" || line == "data: [DONE]" {
+		if line == "data: [DONE]" {
 			return api.Chunk{FinishReason: "[done]"}, nil
+		}
+		if line == "" {
+			continue // skip empty lines
 		}
 		if !strings.HasPrefix(line, "data: ") {
 			continue // skip non-data lines
 		}
 		rawData = strings.TrimPrefix(line, "data: ")
 		break
+	}
+
+	// If no valid data line was found, treat as done
+	if rawData == "" {
+		return api.Chunk{FinishReason: "[done]"}, nil
 	}
 
 	// Debug: expose raw SSE data for troubleshooting.

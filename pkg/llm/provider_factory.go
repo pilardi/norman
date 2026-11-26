@@ -70,6 +70,7 @@ func newProvider(name string, provCfg *config.ProviderConfig, wsCfg *config.Work
 func newLlamaCPPProvider(name string, provCfg *config.ProviderConfig, wsCfg *config.WorkspaceConfig) (*ClientAdapter, error) {
 	// Build type-specific config from Extra map.
 	llmCfg := llamacpp.DefaultConfig()
+	llmCfg.BaseURL = provCfg.Endpoint
 	if v, ok := provCfg.Extra["cache_size"].(float64); ok {
 		llmCfg.CacheSize = int(v)
 	}

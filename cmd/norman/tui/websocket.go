@@ -173,7 +173,7 @@ func loadSessionHistory(model *Model, sessionID string) {
 
 // sendChatMessage sends a chat message to the current session via HTTP POST.
 // The assistant response is sent back via model.wsMsg channel.
-func sendChatMessage(model *Model, sessionID, message string) {
+func sendChatMessage(model *Model, ctx context.Context, sessionID, message string) {
 	c, err := client.GetProtocolClient()
 	if err != nil {
 		model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("failed to create client: %v", err)}
@@ -185,9 +185,18 @@ func sendChatMessage(model *Model, sessionID, message string) {
 		Provider: client.StrPtr(model.provider),
 	}
 
-	msgRsp, err := c.SendMessage(context.Background(), sessionID, body)
+	msgRsp, err := c.SendMessage(ctx, sessionID, body)
 	if err != nil {
+		// Check for context cancellation
+		if strings.Contains(err.Error(), "context canceled") || strings.Contains(err.Error(), "context deadline exceeded") {
+			// Context was canceled by the user (Ctrl+C). The ctrl+c handler in model.go already appended
+			// the "[Request cancelled by user]" message to the chat panel and reset the state.
+			// Just reset the state and return without sending an error event that would set m.done = true.
+			model.state = StateIdle
+			return
+		}
 		model.wsMsg <- WSMessageEvent{Event: "error", Message: fmt.Sprintf("send message to session %s: %v", client.ShortID(sessionID), err)}
+		model.state = StateIdle
 		return
 	}
 

@@ -24,6 +24,9 @@ type WSHub struct {
 
 	// granularClients tracks clients subscribed to scope=events (granular task-level events).
 	granularClients map[*websocket.Conn]struct{}
+
+	// connWriteMu is a map of connection to a write lock to serialize writes per connection.
+	connWriteMu sync.Map // map[*websocket.Conn]*sync.Mutex
 }
 
 // NewWSHub creates a new WebSocket hub.
@@ -70,9 +73,13 @@ func (h *WSHub) BroadcastSession(sessionID string, event protocol.WebSocketEvent
 	h.mu.RLock()
 	subs := h.sessionClients[sessionID]
 	for c := range subs {
+		wmu, _ := h.connWriteMu.Load(c)
+		mu := wmu.(*sync.Mutex)
+		mu.Lock()
 		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
 			log.Printf("ws session write error for %s: %v", sessionID[:8], err)
 		}
+		mu.Unlock()
 	}
 	h.mu.RUnlock()
 }
@@ -92,6 +99,8 @@ func (h *WSHub) Add(c *websocket.Conn, sessionID string, scope string) {
 	if scope == "events" {
 		h.granularClients[c] = struct{}{}
 	}
+	// Ensure write lock exists for this connection
+	_, _ = h.connWriteMu.LoadOrStore(c, &sync.Mutex{})
 }
 
 // Remove unregisters a WebSocket connection from all pools.
@@ -120,9 +129,13 @@ func (h *WSHub) BroadcastGranular(event protocol.WebSocketEventEvent, taskID, se
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for c := range h.granularClients {
+		wmu, _ := h.connWriteMu.Load(c)
+		mu := wmu.(*sync.Mutex)
+		mu.Lock()
 		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
 			log.Printf("ws granular write error: %v", err)
 		}
+		mu.Unlock()
 	}
 }
 
@@ -174,9 +187,13 @@ func (h *WSHub) writeLoop() {
 	for msg := range h.broadcast {
 		h.mu.RLock()
 		for c := range h.clients {
+			wmu, _ := h.connWriteMu.Load(c)
+			mu := wmu.(*sync.Mutex)
+			mu.Lock()
 			if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
 				log.Printf("ws write error: %v", err)
 			}
+			mu.Unlock()
 		}
 		h.mu.RUnlock()
 	}

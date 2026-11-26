@@ -15,6 +15,17 @@ import (
 	"github.com/norman/norman/pkg/client"
 )
 
+// ClientState represents the current operational state of the TUI client.
+type ClientState int
+
+const (
+	StateIdle ClientState = iota
+	StateSendingMessage
+	StateCreatingSession
+	StateCompressingSession
+	StateLoadingSessions
+)
+
 // ChatMessage represents a single message in the chat stream.
 type ChatMessage struct {
 	Role      string
@@ -35,7 +46,13 @@ type Model struct {
 	events           []EventItem
 	done             bool
 	fatalError       error
-	isWorking        bool // true while a command that makes a server request is in progress
+
+	// Client state machine
+	state ClientState
+
+	// Context and cancel function for the current send request (to support interruption)
+	sendCtx    context.Context
+	sendCancel context.CancelFunc
 
 	// Phase 3 overlays
 	helpOverlay     helpOverlay
@@ -65,6 +82,7 @@ func NewModel(workspaceName string, provider string) *Model {
 		connectionState:  "● Connecting...",
 		initialWorkspace: workspaceName,
 		wsMsg:            make(chan WSMessageEvent, 100),
+		state:            StateIdle,
 		provider:         provider,
 	}
 }
@@ -180,6 +198,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
+			if m.state == StateSendingMessage {
+				// Cancel the current request
+				if m.sendCancel != nil {
+					m.sendCancel()
+					m.sendCancel = nil
+					m.sendCtx = nil
+				}
+				m.state = StateIdle
+				m.statusBar.SetConnection("Request cancelled")
+				// Append a message to the chat panel indicating the request was cancelled
+				m.chatPanel.AppendMessage(ChatMessage{
+					Role:      "system",
+					Content:   "[Request cancelled by user]",
+					Timestamp: time.Now(),
+				})
+				return m, nil
+			}
+			if m.state != StateIdle {
+				m.statusBar.SetConnection("Working, please wait...")
+				return m, nil
+			}
 			m.done = true
 			return m, tea.Quit
 		case "tab":
@@ -195,7 +234,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 
 		case "enter":
-			if m.isWorking {
+			if m.state != StateIdle {
 				m.statusBar.SetConnection("Working, please wait...")
 				return m, nil
 			}
@@ -210,7 +249,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			m.chatPanel.textInput.SetValue("")
 			m.statusBar.SetConnection("Sending")
-			go sendChatMessage(m, m.sessionID, input)
+
+			// Create a cancellable context for this request
+			sendCtx, sendCancel := context.WithCancel(context.Background())
+			m.sendCtx = sendCtx
+			m.sendCancel = sendCancel
+			m.state = StateSendingMessage
+
+			go sendChatMessage(m, sendCtx, m.sessionID, input)
 
 		case "ctrl+l":
 			m.chatPanel.Clear()
@@ -227,7 +273,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+s":
 			if !m.sessionSwitcher.IsShowing() {
-				if m.isWorking {
+				if m.state != StateIdle {
 					m.statusBar.SetConnection("Working, please wait...")
 					return m, nil
 				}
@@ -239,7 +285,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+n":
 			// Create new session
 			if !m.sessionSwitcher.IsShowing() && !m.helpOverlay.IsShowing() {
-				if m.isWorking {
+				if m.state != StateIdle {
 					m.statusBar.SetConnection("Working, please wait...")
 					return m, nil
 				}
@@ -258,7 +304,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+z":
 			// Compress session
 			if !m.sessionSwitcher.IsShowing() && !m.helpOverlay.IsShowing() {
-				if m.isWorking {
+				if m.state != StateIdle {
 					m.statusBar.SetConnection("Working, please wait...")
 					return m, nil
 				}
@@ -351,9 +397,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleWSMessage(msg WSMessageEvent) {
-	// Reset working state for command completion or error events
-	if msg.Event == "compress_completed" || msg.Event == "error" {
-		m.isWorking = false
+	// Reset state for command completion or error events
+	switch msg.Event {
+	case "compress_completed":
+		m.state = StateIdle
+	case "chat_updated", "error":
+		m.state = StateIdle
+	case "session_created", "session_switched", "session_create_error":
+		m.state = StateIdle
 	}
 
 	switch msg.Event {

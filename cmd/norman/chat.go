@@ -1,19 +1,33 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/norman/norman/pkg/client"
 	"github.com/norman/norman/pkg/protocol"
+	"golang.org/x/sys/unix"
 )
 
 const chatHelpText = "Type a message or use slash-commands (/help, /tasks, /close, /new, /history [N], /sessions, /switch <id>, /archive <id>, /compress [--aggressive])"
+
+// ClientState represents the current operational state of the REPL client.
+type ClientState int32
+
+const (
+	StateIdle ClientState = iota
+	StateSendingMessage
+	StateExiting
+)
 
 // CreateNewSession creates a new session for the given workspace and returns its ID.
 // Used by both REPL and TUI.
@@ -191,6 +205,42 @@ func handleChat(args []string) {
 	// Start real-time WebSocket event push loop (runs concurrently).
 	go runWebSocketLoop(sessionID)
 
+	// Set up signal handling for Ctrl+C (SIGINT) to cancel requests without exiting
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Create a cancellable context for the chat session
+	var ctx context.Context
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(context.Background())
+
+	// Current client state
+	state := new(atomic.Int32)
+	state.Store(int32(StateIdle))
+
+	// Context for the read loop to unblock on Ctrl+C when in StateIdle
+	readCtx, readCancel := context.WithCancel(context.Background())
+
+	// Handle signal in a goroutine
+	go func() {
+		for range sigChan {
+			s := state.Load()
+			if s == int32(StateSendingMessage) {
+				fmt.Fprintln(os.Stderr, "\nInterrupt received. Cancelling current request...")
+				if cancel != nil {
+					cancel()
+				}
+			} else if s == int32(StateIdle) {
+				fmt.Fprintln(os.Stderr, "\nInterrupt received. Exiting chat session...")
+				state.Store(int32(StateExiting))
+				if cancel != nil {
+					cancel()
+				}
+				readCancel()
+			}
+		}
+	}()
+
 	// Enter REPL loop.
 	fmt.Println("\n=== Norman Chat Session ===")
 	sessionName := "(unknown)"
@@ -203,9 +253,42 @@ func handleChat(args []string) {
 	// Track turns for server-side transcript persistence.
 	var turns []map[string]interface{}
 
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		line := scanner.Text()
+	fd := int(os.Stdin.Fd())
+	// Set non-blocking mode for stdin
+	if err := unix.SetNonblock(fd, true); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not set stdin to non-blocking mode: %v\n", err)
+	}
+	defer func() {
+		if err := unix.SetNonblock(fd, false); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not restore stdin to blocking mode: %v\n", err)
+		}
+	}()
+
+	for {
+		if state.Load() == int32(StateExiting) {
+			fmt.Fprintln(os.Stderr, "\nExiting chat session.")
+			break
+		}
+
+		// Read line interruptibly using non-blocking read
+		line, err := readLineInterruptible(fd, readCtx)
+		if err != nil {
+			if err == context.Canceled {
+				fmt.Fprintln(os.Stderr, "\nExiting chat session.")
+				break
+			}
+			if strings.Contains(err.Error(), "interrupted system call") ||
+				strings.Contains(err.Error(), "i/o interrupt") ||
+				errors.Is(err, syscall.EINTR) {
+				continue // interrupt or timeout, check state again
+			}
+			// Other errors (EOF, etc.)
+			fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+			break
+		}
+
+		line = strings.TrimSpace(line)
+
 		cmd, cmdArgs, isSlash := parseSlashCommand(line)
 
 		if isSlash {
@@ -219,7 +302,7 @@ func handleChat(args []string) {
 		}
 
 		// Normal message — send to agent.
-		if strings.TrimSpace(line) == "" {
+		if line == "" {
 			continue
 		}
 
@@ -237,8 +320,26 @@ func handleChat(args []string) {
 			continue
 		}
 
-		msgRsp, err := cli.SendMessage(context.Background(), sessionID, body)
+		// Set state to sending message
+		state.Store(int32(StateSendingMessage))
+
+		msgRsp, err := cli.SendMessage(ctx, sessionID, body)
+
+		// Set state back to idle
+		state.Store(int32(StateIdle))
+
 		if err != nil {
+			// Check for context cancellation
+			if ctx.Err() == context.Canceled {
+				fmt.Fprintln(os.Stderr, "\nRequest cancelled by user.")
+				// Reset context for the next message
+				var newCtx context.Context
+				var newCancel context.CancelFunc
+				newCtx, newCancel = context.WithCancel(context.Background())
+				ctx = newCtx
+				cancel = newCancel
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "send message to session %s: %v\n", client.ShortID(sessionID), err)
 			continue
 		}
@@ -287,8 +388,42 @@ func handleChat(args []string) {
 		displayResponseTyped(result)
 	}
 
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "Read error: %v\n", err)
-		os.Exit(1)
+	// Cancel context on exit
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// readLineInterruptible reads a line from the file descriptor in a non-blocking way
+// that can be cancelled via the context.
+func readLineInterruptible(fd int, cancelCtx context.Context) (string, error) {
+	var buf []byte
+	for {
+		select {
+		case <-cancelCtx.Done():
+			return "", context.Canceled
+		default:
+		}
+
+		var b [1]byte
+		n, err := syscall.Read(fd, b[:])
+		if err != nil {
+			if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
+				// No data available, poll briefly
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			if err == syscall.EINTR {
+				continue
+			}
+			return "", err
+		}
+		if n == 0 {
+			return "", io.EOF
+		}
+		if b[0] == '\n' || b[0] == '\r' {
+			return string(buf), nil
+		}
+		buf = append(buf, b[0])
 	}
 }

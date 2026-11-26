@@ -1,0 +1,33 @@
+# Test configuration for integration tests.
+# This file is used by integration_test.go to ensure deterministic test settings.
+
+system:
+  server_port: 18080
+  host: "127.0.0.1"
+  base_dir: "~/.norman"
+  max_turns: 8
+  max_active_sessions: 3
+  max_tasks_per_session: 10
+  session_idle_timeout: "30m"
+  open_shell:
+    address: ""
+  skills:
+    builtin_skills:
+      - "task-management"
+      - "roger"
+    max_active: 3
+  notify:
+    bell_enabled: true
+    slack_webhook: ""
+    rate_limit_per_minute: 10
+  logging:
+    verbose: false
+  default_provider: "test-llm"
+  llm_providers:
+    - name: "test-llm"
+      type: "llamacpp"
+      endpoint: "http://127.0.0.1:8289"
+      model: "test-model"
+      temperature: 0.7
+      max_tokens: 55000
+      api_key: ""
