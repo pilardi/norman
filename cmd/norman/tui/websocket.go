@@ -221,6 +221,8 @@ func sendChatMessage(model *Model, ctx context.Context, sessionID, message strin
 		}
 		// Update status bar to Connected
 		model.statusBar.SetConnection("Connected")
+		// Reset state to idle since the request has been answered
+		model.state = StateIdle
 		return
 	}
 

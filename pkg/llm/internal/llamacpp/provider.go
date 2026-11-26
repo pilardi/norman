@@ -16,6 +16,7 @@ import (
 
 	"github.com/norman/norman/pkg/config"
 	"github.com/norman/norman/pkg/llm/api"
+	"github.com/norman/norman/pkg/llm/internal/sse"
 )
 
 // --- Request / Response Types ---
@@ -228,7 +229,7 @@ func (p *Provider) Stream(ctx context.Context, req api.CompletionRequest) (api.S
 		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return &sseStreamReader{resp: resp, providerName: p.providerName}, nil
+	return sse.NewStreamReader(resp, p.providerName), nil
 }
 
 // EmbedText returns a float32 vector for the given text.
@@ -316,157 +317,6 @@ func (p *Provider) ProviderInfo() api.ProviderMetadata {
 // Logf logs with a [llm][{provider}] prefix.
 func (p *Provider) Logf(format string, args ...any) {
 	log.Printf("[llm][%s] "+format, append([]any{p.providerName}, args...)...)
-}
-
-// --- SSE Streaming Reader ---
-
-type sseStreamReader struct {
-	resp         *http.Response
-	providerName string
-}
-
-func (s *sseStreamReader) Next() (api.Chunk, error) {
-	buf := make([]byte, 4096)
-	n, err := s.resp.Body.Read(buf)
-	if err != nil {
-		if err == io.EOF {
-			return api.Chunk{FinishReason: "[done]"}, nil
-		}
-		return api.Chunk{}, fmt.Errorf("read SSE: %w", err)
-	}
-
-	data := buf[:n]
-	// Split on newlines and return the last non-empty segment.
-	// This handles cases where [DONE] is concatenated with the preceding data chunk.
-	parts := bytes.Split(data, []byte("\n"))
-	var rawData string
-	for i := len(parts) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(string(parts[i]))
-		if line == "data: [DONE]" {
-			return api.Chunk{FinishReason: "[done]"}, nil
-		}
-		if line == "" {
-			continue // skip empty lines
-		}
-		if !strings.HasPrefix(line, "data: ") {
-			continue // skip non-data lines
-		}
-		rawData = strings.TrimPrefix(line, "data: ")
-		break
-	}
-
-	// If no valid data line was found, treat as done
-	if rawData == "" {
-		return api.Chunk{FinishReason: "[done]"}, nil
-	}
-
-	// Debug: expose raw SSE data for troubleshooting.
-	log.Printf("[llm][%s] SSE raw data: %s", s.providerName, rawData)
-
-	// Native /completion format: {"content":"...","stop_reason":"..."} or final chunk with token usage
-	var nativeResp struct {
-		Content         string `json:"content"`
-		StopReason      string `json:"stop_reason,omitempty"`
-		TokensEvaluated int    `json:"tokens_evaluated,omitempty"`
-		TokensCached    int    `json:"tokens_cached,omitempty"`
-		Timings         *struct {
-			PromptN   int `json:"prompt_n,omitempty"`
-			PredictN  int `json:"predict_n,omitempty"`
-			PromptMS  int `json:"prompt_ms,omitempty"`
-			PredictMS int `json:"predict_ms,omitempty"`
-		} `json:"timings,omitempty"`
-	}
-	if err := json.Unmarshal([]byte(rawData), &nativeResp); err == nil {
-		chunk := api.Chunk{FinishReason: nativeResp.StopReason}
-		if nativeResp.Content != "" {
-			chunk.Delta = nativeResp.Content
-			log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
-		} else if nativeResp.StopReason != "" {
-			// Final chunk with token usage
-			log.Printf("[llm][%s] SSE parsed (native final): stop_reason=%q tokens_evaluated=%d tokens_cached=%d", s.providerName, nativeResp.StopReason, nativeResp.TokensEvaluated, nativeResp.TokensCached)
-
-			// Extract token usage from tokens_evaluated/tokens_cached or timings
-			promptTokens := nativeResp.TokensEvaluated
-			if promptTokens == 0 && nativeResp.Timings != nil {
-				promptTokens = nativeResp.Timings.PromptN
-			}
-
-			completionTokens := 0
-			if nativeResp.TokensEvaluated > 0 && nativeResp.TokensCached > 0 {
-				completionTokens = nativeResp.TokensEvaluated - nativeResp.TokensCached
-			} else if nativeResp.Timings != nil && nativeResp.Timings.PredictN > 0 {
-				completionTokens = nativeResp.Timings.PredictN
-			}
-
-			totalTokens := promptTokens + completionTokens
-			if totalTokens > 0 {
-				chunk.Usage = &api.Usage{
-					PromptTokens:     promptTokens,
-					CompletionTokens: completionTokens,
-					TotalTokens:      totalTokens,
-					CachedTokens:     nativeResp.TokensCached,
-				}
-				log.Printf("[llm][%s] SSE parsed (native final) usage: prompt=%d completion=%d total=%d cached=%d", s.providerName, promptTokens, completionTokens, totalTokens, nativeResp.TokensCached)
-			}
-		}
-		return chunk, nil
-	}
-
-	// Fallback to OpenAI-compatible format for backward compat
-	var delta map[string]interface{}
-	if err := json.Unmarshal([]byte(rawData), &delta); err == nil {
-		chunk := api.Chunk{}
-		if msg, ok := delta["message"].(map[string]interface{}); ok {
-			if content, ok := msg["content"].(string); ok {
-				chunk.Delta = content
-			}
-		}
-		// Extract reasoning/thinking content (for models that support it).
-		if reasoning, ok := delta["reasoning_content"].(string); ok {
-			chunk.ReasoningContent = reasoning
-		}
-		if fr, ok := delta["finish_reason"].(string); ok {
-			chunk.FinishReason = fr
-		}
-		// Extract tool calls from delta.tool_calls array.
-		if tcArr, ok := delta["tool_calls"].([]interface{}); ok && len(tcArr) > 0 {
-			for _, tcRaw := range tcArr {
-				tcMap, ok := tcRaw.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				id, _ := tcMap["id"].(string)
-				fnRaw, _ := tcMap["function"].(map[string]interface{})
-				name, _ := fnRaw["name"].(string)
-				// Arguments are normally a JSON string; handle map if provider returns parsed object.
-				argsRaw, ok := fnRaw["arguments"].(string)
-				if !ok {
-					if m, ok := fnRaw["arguments"].(map[string]interface{}); ok {
-						b, _ := json.Marshal(m)
-						argsRaw = string(b)
-					}
-				}
-				chunk.ToolCalls = append(chunk.ToolCalls, api.ToolCall{
-					ID:        id,
-					Name:      name,
-					Arguments: json.RawMessage(argsRaw),
-				})
-			}
-		}
-		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q reasoning=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.ReasoningContent, chunk.FinishReason, len(chunk.ToolCalls))
-		return chunk, nil
-	}
-
-	// Do not silently skip — log the full raw data for debugging.
-	// A malformed line often indicates a request schema issue (e.g., invalid tool_calls format)
-	// rather than a provider-side quirk.
-	log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, data)
-	return api.Chunk{}, fmt.Errorf("SSE parse error: %w", err)
-}
-
-func (s *sseStreamReader) Close() error {
-	_ = s.resp.Body.Close()
-	return nil
 }
 
 // --- Helpers ---
