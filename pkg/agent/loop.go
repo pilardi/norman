@@ -498,6 +498,22 @@ func (l *Loop) processChatMessage(ctx context.Context, sessionID string, workspa
 				tokenUsage.PromptTokens += chunk.Usage.PromptTokens
 				tokenUsage.CompletionTokens += chunk.Usage.CompletionTokens
 				tokenUsage.TotalTokens += chunk.Usage.TotalTokens
+
+				// Copy cached tokens
+				if chunk.Usage.CachedTokens > 0 {
+					tokenUsage.CachedTokens = chunk.Usage.CachedTokens
+				}
+
+				// Copy timing fields
+				tokenUsage.CacheN = chunk.Usage.CacheN
+				tokenUsage.PromptN = chunk.Usage.PromptN
+				tokenUsage.PredictN = chunk.Usage.PredictN
+				tokenUsage.PromptMS = chunk.Usage.PromptMS
+				tokenUsage.PredictMS = chunk.Usage.PredictMS
+				tokenUsage.PromptPerTokenMS = chunk.Usage.PromptPerTokenMS
+				tokenUsage.PredictPerTokenMS = chunk.Usage.PredictPerTokenMS
+				tokenUsage.PromptPerSecond = chunk.Usage.PromptPerSecond
+				tokenUsage.PredictPerSecond = chunk.Usage.PredictPerSecond
 			}
 
 			// Only stop reading at the [DONE] sentinel.
