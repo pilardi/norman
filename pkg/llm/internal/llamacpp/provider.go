@@ -122,10 +122,15 @@ func (p *Provider) Complete(ctx context.Context, req api.CompletionRequest) (*ap
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
 
+	model := req.Model
+	if model == "" {
+		model = p.Model
+	}
+
 	body := ChatRequest{
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
-		Model:       normalizeQuant(req.Model),
+		Model:       model,
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		CachePrompt: p.CacheEnabled,
@@ -149,7 +154,7 @@ func (p *Provider) Complete(ctx context.Context, req api.CompletionRequest) (*ap
 	if err != nil {
 		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -193,10 +198,15 @@ func (p *Provider) Stream(ctx context.Context, req api.CompletionRequest) (api.S
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
 
+	model := req.Model
+	if model == "" {
+		model = p.Model
+	}
+
 	body := ChatRequest{
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
-		Model:       normalizeQuant(req.Model),
+		Model:       model,
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		Stream:      true,
