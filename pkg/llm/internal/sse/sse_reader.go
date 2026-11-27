@@ -174,37 +174,42 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 				}
 			}
 			// Extract timings
+			log.Printf("[llm][%s] Checking timings map: exists=%v", s.providerName, delta["timings"] != nil)
 			if timingsMap, ok := delta["timings"].(map[string]interface{}); ok {
+				log.Printf("[llm][%s] Timings map extracted successfully, keys: %v", s.providerName, getMapKeys(timingsMap))
 				if s.usage == nil {
 					s.usage = &api.Usage{}
 				}
-				if cacheN, ok := timingsMap["cache_n"].(float64); ok {
+				if cacheN, ok := extractFloat(timingsMap, "cache_n"); ok {
 					s.usage.CacheN = int(cacheN)
 				}
-				if promptN, ok := timingsMap["prompt_n"].(float64); ok {
+				if promptN, ok := extractFloat(timingsMap, "prompt_n"); ok {
 					s.usage.PromptN = int(promptN)
 				}
-				if predictN, ok := timingsMap["predicted_n"].(float64); ok {
+				if predictN, ok := extractFloat(timingsMap, "predicted_n"); ok {
 					s.usage.PredictN = int(predictN)
 				}
-				if promptMS, ok := timingsMap["prompt_ms"].(float64); ok {
+				if promptMS, ok := extractFloat(timingsMap, "prompt_ms"); ok {
 					s.usage.PromptMS = promptMS
 				}
-				if predictMS, ok := timingsMap["predicted_ms"].(float64); ok {
+				if predictMS, ok := extractFloat(timingsMap, "predicted_ms"); ok {
 					s.usage.PredictMS = predictMS
 				}
-				if promptPerTokenMS, ok := timingsMap["prompt_per_token_ms"].(float64); ok {
+				if promptPerTokenMS, ok := extractFloat(timingsMap, "prompt_per_token_ms"); ok {
 					s.usage.PromptPerTokenMS = promptPerTokenMS
 				}
-				if predictPerTokenMS, ok := timingsMap["predicted_per_token_ms"].(float64); ok {
+				if predictPerTokenMS, ok := extractFloat(timingsMap, "predicted_per_token_ms"); ok {
 					s.usage.PredictPerTokenMS = predictPerTokenMS
 				}
-				if promptPerSecond, ok := timingsMap["prompt_per_second"].(float64); ok {
+				if promptPerSecond, ok := extractFloat(timingsMap, "prompt_per_second"); ok {
 					s.usage.PromptPerSecond = promptPerSecond
 				}
-				if predictPerSecond, ok := timingsMap["predicted_per_second"].(float64); ok {
+				if predictPerSecond, ok := extractFloat(timingsMap, "predicted_per_second"); ok {
 					s.usage.PredictPerSecond = predictPerSecond
 				}
+				log.Printf("[llm][%s] Timings extracted: CacheN=%d PromptN=%d PredictN=%d PromptMS=%f PredictMS=%f", s.providerName, s.usage.CacheN, s.usage.PromptN, s.usage.PredictN, s.usage.PromptMS, s.usage.PredictMS)
+			} else {
+				log.Printf("[llm][%s] Failed to extract timings map from delta", s.providerName)
 			}
 			chunk.FinishReason = "[done]"
 			if s.usage != nil {
@@ -281,31 +286,31 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 				if s.usage == nil {
 					s.usage = &api.Usage{}
 				}
-				if cacheN, ok := timingsMap["cache_n"].(float64); ok {
+				if cacheN, ok := extractFloat(timingsMap, "cache_n"); ok {
 					s.usage.CacheN = int(cacheN)
 				}
-				if promptN, ok := timingsMap["prompt_n"].(float64); ok {
+				if promptN, ok := extractFloat(timingsMap, "prompt_n"); ok {
 					s.usage.PromptN = int(promptN)
 				}
-				if predictN, ok := timingsMap["predicted_n"].(float64); ok {
+				if predictN, ok := extractFloat(timingsMap, "predicted_n"); ok {
 					s.usage.PredictN = int(predictN)
 				}
-				if promptMS, ok := timingsMap["prompt_ms"].(float64); ok {
+				if promptMS, ok := extractFloat(timingsMap, "prompt_ms"); ok {
 					s.usage.PromptMS = promptMS
 				}
-				if predictMS, ok := timingsMap["predicted_ms"].(float64); ok {
+				if predictMS, ok := extractFloat(timingsMap, "predicted_ms"); ok {
 					s.usage.PredictMS = predictMS
 				}
-				if promptPerTokenMS, ok := timingsMap["prompt_per_token_ms"].(float64); ok {
+				if promptPerTokenMS, ok := extractFloat(timingsMap, "prompt_per_token_ms"); ok {
 					s.usage.PromptPerTokenMS = promptPerTokenMS
 				}
-				if predictPerTokenMS, ok := timingsMap["predicted_per_token_ms"].(float64); ok {
+				if predictPerTokenMS, ok := extractFloat(timingsMap, "predicted_per_token_ms"); ok {
 					s.usage.PredictPerTokenMS = predictPerTokenMS
 				}
-				if promptPerSecond, ok := timingsMap["prompt_per_second"].(float64); ok {
+				if promptPerSecond, ok := extractFloat(timingsMap, "prompt_per_second"); ok {
 					s.usage.PromptPerSecond = promptPerSecond
 				}
-				if predictPerSecond, ok := timingsMap["predicted_per_second"].(float64); ok {
+				if predictPerSecond, ok := extractFloat(timingsMap, "predicted_per_second"); ok {
 					s.usage.PredictPerSecond = predictPerSecond
 				}
 			}
@@ -343,4 +348,35 @@ func readSSELine(r io.Reader) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// getMapKeys returns the keys of a map[string]interface{}.
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// extractFloat extracts a float64 value from a map[string]interface{} by key.
+func extractFloat(m map[string]interface{}, key string) (float64, bool) {
+	val, ok := m[key]
+	if !ok {
+		return 0, false
+	}
+	switch v := val.(type) {
+	case float64:
+		return v, true
+	case int:
+		return float64(v), true
+	case json.Number:
+		f, err := v.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
 }
