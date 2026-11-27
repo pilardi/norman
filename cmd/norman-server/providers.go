@@ -1,16 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/norman/norman/pkg/config"
@@ -528,77 +524,20 @@ func (s *server) VerifyProviderConfig(c echo.Context) error {
 
 // quickCompletion sends a minimal completion request to test the provider's inference.
 func quickCompletion(p *config.ProviderConfig) (*llm.CompletionResponse, error) {
-	// For llamacpp provider, use the native /completion endpoint with prompt format.
-	if p.Type == "llamacpp" {
-		// Build prompt from messages
-		prompt := "System: You are a helpful assistant. Reply with exactly 'OK' and nothing else.\nUser: Say OK\n"
-
-		// Normalize quantization string (inline normalizeQuant logic)
-		model := p.Model
-		if idx := strings.LastIndex(model, ":"); idx >= 0 {
-			name := model[:idx]
-			quant := model[idx+1:]
-			if !strings.HasPrefix(quant, "UD-") {
-				model = name + ":UD-" + quant
-			}
-		}
-
-		req := map[string]interface{}{
-			"prompt":      prompt,
-			"n_predict":   10,
-			"model":       model,
-			"temperature": p.Temperature,
-		}
-
-		payload, err := json.Marshal(req)
-		if err != nil {
-			return nil, fmt.Errorf("marshal request body: %w", err)
-		}
-
-		url := p.Endpoint + "/completion"
-		reqHTTP, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(payload))
-		if err != nil {
-			return nil, fmt.Errorf("create request: %w", err)
-		}
-
-		reqHTTP.Header.Set("Content-Type", "application/json")
-
-		httpClient := &http.Client{Timeout: 30 * time.Second}
-		resp, err := httpClient.Do(reqHTTP)
-		if err != nil {
-			return nil, fmt.Errorf("HTTP request failed: %w", err)
-		}
-		defer resp.Body.Close()
-
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("read response body: %w", err)
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-		}
-
-		var chatResp struct {
-			Content    string `json:"content"`
-			StopReason string `json:"stop_reason,omitempty"`
-		}
-		if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
-			return nil, fmt.Errorf("parse response: %w", err)
-		}
-
-		return &llm.CompletionResponse{
-			ID:           "",
-			Model:        p.Model,
-			Message:      llm.Message{Role: "assistant", Content: chatResp.Content},
-			FinishReason: chatResp.StopReason,
-			RawJSON:      bodyBytes,
-		}, nil
+	// Create a minimal workspace config for the provider
+	wsCfg := &config.WorkspaceConfig{
+		Model:       p.Model,
+		Temperature: p.Temperature,
+		MaxTokens:   p.MaxTokens,
 	}
 
-	// For OpenAI-compatible providers, use the /v1/chat/completions endpoint with messages format.
-	client := llm.NewClientWithProvider(p)
-	resp, err := client.Complete(context.Background(), llm.CompletionRequest{
+	// Get the provider client adapter using the abstraction
+	provider, err := llm.NewProviderClient(p, wsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	resp, err := provider.Complete(context.Background(), llm.CompletionRequest{
 		Messages: []llm.Message{
 			{Role: "system", Content: "You are a helpful assistant. Reply with exactly 'OK' and nothing else."},
 			{Role: "user", Content: "Say OK"},

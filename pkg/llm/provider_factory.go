@@ -47,6 +47,13 @@ func GetProviderByName(sysCfg *config.SystemConfig, name string) (*ClientAdapter
 	return newProvider(name, provCfg, config.DefaultWorkspaceConfig())
 }
 
+// NewProviderClient creates an LLM client adapter from a provider config and workspace config.
+// This is used by external code (like server verification) that needs to create a provider
+// client without a full system configuration.
+func NewProviderClient(provCfg *config.ProviderConfig, wsCfg *config.WorkspaceConfig) (*ClientAdapter, error) {
+	return newProvider(provCfg.Name, provCfg, wsCfg)
+}
+
 // newProvider creates an LLM client adapter from a resolved provider config
 // and workspace configuration. It selects the appropriate backend
 // implementation based on provCfg.Type.
