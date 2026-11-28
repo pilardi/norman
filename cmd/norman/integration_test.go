@@ -181,10 +181,10 @@ func mockLLMServerHandler() *http.Server {
 			w.Header().Set("Cache-Control", "no-cache")
 			w.Header().Set("Connection", "keep-alive")
 
-			// Send SSE response
-			sseResponse := `data: {"content": "Mock LLM response for testing.","stop_reason": "stop"}
+			// Send SSE response in native llama.cpp /completion format
+			sseResponse := `data: {"index":0,"content":"Mock LLM response for testing.","tokens":[],"id_slot":3,"stop":false,"stop_type":"stop","content_type":"text"}
 
-data: [DONE]
+data: {"index":0,"content":"","tokens":[],"id_slot":3,"stop":true,"stop_type":"stop","content_type":"stop"}
 
 `
 			_, _ = w.Write([]byte(sseResponse))
