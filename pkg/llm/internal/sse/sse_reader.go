@@ -2,10 +2,9 @@
 package sse
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -14,13 +13,13 @@ import (
 )
 
 // sseStreamReader yields incremental chunks from a streaming SSE response.
-// It handles both OpenAI-compatible SSE format (with choices, usage, timings, reasoning_content, tool_calls)
-// and native llama.cpp /completion SSE format (with content, stop_reason, tokens_evaluated, tokens_cached, timings).
+// It handles OpenAI-compatible SSE format (with choices, usage, timings, reasoning_content, tool_calls).
 type sseStreamReader struct {
 	resp         *http.Response
 	done         chan struct{}
 	providerName string
 	usage        *api.Usage // accumulated usage from SSE stream
+	scanner      *bufio.Scanner
 }
 
 // NewStreamReader creates a new SSE stream reader.
@@ -29,19 +28,13 @@ func NewStreamReader(resp *http.Response, providerName string) api.StreamReader 
 		resp:         resp,
 		done:         make(chan struct{}),
 		providerName: providerName,
+		scanner:      bufio.NewScanner(resp.Body),
 	}
 }
 
 func (s *sseStreamReader) Next() (api.Chunk, error) {
-	for {
-		line, err := readSSELine(s.resp.Body)
-		if err != nil {
-			// Handle EOF gracefully
-			if err == io.EOF {
-				return api.Chunk{FinishReason: "[done]"}, nil
-			}
-			return api.Chunk{}, fmt.Errorf("read SSE: %w", err)
-		}
+	for s.scanner.Scan() {
+		line := s.scanner.Text()
 		if line == "" {
 			continue // empty line between events
 		}
@@ -66,75 +59,6 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 		// Try parsing as JSON
 		var delta map[string]interface{}
 		if err := json.Unmarshal([]byte(rawData), &delta); err != nil {
-			// Try parsing as native llama.cpp format
-			var nativeResp struct {
-				Content         string `json:"content"`
-				StopReason      string `json:"stop_reason,omitempty"`
-				TokensEvaluated int    `json:"tokens_evaluated,omitempty"`
-				TokensCached    int    `json:"tokens_cached,omitempty"`
-				Timings         *struct {
-					PromptN          int     `json:"prompt_n,omitempty"`
-					PredictN         int     `json:"predict_n,omitempty"`
-					PromptMS         float64 `json:"prompt_ms,omitempty"`
-					PredictMS        float64 `json:"predict_ms,omitempty"`
-					PromptPerToken   float64 `json:"prompt_per_token_ms,omitempty"`
-					PredictPerToken  float64 `json:"predicted_per_token_ms,omitempty"`
-					PromptPerSecond  float64 `json:"prompt_per_second,omitempty"`
-					PredictPerSecond float64 `json:"predicted_per_second,omitempty"`
-					CacheN           int     `json:"cache_n,omitempty"`
-				} `json:"timings,omitempty"`
-			}
-			if err2 := json.Unmarshal([]byte(rawData), &nativeResp); err2 == nil {
-				chunk := api.Chunk{FinishReason: nativeResp.StopReason}
-				if nativeResp.Content != "" {
-					chunk.Delta = nativeResp.Content
-					log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
-				} else if nativeResp.StopReason != "" {
-					// Final chunk with token usage
-					log.Printf("[llm][%s] SSE parsed (native final): stop_reason=%q tokens_evaluated=%d tokens_cached=%d", s.providerName, nativeResp.StopReason, nativeResp.TokensEvaluated, nativeResp.TokensCached)
-
-					s.usage = &api.Usage{}
-					promptTokens := nativeResp.TokensEvaluated
-					if promptTokens == 0 && nativeResp.Timings != nil {
-						promptTokens = nativeResp.Timings.PromptN
-					}
-
-					completionTokens := 0
-					if nativeResp.TokensEvaluated > 0 && nativeResp.TokensCached > 0 {
-						completionTokens = nativeResp.TokensEvaluated - nativeResp.TokensCached
-					} else if nativeResp.Timings != nil && nativeResp.Timings.PredictN > 0 {
-						completionTokens = nativeResp.Timings.PredictN
-					}
-
-					totalTokens := promptTokens + completionTokens
-					if totalTokens > 0 {
-						s.usage.PromptTokens = promptTokens
-						s.usage.CompletionTokens = completionTokens
-						s.usage.TotalTokens = totalTokens
-						s.usage.CachedTokens = nativeResp.TokensCached
-
-						// Populate timing fields
-						if nativeResp.Timings != nil {
-							s.usage.CacheN = nativeResp.Timings.CacheN
-							s.usage.PromptN = nativeResp.Timings.PromptN
-							s.usage.PredictN = nativeResp.Timings.PredictN
-							s.usage.PromptMS = nativeResp.Timings.PromptMS
-							s.usage.PredictMS = nativeResp.Timings.PredictMS
-							s.usage.PromptPerTokenMS = nativeResp.Timings.PromptPerToken
-							s.usage.PredictPerTokenMS = nativeResp.Timings.PredictPerToken
-							s.usage.PromptPerSecond = nativeResp.Timings.PromptPerSecond
-							s.usage.PredictPerSecond = nativeResp.Timings.PredictPerSecond
-						}
-
-						log.Printf("[llm][%s] SSE parsed (native final) usage: prompt=%d completion=%d total=%d cached=%d", s.providerName, promptTokens, completionTokens, totalTokens, nativeResp.TokensCached)
-					}
-				}
-				if s.usage != nil {
-					chunk.Usage = s.usage
-				}
-				return chunk, nil
-			}
-
 			// Do not silently skip — log the full raw data for debugging.
 			log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, rawData)
 			return api.Chunk{}, fmt.Errorf("SSE parse error: %w", err)
@@ -316,38 +240,24 @@ func (s *sseStreamReader) Next() (api.Chunk, error) {
 			}
 		}
 
-		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls))
+		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q tool_calls=%d reasoning_content=%q", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls), chunk.ReasoningContent)
 
 		return chunk, nil
 	}
+	if err := s.scanner.Err(); err != nil {
+		return api.Chunk{}, fmt.Errorf("scanner error: %w", err)
+	}
+	return api.Chunk{FinishReason: "[done]"}, nil
 }
 
 func (s *sseStreamReader) Close() error {
-	_ = s.resp.Body.Close()
+	if s.resp != nil && s.resp.Body != nil {
+		return s.resp.Body.Close()
+	}
 	if s.done != nil {
 		close(s.done)
 	}
 	return nil
-}
-
-// readSSELine reads a single SSE event line from the response body.
-func readSSELine(r io.Reader) (string, error) {
-	buf := make([]byte, 4096)
-	n, err := r.Read(buf)
-	if err != nil {
-		return "", err
-	}
-	data := buf[:n]
-	// Split on newlines and return the last non-empty segment.
-	// This handles cases where [DONE] is concatenated with the preceding data chunk.
-	parts := bytes.Split(data, []byte("\n"))
-	for i := len(parts) - 1; i >= 0; i-- {
-		line := string(bytes.TrimSpace(parts[i]))
-		if line != "" {
-			return line, nil
-		}
-	}
-	return "", nil
 }
 
 // getMapKeys returns the keys of a map[string]interface{}.
