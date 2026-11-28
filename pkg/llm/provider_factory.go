@@ -47,6 +47,13 @@ func GetProviderByName(sysCfg *config.SystemConfig, name string) (*ClientAdapter
 	return newProvider(name, provCfg, config.DefaultWorkspaceConfig())
 }
 
+// NewProviderClient creates an LLM client adapter from a provider config and workspace config.
+// This is used by external code (like server verification) that needs to create a provider
+// client without a full system configuration.
+func NewProviderClient(provCfg *config.ProviderConfig, wsCfg *config.WorkspaceConfig) (*ClientAdapter, error) {
+	return newProvider(provCfg.Name, provCfg, wsCfg)
+}
+
 // newProvider creates an LLM client adapter from a resolved provider config
 // and workspace configuration. It selects the appropriate backend
 // implementation based on provCfg.Type.
@@ -70,6 +77,7 @@ func newProvider(name string, provCfg *config.ProviderConfig, wsCfg *config.Work
 func newLlamaCPPProvider(name string, provCfg *config.ProviderConfig, wsCfg *config.WorkspaceConfig) (*ClientAdapter, error) {
 	// Build type-specific config from Extra map.
 	llmCfg := llamacpp.DefaultConfig()
+	llmCfg.BaseURL = provCfg.Endpoint
 	if v, ok := provCfg.Extra["cache_size"].(float64); ok {
 		llmCfg.CacheSize = int(v)
 	}

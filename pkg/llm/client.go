@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/norman/norman/pkg/config"
+	"github.com/norman/norman/pkg/llm/internal/sse"
 	"github.com/norman/norman/pkg/protocol"
 )
 
@@ -187,11 +188,7 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (StreamReade
 		return nil, wrapError(ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return &sseStreamReader{
-		resp:         resp,
-		done:         make(chan struct{}),
-		providerName: c.ProviderName,
-	}, nil
+	return sse.NewStreamReader(resp, c.ProviderName), nil
 }
 
 // ProviderInfo returns metadata about the underlying provider.
@@ -216,181 +213,6 @@ func (c *Client) Logf(format string, args ...any) {
 		name = string(protocol.ProviderConfigTypeOpenai)
 	}
 	log.Printf("[llm][%s] "+format, append([]any{name}, args...)...)
-}
-
-// --- SSE Streaming Reader ---
-
-type sseStreamReader struct {
-	resp         *http.Response
-	done         chan struct{}
-	providerName string
-	usage        *Usage // accumulated usage from SSE stream
-}
-
-func (s *sseStreamReader) Next() (Chunk, error) {
-	for {
-		line, err := readSSELine(s.resp.Body)
-		if err != nil {
-			return Chunk{}, fmt.Errorf("read SSE: %w", err)
-		}
-		if line == "" {
-			continue // empty line between events
-		}
-
-		if line == "data: [DONE]" {
-			chunk := Chunk{FinishReason: "[done]"}
-			if s.usage != nil {
-				chunk.Usage = s.usage
-			}
-			return chunk, nil
-		}
-
-		if !bytes.HasPrefix([]byte(line), []byte("data: ")) {
-			continue
-		}
-
-		data := bytes.TrimPrefix([]byte(line), []byte("data: "))
-
-		// Debug: expose raw SSE data for troubleshooting.
-		log.Printf("[llm][%s] SSE raw data: %s", s.providerName, string(data))
-
-		var delta map[string]interface{}
-		if err := json.Unmarshal(data, &delta); err != nil {
-			// Do not silently skip — log the full raw data for debugging.
-			// A malformed line often indicates a request schema issue (e.g., invalid tool_calls format)
-			// rather than a provider-side quirk.
-			log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, string(data))
-			return Chunk{}, fmt.Errorf("SSE parse error: %w", err)
-		}
-
-		// Debug: show actual JSON keys to diagnose parser mismatch.
-		keys := make([]string, 0, len(delta))
-		for k := range delta {
-			keys = append(keys, k)
-		}
-		log.Printf("[llm][%s] SSE delta keys: %v", s.providerName, keys)
-
-		chunk := Chunk{}
-
-		// OpenAI SSE format: {"choices":[{"delta":{"content":"...","tool_calls":[...]},"finish_reason":null}]}
-		if choices, ok := delta["choices"].([]interface{}); ok && len(choices) > 0 {
-			if choice, ok := choices[0].(map[string]interface{}); ok {
-				if deltaMap, ok := choice["delta"].(map[string]interface{}); ok {
-					if content, ok := deltaMap["content"].(string); ok {
-						chunk.Delta = content
-					}
-					// Extract reasoning/thinking content (for models like o1/o3 that support it).
-					if reasoning, ok := deltaMap["reasoning_content"].(string); ok {
-						chunk.ReasoningContent = reasoning
-					}
-					// Extract tool calls from delta.tool_calls array.
-					if tcArr, ok := deltaMap["tool_calls"].([]interface{}); ok && len(tcArr) > 0 {
-						for _, tcRaw := range tcArr {
-							tcMap, ok := tcRaw.(map[string]interface{})
-							if !ok {
-								continue
-							}
-							id, _ := tcMap["id"].(string)
-							fnRaw, _ := tcMap["function"].(map[string]interface{})
-							name, _ := fnRaw["name"].(string)
-							// Arguments are normally a JSON string; handle map if provider returns parsed object.
-							argsRaw, ok := fnRaw["arguments"].(string)
-							if !ok {
-								if m, ok := fnRaw["arguments"].(map[string]interface{}); ok {
-									b, _ := json.Marshal(m)
-									argsRaw = string(b)
-								}
-							}
-							chunk.ToolCalls = append(chunk.ToolCalls, ToolCall{
-								ID:        id,
-								Name:      name,
-								Arguments: json.RawMessage(argsRaw),
-							})
-						}
-					}
-				}
-				if fr, ok := choice["finish_reason"].(string); ok {
-					chunk.FinishReason = fr
-				}
-			}
-		}
-
-		// Extract usage from SSE event if present at root level or in choices
-		if usageMap, ok := delta["usage"].(map[string]interface{}); ok {
-			s.usage = &Usage{}
-			if promptTokens, ok := usageMap["prompt_tokens"].(float64); ok {
-				s.usage.PromptTokens = int(promptTokens)
-			}
-			if completionTokens, ok := usageMap["completion_tokens"].(float64); ok {
-				s.usage.CompletionTokens = int(completionTokens)
-			}
-			if totalTokens, ok := usageMap["total_tokens"].(float64); ok {
-				s.usage.TotalTokens = int(totalTokens)
-			}
-			// Extract cached_tokens from usage or prompt_tokens_details
-			if cachedTokens, ok := usageMap["cached_tokens"].(float64); ok {
-				s.usage.CachedTokens = int(cachedTokens)
-			} else if promptTokensDetails, ok := usageMap["prompt_tokens_details"].(map[string]interface{}); ok {
-				if cachedTokens, ok := promptTokensDetails["cached_tokens"].(float64); ok {
-					s.usage.CachedTokens = int(cachedTokens)
-				}
-			}
-		} else if choices, ok := delta["choices"].([]interface{}); ok && len(choices) > 0 {
-			// Check if usage is embedded in the choices object
-			if choice, ok := choices[0].(map[string]interface{}); ok {
-				if usageMap, ok := choice["usage"].(map[string]interface{}); ok {
-					s.usage = &Usage{}
-					if promptTokens, ok := usageMap["prompt_tokens"].(float64); ok {
-						s.usage.PromptTokens = int(promptTokens)
-					}
-					if completionTokens, ok := usageMap["completion_tokens"].(float64); ok {
-						s.usage.CompletionTokens = int(completionTokens)
-					}
-					if totalTokens, ok := usageMap["total_tokens"].(float64); ok {
-						s.usage.TotalTokens = int(totalTokens)
-					}
-					// Extract cached_tokens from usage or prompt_tokens_details
-					if cachedTokens, ok := usageMap["cached_tokens"].(float64); ok {
-						s.usage.CachedTokens = int(cachedTokens)
-					} else if promptTokensDetails, ok := usageMap["prompt_tokens_details"].(map[string]interface{}); ok {
-						if cachedTokens, ok := promptTokensDetails["cached_tokens"].(float64); ok {
-							s.usage.CachedTokens = int(cachedTokens)
-						}
-					}
-				}
-			}
-		}
-
-		log.Printf("[llm][%s] SSE parsed: delta=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ToolCalls))
-
-		return chunk, nil
-	}
-}
-
-func (s *sseStreamReader) Close() error {
-	_ = s.resp.Body.Close()
-	close(s.done)
-	return nil
-}
-
-// readSSELine reads a single SSE event line from the response body.
-func readSSELine(r io.Reader) (string, error) {
-	buf := make([]byte, 4096)
-	n, err := r.Read(buf)
-	if err != nil {
-		return "", err
-	}
-	data := buf[:n]
-	// Split on newlines and return the last non-empty segment.
-	// This handles cases where [DONE] is concatenated with the preceding data chunk.
-	parts := bytes.Split(data, []byte("\n"))
-	for i := len(parts) - 1; i >= 0; i-- {
-		line := string(bytes.TrimSpace(parts[i]))
-		if line != "" {
-			return line, nil
-		}
-	}
-	return "", nil
 }
 
 // --- Helpers ---

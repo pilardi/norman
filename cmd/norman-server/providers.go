@@ -524,8 +524,20 @@ func (s *server) VerifyProviderConfig(c echo.Context) error {
 
 // quickCompletion sends a minimal completion request to test the provider's inference.
 func quickCompletion(p *config.ProviderConfig) (*llm.CompletionResponse, error) {
-	client := llm.NewClientWithProvider(p)
-	resp, err := client.Complete(context.Background(), llm.CompletionRequest{
+	// Create a minimal workspace config for the provider
+	wsCfg := &config.WorkspaceConfig{
+		Model:       p.Model,
+		Temperature: p.Temperature,
+		MaxTokens:   p.MaxTokens,
+	}
+
+	// Get the provider client adapter using the abstraction
+	provider, err := llm.NewProviderClient(p, wsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	resp, err := provider.Complete(context.Background(), llm.CompletionRequest{
 		Messages: []llm.Message{
 			{Role: "system", Content: "You are a helpful assistant. Reply with exactly 'OK' and nothing else."},
 			{Role: "user", Content: "Say OK"},

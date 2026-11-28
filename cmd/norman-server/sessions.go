@@ -318,7 +318,12 @@ func (s *server) SendMessage(c echo.Context, id string) error {
 	// Use SendMessage to pass the provider override into the task.
 	resp, err := s.loop.SendMessage(ctx, id, req.Message, req.Provider)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		errMsg := err.Error()
+		// Check if the error is due to context cancellation (client closed request)
+		if strings.Contains(errMsg, "context canceled") || strings.Contains(errMsg, "context is canceled") {
+			return c.JSON(499, map[string]string{"error": "request cancelled by client"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": errMsg})
 	}
 
 	log.Printf("server: sendMessage response for session %s - response_len=%d, token_usage=%+v", id, len(resp.Response), resp.TokenUsage)

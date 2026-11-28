@@ -1269,6 +1269,10 @@ components:
         response:
           type: string
           description: Agent's text response
+        thinking_content:
+          type: string
+          nullable: true
+          description: Thinking or reasoning content from the LLM (if available)
         tools_used:
           type: array
           items:
@@ -1330,6 +1334,42 @@ components:
           type: integer
         total_tokens:
           type: integer
+        cached_tokens:
+          type: integer
+          nullable: true
+        prompt_n:
+          type: integer
+          nullable: true
+        predicted_n:
+          type: integer
+          nullable: true
+        prompt_ms:
+          type: number
+          format: double
+          nullable: true
+        predicted_ms:
+          type: number
+          format: double
+          nullable: true
+        prompt_per_token_ms:
+          type: number
+          format: double
+          nullable: true
+        predicted_per_token_ms:
+          type: number
+          format: double
+          nullable: true
+        prompt_per_second:
+          type: number
+          format: double
+          nullable: true
+        predicted_per_second:
+          type: number
+          format: double
+          nullable: true
+        cache_n:
+          type: integer
+          nullable: true
 
     RichOutput:
       type: object

@@ -4,6 +4,7 @@
 package llamacpp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -121,10 +122,15 @@ func (p *Provider) Complete(ctx context.Context, req api.CompletionRequest) (*ap
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
 
+	model := req.Model
+	if model == "" {
+		model = p.Model
+	}
+
 	body := ChatRequest{
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
-		Model:       normalizeQuant(req.Model),
+		Model:       model,
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		CachePrompt: p.CacheEnabled,
@@ -148,7 +154,7 @@ func (p *Provider) Complete(ctx context.Context, req api.CompletionRequest) (*ap
 	if err != nil {
 		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("HTTP request failed: %w", err))
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -192,10 +198,15 @@ func (p *Provider) Stream(ctx context.Context, req api.CompletionRequest) (api.S
 		p.HTTPClient = &http.Client{Timeout: p.Timeout}
 	}
 
+	model := req.Model
+	if model == "" {
+		model = p.Model
+	}
+
 	body := ChatRequest{
 		Prompt:      buildPrompt(req.Messages),
 		NPredict:    req.MaxTokens,
-		Model:       normalizeQuant(req.Model),
+		Model:       model,
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
 		Stream:      true,
@@ -228,7 +239,7 @@ func (p *Provider) Stream(ctx context.Context, req api.CompletionRequest) (api.S
 		return nil, wrapError(api.ErrProviderDown, fmt.Errorf("provider returned HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return &sseStreamReader{resp: resp, providerName: p.providerName}, nil
+	return newLlamaCPPStreamReader(resp, p.providerName), nil
 }
 
 // EmbedText returns a float32 vector for the given text.
@@ -318,146 +329,6 @@ func (p *Provider) Logf(format string, args ...any) {
 	log.Printf("[llm][%s] "+format, append([]any{p.providerName}, args...)...)
 }
 
-// --- SSE Streaming Reader ---
-
-type sseStreamReader struct {
-	resp         *http.Response
-	providerName string
-}
-
-func (s *sseStreamReader) Next() (api.Chunk, error) {
-	buf := make([]byte, 4096)
-	n, err := s.resp.Body.Read(buf)
-	if err != nil {
-		return api.Chunk{}, fmt.Errorf("read SSE: %w", err)
-	}
-
-	data := buf[:n]
-	// Split on newlines and return the last non-empty segment.
-	// This handles cases where [DONE] is concatenated with the preceding data chunk.
-	parts := bytes.Split(data, []byte("\n"))
-	var rawData string
-	for i := len(parts) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(string(parts[i]))
-		if line == "" || line == "data: [DONE]" {
-			return api.Chunk{FinishReason: "[done]"}, nil
-		}
-		if !strings.HasPrefix(line, "data: ") {
-			continue // skip non-data lines
-		}
-		rawData = strings.TrimPrefix(line, "data: ")
-		break
-	}
-
-	// Debug: expose raw SSE data for troubleshooting.
-	log.Printf("[llm][%s] SSE raw data: %s", s.providerName, rawData)
-
-	// Native /completion format: {"content":"...","stop_reason":"..."} or final chunk with token usage
-	var nativeResp struct {
-		Content         string `json:"content"`
-		StopReason      string `json:"stop_reason,omitempty"`
-		TokensEvaluated int    `json:"tokens_evaluated,omitempty"`
-		TokensCached    int    `json:"tokens_cached,omitempty"`
-		Timings         *struct {
-			PromptN   int `json:"prompt_n,omitempty"`
-			PredictN  int `json:"predict_n,omitempty"`
-			PromptMS  int `json:"prompt_ms,omitempty"`
-			PredictMS int `json:"predict_ms,omitempty"`
-		} `json:"timings,omitempty"`
-	}
-	if err := json.Unmarshal([]byte(rawData), &nativeResp); err == nil {
-		chunk := api.Chunk{FinishReason: nativeResp.StopReason}
-		if nativeResp.Content != "" {
-			chunk.Delta = nativeResp.Content
-			log.Printf("[llm][%s] SSE parsed (native): content=%q stop_reason=%q", s.providerName, nativeResp.Content, nativeResp.StopReason)
-		} else if nativeResp.StopReason != "" {
-			// Final chunk with token usage
-			log.Printf("[llm][%s] SSE parsed (native final): stop_reason=%q tokens_evaluated=%d tokens_cached=%d", s.providerName, nativeResp.StopReason, nativeResp.TokensEvaluated, nativeResp.TokensCached)
-
-			// Extract token usage from tokens_evaluated/tokens_cached or timings
-			promptTokens := nativeResp.TokensEvaluated
-			if promptTokens == 0 && nativeResp.Timings != nil {
-				promptTokens = nativeResp.Timings.PromptN
-			}
-
-			completionTokens := 0
-			if nativeResp.TokensEvaluated > 0 && nativeResp.TokensCached > 0 {
-				completionTokens = nativeResp.TokensEvaluated - nativeResp.TokensCached
-			} else if nativeResp.Timings != nil && nativeResp.Timings.PredictN > 0 {
-				completionTokens = nativeResp.Timings.PredictN
-			}
-
-			totalTokens := promptTokens + completionTokens
-			if totalTokens > 0 {
-				chunk.Usage = &api.Usage{
-					PromptTokens:     promptTokens,
-					CompletionTokens: completionTokens,
-					TotalTokens:      totalTokens,
-					CachedTokens:     nativeResp.TokensCached,
-				}
-				log.Printf("[llm][%s] SSE parsed (native final) usage: prompt=%d completion=%d total=%d cached=%d", s.providerName, promptTokens, completionTokens, totalTokens, nativeResp.TokensCached)
-			}
-		}
-		return chunk, nil
-	}
-
-	// Fallback to OpenAI-compatible format for backward compat
-	var delta map[string]interface{}
-	if err := json.Unmarshal([]byte(rawData), &delta); err == nil {
-		chunk := api.Chunk{}
-		if msg, ok := delta["message"].(map[string]interface{}); ok {
-			if content, ok := msg["content"].(string); ok {
-				chunk.Delta = content
-			}
-		}
-		// Extract reasoning/thinking content (for models that support it).
-		if reasoning, ok := delta["reasoning_content"].(string); ok {
-			chunk.ReasoningContent = reasoning
-		}
-		if fr, ok := delta["finish_reason"].(string); ok {
-			chunk.FinishReason = fr
-		}
-		// Extract tool calls from delta.tool_calls array.
-		if tcArr, ok := delta["tool_calls"].([]interface{}); ok && len(tcArr) > 0 {
-			for _, tcRaw := range tcArr {
-				tcMap, ok := tcRaw.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				id, _ := tcMap["id"].(string)
-				fnRaw, _ := tcMap["function"].(map[string]interface{})
-				name, _ := fnRaw["name"].(string)
-				// Arguments are normally a JSON string; handle map if provider returns parsed object.
-				argsRaw, ok := fnRaw["arguments"].(string)
-				if !ok {
-					if m, ok := fnRaw["arguments"].(map[string]interface{}); ok {
-						b, _ := json.Marshal(m)
-						argsRaw = string(b)
-					}
-				}
-				chunk.ToolCalls = append(chunk.ToolCalls, api.ToolCall{
-					ID:        id,
-					Name:      name,
-					Arguments: json.RawMessage(argsRaw),
-				})
-			}
-		}
-		log.Printf("[llm][%s] SSE parsed (OpenAI fallback): delta=%q reasoning=%q finish_reason=%q tool_calls=%d", s.providerName, chunk.Delta, chunk.ReasoningContent, chunk.FinishReason, len(chunk.ToolCalls))
-		return chunk, nil
-	}
-
-	// Do not silently skip — log the full raw data for debugging.
-	// A malformed line often indicates a request schema issue (e.g., invalid tool_calls format)
-	// rather than a provider-side quirk.
-	log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, data)
-	return api.Chunk{}, fmt.Errorf("SSE parse error: %w", err)
-}
-
-func (s *sseStreamReader) Close() error {
-	_ = s.resp.Body.Close()
-	return nil
-}
-
 // --- Helpers ---
 
 func mapHTTPError(statusCode int, body string) error {
@@ -534,4 +405,249 @@ func normalizeQuant(model string) string {
 		}
 	}
 	return model
+}
+
+// --- LlamaCPP SSE Stream Reader ---
+
+// llamacppStreamReader yields incremental chunks from a llama.cpp native /completion SSE response.
+// It handles the native llama.cpp /completion SSE format (with content, stop, stop_type, tokens_evaluated, tokens_cached, tokens_predicted, timings).
+type llamacppStreamReader struct {
+	resp             *http.Response
+	done             chan struct{}
+	providerName     string
+	usage            *api.Usage // accumulated usage from SSE stream
+	scanner          *bufio.Scanner
+	contentBuilder   strings.Builder
+	reasoningBuilder strings.Builder
+	inReasoning      bool
+	reasoningStarted bool
+}
+
+// newLlamaCPPStreamReader creates a new llama.cpp SSE stream reader.
+func newLlamaCPPStreamReader(resp *http.Response, providerName string) api.StreamReader {
+	return &llamacppStreamReader{
+		resp:         resp,
+		done:         make(chan struct{}),
+		providerName: providerName,
+		scanner:      bufio.NewScanner(resp.Body),
+	}
+}
+
+func (s *llamacppStreamReader) Next() (api.Chunk, error) {
+	for s.scanner.Scan() {
+		line := s.scanner.Text()
+		if line == "" {
+			continue // empty line between events
+		}
+
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		rawData := strings.TrimPrefix(line, "data: ")
+
+		// Debug: expose raw SSE data for troubleshooting.
+		log.Printf("[llm][%s] SSE raw data: %s", s.providerName, rawData)
+
+		// Try parsing as JSON
+		var delta map[string]interface{}
+		if err := json.Unmarshal([]byte(rawData), &delta); err != nil {
+			log.Printf("[llm][%s] SSE parse error: %v (raw: %q)", s.providerName, err, rawData)
+			return api.Chunk{}, fmt.Errorf("SSE parse error: %w", err)
+		}
+
+		// Debug: show actual JSON keys to diagnose parser mismatch.
+		keys := make([]string, 0, len(delta))
+		for k := range delta {
+			keys = append(keys, k)
+		}
+		log.Printf("[llm][%s] SSE delta keys: %v", s.providerName, keys)
+
+		chunk := api.Chunk{}
+
+		// Parse native llama.cpp format fields
+		var nativeResp struct {
+			Content         string `json:"content"`
+			StopType        string `json:"stop_type,omitempty"`
+			Stop            bool   `json:"stop,omitempty"`
+			TokensEvaluated int    `json:"tokens_evaluated,omitempty"`
+			TokensCached    int    `json:"tokens_cached,omitempty"`
+			TokensPredicted int    `json:"tokens_predicted,omitempty"`
+			Timings         *struct {
+				PromptN          int     `json:"prompt_n,omitempty"`
+				PredictN         int     `json:"predicted_n,omitempty"`
+				PromptMS         float64 `json:"prompt_ms,omitempty"`
+				PredictMS        float64 `json:"predicted_ms,omitempty"`
+				PromptPerToken   float64 `json:"prompt_per_token_ms,omitempty"`
+				PredictPerToken  float64 `json:"predicted_per_token_ms,omitempty"`
+				PromptPerSecond  float64 `json:"prompt_per_second,omitempty"`
+				PredictPerSecond float64 `json:"predicted_per_second,omitempty"`
+				CacheN           int     `json:"cache_n,omitempty"`
+			} `json:"timings,omitempty"`
+		}
+		if err := json.Unmarshal([]byte(rawData), &nativeResp); err != nil {
+			log.Printf("[llm][%s] SSE native parse error: %v (raw: %q)", s.providerName, err, rawData)
+			return api.Chunk{}, fmt.Errorf("SSE native parse error: %w", err)
+		}
+
+		// Determine stop reason
+		finishReason := ""
+		if nativeResp.StopType != "" {
+			finishReason = nativeResp.StopType
+		} else if nativeResp.Stop {
+			finishReason = "stop"
+		}
+
+		// Process content and extract reasoning/thinking content
+		if nativeResp.Content != "" {
+			content := nativeResp.Content
+
+			// Check for reasoning tags (llama.cpp reasoning format)
+			// Handle < think> ... < /think> or <thinking> ... </thinking> tags
+			hasReasoningStart := strings.Contains(content, "< think>") || strings.Contains(content, "<thinking>")
+
+			if hasReasoningStart && !s.reasoningStarted {
+				s.reasoningStarted = true
+				s.inReasoning = true
+			}
+
+			// Extract reasoning content
+			if strings.Contains(content, "< think>") {
+				parts := strings.Split(content, "< think>")
+				for i, part := range parts {
+					if i == 0 {
+						// Before first < think> tag - this is likely system prompt or initial content
+						if !s.inReasoning {
+							s.contentBuilder.WriteString(part)
+							chunk.Delta = part
+						}
+						continue
+					}
+					if strings.Contains(part, "< /think>") {
+						// End of reasoning content
+						partsSplit := strings.Split(part, "< /think>")
+						reasoningPart := partsSplit[0]
+						s.reasoningBuilder.WriteString(reasoningPart)
+						s.inReasoning = false
+
+						// Remaining content is the final response
+						remaining := ""
+						if len(partsSplit) > 1 {
+							remaining = partsSplit[1]
+						}
+						s.contentBuilder.WriteString(remaining)
+						chunk.Delta = remaining
+					} else {
+						s.reasoningBuilder.WriteString(part)
+						chunk.Delta = ""
+					}
+				}
+			} else if strings.Contains(content, "<thinking>") {
+				parts := strings.Split(content, "<thinking>")
+				for i, part := range parts {
+					if i == 0 {
+						if !s.inReasoning {
+							s.contentBuilder.WriteString(part)
+							chunk.Delta = part
+						}
+						continue
+					}
+					if strings.Contains(part, "</thinking>") {
+						reasoningPart := strings.Split(part, "</thinking>")[0]
+						s.reasoningBuilder.WriteString(reasoningPart)
+						s.inReasoning = false
+
+						remaining := ""
+						if len(strings.Split(part, "</thinking>")) > 1 {
+							remaining = strings.Split(part, "</thinking>")[1]
+						}
+						s.contentBuilder.WriteString(remaining)
+						chunk.Delta = remaining
+					} else {
+						s.reasoningBuilder.WriteString(part)
+						chunk.Delta = ""
+					}
+				}
+			} else {
+				// No reasoning tags in this chunk
+				if s.inReasoning {
+					// We're in reasoning mode but no tags - accumulate to reasoning
+					s.reasoningBuilder.WriteString(content)
+					chunk.Delta = ""
+				} else {
+					s.contentBuilder.WriteString(content)
+					chunk.Delta = content
+				}
+			}
+		} else if nativeResp.Stop || nativeResp.StopType != "" {
+			// Final chunk with token usage
+			log.Printf("[llm][%s] SSE parsed (native final): stop_type=%q tokens_evaluated=%d tokens_cached=%d tokens_predicted=%d", s.providerName, nativeResp.StopType, nativeResp.TokensEvaluated, nativeResp.TokensCached, nativeResp.TokensPredicted)
+
+			s.usage = &api.Usage{}
+			promptTokens := nativeResp.TokensEvaluated
+			if promptTokens == 0 && nativeResp.Timings != nil {
+				promptTokens = nativeResp.Timings.PromptN
+			}
+
+			completionTokens := 0
+			if nativeResp.TokensPredicted > 0 {
+				completionTokens = nativeResp.TokensPredicted
+			} else if nativeResp.TokensEvaluated > 0 && nativeResp.TokensCached > 0 {
+				completionTokens = nativeResp.TokensEvaluated - nativeResp.TokensCached
+			} else if nativeResp.Timings != nil && nativeResp.Timings.PredictN > 0 {
+				completionTokens = nativeResp.Timings.PredictN
+			}
+
+			totalTokens := promptTokens + completionTokens
+			if totalTokens > 0 {
+				s.usage.PromptTokens = promptTokens
+				s.usage.CompletionTokens = completionTokens
+				s.usage.TotalTokens = totalTokens
+				s.usage.CachedTokens = nativeResp.TokensCached
+
+				// Populate timing fields
+				if nativeResp.Timings != nil {
+					s.usage.CacheN = nativeResp.Timings.CacheN
+					s.usage.PromptN = nativeResp.Timings.PromptN
+					s.usage.PredictN = nativeResp.Timings.PredictN
+					s.usage.PromptMS = nativeResp.Timings.PromptMS
+					s.usage.PredictMS = nativeResp.Timings.PredictMS
+					s.usage.PromptPerTokenMS = nativeResp.Timings.PromptPerToken
+					s.usage.PredictPerTokenMS = nativeResp.Timings.PredictPerToken
+					s.usage.PromptPerSecond = nativeResp.Timings.PromptPerSecond
+					s.usage.PredictPerSecond = nativeResp.Timings.PredictPerSecond
+				}
+
+				log.Printf("[llm][%s] SSE parsed (native final) usage: prompt=%d completion=%d total=%d cached=%d", s.providerName, promptTokens, completionTokens, totalTokens, nativeResp.TokensCached)
+			}
+		}
+
+		chunk.FinishReason = finishReason
+		if s.usage != nil {
+			chunk.Usage = s.usage
+		}
+
+		// Set reasoning content if we have it
+		if s.reasoningBuilder.Len() > 0 {
+			chunk.ReasoningContent = s.reasoningBuilder.String()
+		}
+
+		log.Printf("[llm][%s] SSE parsed (llamacpp): delta=%q finish_reason=%q reasoning_content_len=%d", s.providerName, chunk.Delta, chunk.FinishReason, len(chunk.ReasoningContent))
+
+		return chunk, nil
+	}
+	if err := s.scanner.Err(); err != nil {
+		return api.Chunk{}, fmt.Errorf("scanner error: %w", err)
+	}
+	return api.Chunk{FinishReason: "[done]"}, nil
+}
+
+func (s *llamacppStreamReader) Close() error {
+	if s.resp != nil && s.resp.Body != nil {
+		return s.resp.Body.Close()
+	}
+	if s.done != nil {
+		close(s.done)
+	}
+	return nil
 }

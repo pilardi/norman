@@ -354,72 +354,427 @@ func (l *Loop) GetLogs(ctx context.Context, sessionId string) ([]string, error) 
 
 // AgentResponse represents the structured response from processing a chat message.
 type AgentResponse struct {
-	SessionID   string     `json:"session_id"`
-	Response    string     `json:"response,omitempty"`
-	ToolsUsed   []string   `json:"tools_used,omitempty"`
-	TaskCreated bool       `json:"task_created"`
-	TaskID      string     `json:"task_id,omitempty"`
-	TokenUsage  *llm.Usage `json:"token_usage,omitempty"`
+	SessionID       string     `json:"session_id"`
+	Response        string     `json:"response,omitempty"`
+	ThinkingContent string     `json:"thinking_content,omitempty"`
+	ToolsUsed       []string   `json:"tools_used,omitempty"`
+	TaskCreated     bool       `json:"task_created"`
+	TaskID          string     `json:"task_id,omitempty"`
+	TokenUsage      *llm.Usage `json:"token_usage,omitempty"`
 }
 
 // SendMessage processes a chat message and returns a structured response.
-// This is the only public entry point for processing messages in the agent loop.
+// This is the only public entry point for processing chat messages in the agent loop.
+// Chat messages do NOT create tasks; they are processed within the session context.
 func (l *Loop) SendMessage(ctx context.Context, sessionID string, message string, providerName string) (*AgentResponse, error) {
-	taskID := uuid.New().String()
-
 	// Resolve workspace from session ID.
 	workspaceID := l.resolveWorkspace(sessionID)
 
 	// If the session has no workspace_id, fail immediately with a clear error.
 	if workspaceID == "" {
-		task := &Task{
-			ID:           taskID,
-			Prompt:       message,
-			Status:       protocol.TaskStatusFailed,
-			SessionId:    sessionID,
-			ProviderName: providerName,
-			CreatedAt:    time.Now(),
-			Workspace:    "",
-		}
-		task.Error = "session has no workspace_id attached"
-		l.mu.Lock()
-		l.tasks[taskID] = task
-		l.mu.Unlock()
-		l.pushCompletion(task)
 		return nil, fmt.Errorf("session has no workspace_id attached")
 	}
 
-	task := &Task{
-		ID:           taskID,
-		Prompt:       message,
-		Status:       protocol.TaskStatusPending,
-		SessionId:    sessionID,
-		ProviderName: providerName,
-		CreatedAt:    time.Now(),
-		Workspace:    workspaceID,
+	// Process the chat message synchronously via LLM.
+	resp, err := l.processChatMessage(ctx, sessionID, workspaceID, message, providerName)
+	if err != nil {
+		return nil, err
 	}
 
-	l.mu.Lock()
-	l.tasks[taskID] = task
-	l.mu.Unlock()
+	log.Printf("agent: sendMessage response for session %s - response_len=%d, token_usage=%+v", sessionID, len(resp.Response), resp.TokenUsage)
 
-	// Process the message synchronously via execute (blocks until completion).
-	l.execute(ctx, task)
+	return resp, nil
+}
+
+// processChatMessage processes a chat message using the LLM without creating a task.
+// It loads session history, builds messages, calls the LLM, and returns the response.
+func (l *Loop) processChatMessage(ctx context.Context, sessionID string, workspaceID string, message string, providerName string) (*AgentResponse, error) {
+	// Build conversation messages from session history + raw sources + skills
+	messages, _, _ := l.buildChatMessages(sessionID, message)
+
+	// Resolve model/temperature/max_tokens — use workspace defaults.
+	model := l.Model(workspaceID)
+	temp := l.Temperature(workspaceID)
+	maxTokens := l.MaxTokens(workspaceID)
+
+	// Validate provider early — if explicitly requested but doesn't exist, fail hard.
+	if providerName != "" {
+		pc, err := l.config.System.ResolveProvider(providerName)
+		if err != nil {
+			return nil, fmt.Errorf("provider %q not found: %w", providerName, err)
+		}
+		// Provider exists — apply its settings.
+		model = pc.Model
+		temp = pc.Temperature
+		maxTokens = pc.MaxTokens
+	}
+
+	// Resolve the LLM client for this provider (cached).
+	var provider llm.LLM
+	if providerName != "" {
+		p, err := l.getProvider(providerName)
+		if err != nil {
+			return nil, fmt.Errorf("resolve provider for chat: %w", err)
+		}
+		provider = p
+	}
+	// If no specific provider resolved (empty name), fall back to the default client.
+	if provider == nil && l.llmClient != nil {
+		provider = l.llmClient
+	}
+
+	// Fail early if no provider is available.
+	if provider == nil {
+		return nil, fmt.Errorf("no LLM provider configured; cannot process chat message")
+	}
+
+	// Multi-turn loop: max l.config.System.MaxTurns iterations to prevent infinite loops.
+	var fullOutput strings.Builder
+	var thinkingContentBuilder strings.Builder
+	tokenUsage := &llm.Usage{}
+	completedCleanly := false
+
+	for turn := 0; turn < l.config.System.MaxTurns; turn++ {
+		// Log turn progress
+		log.Printf("agent: turn %d used %d tokens (cumulative session: %d)", turn+1, tokenUsage.TotalTokens, tokenUsage.TotalTokens)
+
+		// Build tools from active skills and pass to LLM.
+		tools := l.buildTools()
+
+		// Debug: log what's being sent to the LLM.
+		if l.debug {
+			var logProvider string
+			if provider != nil {
+				logProvider = provider.ProviderInfo().Name
+			}
+			log.Printf("agent: DEBUG - sending %d messages to model (provider=%s, model=%s)", len(messages), logProvider, model)
+			for i, m := range messages {
+				preview := m.Content
+				if len(preview) > 200 {
+					preview = preview[:200] + "..."
+				}
+				log.Printf("agent: DEBUG - msg[%d] role=%q content=%q", i, m.Role, preview)
+			}
+		}
+
+		// Use streaming: yield chunks in real-time via WebSocket, accumulate full text.
+		stream, err := provider.Stream(ctx, llm.CompletionRequest{
+			Messages:    messages,
+			Tools:       tools,
+			Model:       model,
+			Temperature: temp,
+			MaxTokens:   maxTokens,
+		})
+		if err != nil {
+			log.Printf("agent: LLM stream failed at turn %d: %v", turn, err)
+			return nil, fmt.Errorf("LLM API error at turn %d: %v", turn, err)
+		}
+
+		var fullText strings.Builder
+		done := false
+
+		// Accumulate tool calls captured during streaming.
+		callsByID := make(map[string]*llm.ToolCallAccum)
+		var currentID string // persistent across chunks (not reset per iteration)
+
+		for !done {
+			// Check for context cancellation to support interruption
+			select {
+			case <-ctx.Done():
+				log.Printf("agent: stream interrupted by context cancellation")
+				_ = stream.Close()
+				return nil, fmt.Errorf("streaming interrupted: %w", ctx.Err())
+			default:
+			}
+
+			chunk, err := stream.Next()
+			if err != nil {
+				log.Printf("agent: stream read error at turn %d: %v", turn, err)
+				_ = stream.Close()
+				return nil, fmt.Errorf("streaming failed at turn %d: %v", turn, err)
+			}
+			// Track token usage if available (including from [DONE] chunk)
+			if chunk.Usage != nil {
+				tokenUsage.PromptTokens += chunk.Usage.PromptTokens
+				tokenUsage.CompletionTokens += chunk.Usage.CompletionTokens
+				tokenUsage.TotalTokens += chunk.Usage.TotalTokens
+
+				// Copy cached tokens
+				if chunk.Usage.CachedTokens > 0 {
+					tokenUsage.CachedTokens = chunk.Usage.CachedTokens
+				}
+
+				// Copy timing fields
+				tokenUsage.CacheN = chunk.Usage.CacheN
+				tokenUsage.PromptN = chunk.Usage.PromptN
+				tokenUsage.PredictN = chunk.Usage.PredictN
+				tokenUsage.PromptMS = chunk.Usage.PromptMS
+				tokenUsage.PredictMS = chunk.Usage.PredictMS
+				tokenUsage.PromptPerTokenMS = chunk.Usage.PromptPerTokenMS
+				tokenUsage.PredictPerTokenMS = chunk.Usage.PredictPerTokenMS
+				tokenUsage.PromptPerSecond = chunk.Usage.PromptPerSecond
+				tokenUsage.PredictPerSecond = chunk.Usage.PredictPerSecond
+			}
+
+			// Only stop reading at the [DONE] sentinel.
+			if chunk.FinishReason == "[done]" {
+				done = true
+				continue
+			}
+
+			// Distinguish between thinking/reasoning content and final answer content.
+			isThinking := chunk.ReasoningContent != ""
+
+			if isThinking {
+				// Accumulate and broadcast thinking/reasoning chunk to client in real-time.
+				if chunk.ReasoningContent != "" {
+					thinkingContentBuilder.WriteString(chunk.ReasoningContent)
+					reasoningMsg := chunk.ReasoningContent
+					l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
+						Event:   protocol.ThinkingProgress,
+						Message: &reasoningMsg,
+					})
+				}
+			} else if chunk.Delta != "" {
+				// Broadcast final answer chunk to client in real-time (lower perceived latency).
+				chunkMsg := chunk.Delta
+				fullText.WriteString(chunkMsg)
+				l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
+					Event:   protocol.TaskProgress,
+					Message: &chunkMsg,
+				})
+			}
+
+			// Accumulate tool calls captured from delta.tool_calls field.
+			if len(chunk.ToolCalls) > 0 {
+				for _, tc := range chunk.ToolCalls {
+					if tc.ID != "" {
+						currentID = tc.ID
+						if _, ok := callsByID[currentID]; !ok {
+							callsByID[currentID] = &llm.ToolCallAccum{Name: tc.Name}
+						}
+					}
+					// Append args from ALL chunks (including continuation chunks with no ID)
+					if len(tc.Arguments) > 0 && currentID != "" {
+						callsByID[currentID].Args = append(callsByID[currentID].Args, tc.Arguments...)
+					}
+				}
+			}
+		}
+
+		_ = stream.Close()
+
+		responseText := fullText.String()
+		fullOutput.WriteString(responseText)
+
+		// Build final tool calls by concatenating streamed arguments per ID.
+		var toolCalls []llm.ToolCall
+		for id, acc := range callsByID {
+			toolCalls = append(toolCalls, llm.ToolCall{
+				ID:        id,
+				Name:      acc.Name,
+				Arguments: json.RawMessage(acc.Args),
+			})
+		}
+
+		// Validate accumulated args; discard incomplete ones and fall back to text parsing.
+		validCalls := []llm.ToolCall{}
+		for _, tc := range toolCalls {
+			var m map[string]interface{}
+			if err := json.Unmarshal(tc.Arguments, &m); err != nil {
+				log.Printf("agent: discarding incomplete tool call (id=%s): %v", tc.ID, err)
+				continue // invalid JSON — fall back to text parsing below
+			}
+			validCalls = append(validCalls, tc)
+		}
+		if len(validCalls) == 0 {
+			if len(toolCalls) > 0 {
+				// If we accumulated tool calls but all failed validation, fail the chat
+				return nil, fmt.Errorf("failed to parse %d tool call(s): arguments incomplete or invalid", len(toolCalls))
+			}
+			toolCalls = llm.ParseToolCalls(llm.Message{Role: "assistant", Content: responseText})
+		} else {
+			toolCalls = validCalls
+		}
+
+		if len(toolCalls) > 0 {
+			// Execute tool calls in the workspace
+			for _, tc := range toolCalls {
+				// Pre-execution broadcast with tool detail
+				l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
+					Event:   protocol.AgentStep,
+					Message: strPtr(fmt.Sprintf("Executing tool: %s (args: %.60s...)", tc.Name, string(tc.Arguments))),
+				})
+
+				output, exitCode, execErr := l.dispatchToolCall(ctx, workspaceID, tc.Name, string(tc.Arguments))
+				if execErr != nil {
+					log.Printf("agent: tool %s failed (exit %d): %v", tc.Name, exitCode, execErr)
+				} else if exitCode != 0 {
+					log.Printf("agent: tool %s returned non-zero exit code: %d", tc.Name, exitCode)
+				}
+
+				// Post-execution broadcast with result status
+				status := "success"
+				if execErr != nil || exitCode != 0 {
+					status = "failed"
+				}
+				l.wsHub.BroadcastSession(sessionID, protocol.WebSocketEvent{
+					Event:   protocol.AgentStep,
+					Message: strPtr(fmt.Sprintf("Tool '%s' completed: %s (exit %d)", tc.Name, status, exitCode)),
+				})
+
+				// Add tool result as a message in the conversation
+				messages = append(messages, llm.Message{
+					Role:    "tool",
+					Name:    tc.Name,
+					ID:      tc.ID,
+					Content: output,
+				})
+			}
+
+			// Add assistant response to messages for next turn
+			messages = append(messages, llm.Message{
+				Role:    "assistant",
+				Content: responseText,
+			})
+
+			// Keepalive heartbeat between turns — prevents idle-timeout deletion
+			l.Ws.UpdateActivity(ctx, workspaceID)
+
+			continue // Loop back for another turn
+		}
+
+		// No tool calls — accumulate final text and return full output
+		completedCleanly = true
+		break
+	}
+
+	// Max turns reached without a clean completion
+	if !completedCleanly {
+		log.Printf("agent: reached max turns (%d) without completing", l.config.System.MaxTurns)
+		// Build response with max turns error message
+		resp := &AgentResponse{
+			SessionID:       sessionID,
+			Response:        fmt.Sprintf("Error: reached max turns (%d) without completing", l.config.System.MaxTurns),
+			ThinkingContent: "",
+			TokenUsage:      tokenUsage,
+		}
+		return resp, nil
+	}
 
 	// Build response.
 	resp := &AgentResponse{
-		SessionID:  sessionID,
-		Response:   string(task.Output),
-		TokenUsage: task.TokenUsage,
-	}
-
-	log.Printf("agent: sendMessage response for session %s - response_len=%d, token_usage=%+v", sessionID, len(task.Output), task.TokenUsage)
-
-	if task.Error != "" {
-		resp.Response = fmt.Sprintf("Error: %s", task.Error)
+		SessionID:       sessionID,
+		Response:        fullOutput.String(),
+		ThinkingContent: thinkingContentBuilder.String(),
+		TokenUsage:      tokenUsage,
 	}
 
 	return resp, nil
+}
+
+// buildChatMessages builds conversation messages from session history + raw sources + skills for chat messages.
+func (l *Loop) buildChatMessages(sessionID string, message string) ([]llm.Message, int, int) {
+	var messages []llm.Message
+
+	// 0. System prompt (agent identity/facts — immutable at runtime)
+	if l.systemPrompt != "" {
+		messages = append(messages, llm.Message{
+			Role:    "system",
+			Content: l.systemPrompt,
+		})
+	}
+
+	// 1. Raw environment context (injected once)
+	if l.rawSources != nil {
+		sources, err := l.rawSources.ListAll()
+		if err == nil && len(sources) > 0 {
+			var ctxParts []string
+			ctxParts = append(ctxParts, "## Environment Context")
+			ctxParts = append(ctxParts, "")
+			for _, s := range sources {
+				ctxParts = append(ctxParts, fmt.Sprintf("### %s (%s)", s.Name, s.ID))
+				ctxParts = append(ctxParts, fmt.Sprintf("_Created: %s | Category: %s_", s.CreatedAt.Format(time.RFC3339), s.Category))
+				ctxParts = append(ctxParts, "")
+				ctxParts = append(ctxParts, "```")
+				ctxParts = append(ctxParts, s.Content)
+				ctxParts = append(ctxParts, "```")
+				ctxParts = append(ctxParts, "")
+			}
+			messages = append(messages, llm.Message{
+				Role:    "user",
+				Content: strings.Join(ctxParts, "\n"),
+			})
+		}
+	}
+
+	// 2. Active skills context
+	if l.activator != nil {
+		activeSkills := l.activator.Active()
+		if len(activeSkills) > 0 {
+			var skillContexts []string
+			for _, entry := range l.activator.Registry() {
+				if contains(activeSkills, entry.Name) {
+					skillContexts = append(skillContexts, fmt.Sprintf("### Skill: %s\n%s", entry.Name, entry.Description))
+				}
+			}
+			if len(skillContexts) > 0 {
+				messages = append(messages, llm.Message{
+					Role:    "user",
+					Content: strings.Join(skillContexts, "\n\n"),
+				})
+			}
+		}
+	}
+
+	// 2.5. Workspace identity bootstrap (grounding context)
+	if l.workspaceDef != nil {
+		var wsParts []string
+		wsParts = append(wsParts, "[SESSION BOOTSTRAP]")
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "## Workspace Identity")
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "You are operating inside a **workspace** — a bounded project environment with a specific purpose.")
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "A workspace is defined by:")
+		wsParts = append(wsParts, "- **Purpose**: "+l.workspaceDef.Purpose)
+		if len(l.workspaceDef.Scope) > 0 {
+			wsParts = append(wsParts, fmt.Sprintf("- **Scope**: %s", strings.Join(l.workspaceDef.Scope, ", ")))
+		}
+		if len(l.workspaceDef.Tags) > 0 {
+			wsParts = append(wsParts, fmt.Sprintf("- **Tags**: %s", strings.Join(l.workspaceDef.Tags, ", ")))
+		}
+		wsParts = append(wsParts, "")
+		wsParts = append(wsParts, "Reference this identity when creating wiki entries or evaluating decisions.")
+
+		messages = append(messages, llm.Message{
+			Role:    "user",
+			Content: strings.Join(wsParts, "\n"),
+		})
+	}
+
+	// 3. Session history (conversation turns)
+	turns, err := l.store.LoadSessionTurns(sessionID)
+	if err == nil {
+		for _, t := range turns {
+			role, _ := t["role"].(string)
+			content, _ := t["content"].(string)
+			if role != "" && content != "" {
+				messages = append(messages, llm.Message{
+					Role:    role,
+					Content: content,
+				})
+			}
+		}
+	}
+
+	// 4. Current user message (the chat message)
+	messages = append(messages, llm.Message{
+		Role:    "user",
+		Content: message,
+	})
+
+	return messages, budget.CountTokensFromTurns(nil), 0 // tokens estimated by caller if needed
 }
 
 // CancelTask marks a task for cancellation.

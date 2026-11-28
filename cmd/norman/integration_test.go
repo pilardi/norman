@@ -20,6 +20,7 @@ import (
 
 	"github.com/norman/norman/pkg/config"
 
+	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -27,13 +28,16 @@ import (
 )
 
 var (
-	mockGatewayAddr string
-	serverProcess   *os.Process
+	mockGatewayAddr   string
+	serverProcess     *os.Process
+	mockLLMServerAddr string
+	mockLLMServer     *http.Server
+	mockLLMListener   net.Listener
 )
 
 // mockOpenShellServer is a minimal gRPC service implementation that satisfies the
 // OpenShell proto interface for testing. It embeds UnimplementedOpenShellServer
-// and overrides only the Health method to return a healthy status.
+// and implements the required sandbox lifecycle methods.
 type mockOpenShellServer struct {
 	openshellv1.UnimplementedOpenShellServer
 }
@@ -45,9 +49,261 @@ func (m *mockOpenShellServer) Health(context.Context, *openshellv1.HealthRequest
 	}, nil
 }
 
+func (m *mockOpenShellServer) CreateSandbox(ctx context.Context, req *openshellv1.CreateSandboxRequest) (*openshellv1.SandboxResponse, error) {
+	name := req.Name
+	if name == "" {
+		name = "sandbox-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+
+	return &openshellv1.SandboxResponse{
+		Sandbox: &openshellv1.Sandbox{
+			Metadata: &datamodelv1.ObjectMeta{
+				Id:   "test-sandbox-id-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+				Name: name,
+			},
+			Status: &openshellv1.SandboxStatus{
+				Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_READY,
+			},
+		},
+	}, nil
+}
+
+func (m *mockOpenShellServer) CreateSandboxTemplate(ctx context.Context, req *openshellv1.CreateSandboxTemplateRequest) (*openshellv1.SandboxTemplateResponse, error) {
+	template := req.Template
+	if template == nil {
+		template = &openshellv1.SandboxWorkloadTemplate{
+			Metadata: &datamodelv1.ObjectMeta{
+				Id:   "test-template-id-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+				Name: "default-template",
+			},
+		}
+	}
+
+	return &openshellv1.SandboxTemplateResponse{
+		Template: template,
+	}, nil
+}
+
+func (m *mockOpenShellServer) GetSandbox(ctx context.Context, req *openshellv1.GetSandboxRequest) (*openshellv1.SandboxResponse, error) {
+	name := req.Name
+	if name == "" {
+		name = "sandbox-default"
+	}
+
+	return &openshellv1.SandboxResponse{
+		Sandbox: &openshellv1.Sandbox{
+			Metadata: &datamodelv1.ObjectMeta{
+				Id:   "test-sandbox-id-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+				Name: name,
+			},
+			Status: &openshellv1.SandboxStatus{
+				Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_READY,
+			},
+		},
+	}, nil
+}
+
+func (m *mockOpenShellServer) GetSandboxTemplate(ctx context.Context, req *openshellv1.GetSandboxTemplateRequest) (*openshellv1.SandboxTemplateResponse, error) {
+	return &openshellv1.SandboxTemplateResponse{
+		Template: &openshellv1.SandboxWorkloadTemplate{
+			Metadata: &datamodelv1.ObjectMeta{
+				Id:   "test-template-id-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+				Name: "default-template",
+			},
+		},
+	}, nil
+}
+
+func (m *mockOpenShellServer) ListSandboxes(ctx context.Context, req *openshellv1.ListSandboxesRequest) (*openshellv1.ListSandboxesResponse, error) {
+	return &openshellv1.ListSandboxesResponse{
+		Sandboxes:     []*openshellv1.Sandbox{},
+		NextPageToken: "",
+	}, nil
+}
+
+func (m *mockOpenShellServer) DeleteSandbox(ctx context.Context, req *openshellv1.DeleteSandboxRequest) (*openshellv1.DeleteSandboxResponse, error) {
+	return &openshellv1.DeleteSandboxResponse{}, nil
+}
+
+func (m *mockOpenShellServer) StartSandbox(ctx context.Context, req *openshellv1.StartSandboxRequest) (*openshellv1.SandboxResponse, error) {
+	name := req.Name
+	if name == "" {
+		name = "sandbox-default"
+	}
+
+	return &openshellv1.SandboxResponse{
+		Sandbox: &openshellv1.Sandbox{
+			Metadata: &datamodelv1.ObjectMeta{
+				Id:   "test-sandbox-id-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+				Name: name,
+			},
+			Status: &openshellv1.SandboxStatus{
+				Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_READY,
+			},
+		},
+	}, nil
+}
+
+func (m *mockOpenShellServer) StopSandbox(ctx context.Context, req *openshellv1.StopSandboxRequest) (*openshellv1.SandboxResponse, error) {
+	name := req.Name
+	if name == "" {
+		name = "sandbox-default"
+	}
+
+	return &openshellv1.SandboxResponse{
+		Sandbox: &openshellv1.Sandbox{
+			Metadata: &datamodelv1.ObjectMeta{
+				Id:   "test-sandbox-id-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+				Name: name,
+			},
+			Status: &openshellv1.SandboxStatus{
+				Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_STOPPED,
+			},
+		},
+	}, nil
+}
+
+// mockLLMServer handles LLM completion requests for integration tests.
+func mockLLMServerHandler() *http.Server {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/completion", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Check if it's a streaming request
+		streaming := r.Header.Get("Accept") == "text/event-stream"
+
+		if streaming {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			// Send SSE response in native llama.cpp /completion format
+			sseResponse := `data: {"index":0,"content":"Mock LLM response for testing.","tokens":[],"id_slot":3,"stop":false,"stop_type":"stop","content_type":"text"}
+
+data: {"index":0,"content":"","tokens":[],"id_slot":3,"stop":true,"stop_type":"stop","content_type":"stop"}
+
+`
+			_, _ = w.Write([]byte(sseResponse))
+			w.(http.Flusher).Flush()
+			return
+		}
+
+		// Non-streaming response
+		w.Header().Set("Content-Type", "application/json")
+		response := `{"content": "Mock LLM response for testing.","stop_reason": "stop"}`
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(response))
+	})
+
+	mux.HandleFunc("/completions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		response := `{"choices": [{"message": {"role": "assistant", "content": "Mock LLM response for testing."}}], "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}}`
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(response))
+	})
+
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		response := `{"choices": [{"message": {"role": "assistant", "content": "Mock LLM response for testing."}}], "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}}`
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(response))
+	})
+
+	mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		response := `{"choices": [{"message": {"role": "assistant", "content": "Mock LLM response for testing."}}], "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}}`
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(response))
+	})
+
+	return &http.Server{
+		Handler: mux,
+	}
+}
+
+func startMockLLMServer() error {
+	llmServer := mockLLMServerHandler()
+	llmListener, err := net.Listen("tcp", "127.0.0.1:8289")
+	if err != nil {
+		return fmt.Errorf("bind LLM mock port 8289: %v", err)
+	}
+	mockLLMListener = llmListener
+	mockLLMServerAddr = "http://127.0.0.1:8289"
+
+	go func() {
+		_ = llmServer.Serve(llmListener)
+	}()
+
+	// Wait for the server to start
+	time.Sleep(100 * time.Millisecond)
+	return nil
+}
+
+func stopMockLLMServer() {
+	if mockLLMListener != nil {
+		_ = mockLLMListener.Close()
+	}
+	if mockLLMServer != nil {
+		_ = mockLLMServer.Shutdown(context.Background())
+	}
+}
+
 func TestMain(m *testing.M) {
+	// Create a temporary directory for the test configuration.
+	testDir, err := os.MkdirTemp("", "norman-test-*")
+	if err != nil {
+		log.Fatalf("failed to create test dir: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(testDir)
+	}()
+
+	// Create the .norman directory for the test configuration.
+	normanDir := filepath.Join(testDir, ".norman")
+	if err := os.MkdirAll(normanDir, 0755); err != nil {
+		log.Fatalf("failed to create norman dir: %v", err)
+	}
+
+	// Set the NORMAN_BASE_DIR environment variable to the .norman directory.
+	originalNormanBaseDir := os.Getenv("NORMAN_BASE_DIR")
+	if err := os.Setenv("NORMAN_BASE_DIR", normanDir); err != nil {
+		log.Fatalf("failed to set NORMAN_BASE_DIR env: %v", err)
+	}
+	defer func() {
+		if originalNormanBaseDir != "" {
+			if err := os.Setenv("NORMAN_BASE_DIR", originalNormanBaseDir); err != nil {
+				log.Fatalf("failed to restore NORMAN_BASE_DIR env: %v", err)
+			}
+		} else {
+			os.Unsetenv("NORMAN_BASE_DIR")
+		}
+	}()
+
+	testConfigSrc := filepath.Join("testdata", "config.yaml")
+	testConfigDst := filepath.Join(normanDir, "config.yaml")
+
+	// Read the test config file
+	testConfigContent, err := os.ReadFile(testConfigSrc)
+	if err != nil {
+		log.Fatalf("failed to read test config file: %v", err)
+	}
+
+	if err := os.WriteFile(testConfigDst, testConfigContent, 0644); err != nil {
+		log.Fatalf("failed to write test config file: %v", err)
+	}
+
 	const testPort = 19876
 	mockGatewayAddr = "http://127.0.0.1:" + strconv.Itoa(testPort)
+
+	// Start the mock LLM HTTP server.
+	if err := startMockLLMServer(); err != nil {
+		log.Fatalf("failed to start mock LLM server: %v", err)
+	}
+	mockLLMServer = mockLLMServerHandler()
 
 	// Start the gRPC mock as a background goroutine in this process.
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", testPort))
@@ -79,9 +335,10 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	// Cleanup: stop the gRPC mock and kill the norman-server process.
+	// Cleanup: stop the gRPC mock, kill the LLM mock server, and kill the norman-server process.
 	srv.Stop()
 	_ = listener.Close()
+	stopMockLLMServer()
 	if serverProcess != nil {
 		_ = serverProcess.Signal(os.Interrupt)
 		_, _ = serverProcess.Wait()
@@ -93,7 +350,7 @@ func TestMain(m *testing.M) {
 func waitForServer(t *testing.T) {
 	t.Helper()
 	for i := 0; i < 30; i++ {
-		if resp, err := http.Get("http://127.0.0.1:8080/health"); err == nil {
+		if resp, err := http.Get("http://127.0.0.1:18080/health"); err == nil {
 			resp.Body.Close()
 			return // server is up
 		}
@@ -112,7 +369,7 @@ func TestClientServerCommunication(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=18080")
 	t.Logf("Starting server with OPENSHELL_GATEWAY_ADDRESS=%s", mockGatewayAddr)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start server: %v", err)
@@ -130,7 +387,7 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	waitForServer(t)
 
-	resp, err := http.Get("http://127.0.0.1:8080/health")
+	resp, err := http.Get("http://127.0.0.1:18080/health")
 	if err != nil {
 		t.Fatalf("GET /health: %v", err)
 	}
@@ -157,7 +414,7 @@ func TestConfigEndpoint(t *testing.T) {
 	}
 	waitForServer(t)
 
-	resp, err := http.Get("http://127.0.0.1:8080/api/config")
+	resp, err := http.Get("http://127.0.0.1:18080/api/config")
 	if err != nil {
 		t.Fatalf("GET /api/config: %v", err)
 	}
@@ -205,7 +462,7 @@ func TestCLIConfigJSON(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin, "config", "--json")
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=18080")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("norman config --json: %v\n%s", err, string(out))
@@ -240,7 +497,7 @@ func TestCLIPlaintextConfig(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin, "config")
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=18080")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("norman config: %v\n%s", err, string(out))
@@ -275,7 +532,7 @@ func ensureServer(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=8080")
+	cmd.Env = append(os.Environ(), "OPENSHELL_GATEWAY_ADDRESS="+mockGatewayAddr, "NORMAN_PORT=18080")
 
 	// Capture server stderr for debugging
 	serverStderr, _ := os.OpenFile("/tmp/norman-server-test.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -291,7 +548,7 @@ func ensureServer(t *testing.T) {
 
 // getBaseDir extracts the store base directory from the server's /api/config response.
 func getBaseDir(t *testing.T) string {
-	resp, err := http.Get("http://127.0.0.1:8080/api/config")
+	resp, err := http.Get("http://127.0.0.1:18080/api/config")
 	if err != nil {
 		t.Fatalf("GET /api/config: %v", err)
 	}
@@ -324,7 +581,7 @@ func createTestWorkspace(t *testing.T, baseDir string) string {
 	t.Helper()
 
 	// First, check if "test-ws" already exists by listing workspaces.
-	resp, err := http.Get("http://127.0.0.1:8080/api/workspaces")
+	resp, err := http.Get("http://127.0.0.1:18080/api/workspaces")
 	if err != nil {
 		t.Logf("warning: could not list workspaces: %v", err)
 	} else {
@@ -350,7 +607,7 @@ func createTestWorkspace(t *testing.T, baseDir string) string {
 		t.Fatalf("marshal workspace creation request: %v", err)
 	}
 
-	createResp, err := http.Post("http://127.0.0.1:8080/api/workspaces", "application/json", bytes.NewReader(bodyBytes))
+	createResp, err := http.Post("http://127.0.0.1:18080/api/workspaces", "application/json", bytes.NewReader(bodyBytes))
 	if err == nil {
 		defer createResp.Body.Close()
 		var created map[string]interface{}
@@ -415,7 +672,7 @@ func createTestWorkspace(t *testing.T, baseDir string) string {
 func deleteAllSessionsForWorkspace(t *testing.T, wsID string) {
 	t.Helper()
 
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/api/sessions?workspace_id=%s", wsID))
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:18080/api/sessions?workspace_id=%s", wsID))
 	if err != nil {
 		t.Logf("warning: could not list sessions for workspace %s: %v", wsID[:8], err)
 		return
@@ -430,7 +687,7 @@ func deleteAllSessionsForWorkspace(t *testing.T, wsID string) {
 
 	for _, sess := range sessions {
 		if sid, ok := sess["id"].(string); ok && sid != "" {
-			req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s", sid), nil)
+			req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s", sid), nil)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				t.Logf("warning: could not delete session %s: %v", sid[:8], err)
@@ -464,7 +721,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 
 	// Step 1: Create a session via the HTTP API.
 	createResp, err := http.Post(
-		"http://127.0.0.1:8080/api/sessions",
+		"http://127.0.0.1:18080/api/sessions",
 		"application/json",
 		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
 	)
@@ -494,7 +751,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 
 	for i, msg := range messages {
 		resp, err := http.Post(
-			fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID),
+			fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/messages", sessionID),
 			"application/json",
 			strings.NewReader(fmt.Sprintf(`{"message":"%s"}`, msg.content)),
 		)
@@ -523,7 +780,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 	}
 
 	// Step 3: Verify turns are present via /api/sessions/{id}/history.
-	historyResp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/history?limit=10", sessionID))
+	historyResp, err := http.Get(fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/history?limit=10", sessionID))
 	if err != nil {
 		t.Fatalf("GET /api/sessions/%s/history: %v", sessionID, err)
 	}
@@ -553,7 +810,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 
 	// Step 4: Archive the session and verify cleanup.
 	archiveResp, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/archive", sessionID),
+		fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/archive", sessionID),
 		"application/json",
 		strings.NewReader(`{}`),
 	)
@@ -585,7 +842,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 	}
 
 	// Step 5: Verify history returns empty after archive.
-	historyResp2, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/history?limit=10", sessionID))
+	historyResp2, err := http.Get(fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/history?limit=10", sessionID))
 	if err != nil {
 		t.Fatalf("GET /api/sessions/%s/history (after archive): %v", sessionID, err)
 	}
@@ -604,7 +861,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 
 	// Step 6: Create a new session and delete it to verify DeleteSession cleanup.
 	createResp2, err := http.Post(
-		"http://127.0.0.1:8080/api/sessions",
+		"http://127.0.0.1:18080/api/sessions",
 		"application/json",
 		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
 	)
@@ -625,7 +882,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 
 	// Send a message to create turns.
 	resp, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID2),
+		fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/messages", sessionID2),
 		"application/json",
 		strings.NewReader(`{"message":"Delete me please."}`),
 	)
@@ -642,7 +899,7 @@ func TestPhase4SessionCleanup(t *testing.T) {
 	}
 
 	// Step 7: Delete the session and verify cleanup.
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s", sessionID2), nil)
+	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s", sessionID2), nil)
 	deleteResp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("DELETE /api/sessions/%s: %v", sessionID2, err)
@@ -686,7 +943,7 @@ func TestPhase4ArchiveIdempotent(t *testing.T) {
 
 	// Create and archive a session.
 	createResp, err := http.Post(
-		"http://127.0.0.1:8080/api/sessions",
+		"http://127.0.0.1:18080/api/sessions",
 		"application/json",
 		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
 	)
@@ -706,7 +963,7 @@ func TestPhase4ArchiveIdempotent(t *testing.T) {
 
 	// Send a message to create turns.
 	resp, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID),
+		fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/messages", sessionID),
 		"application/json",
 		strings.NewReader(`{"message":"Test idempotent archive."}`),
 	)
@@ -718,7 +975,7 @@ func TestPhase4ArchiveIdempotent(t *testing.T) {
 
 	// Archive once.
 	archiveResp1, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/archive", sessionID),
+		fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/archive", sessionID),
 		"application/json",
 		strings.NewReader(`{}`),
 	)
@@ -729,7 +986,7 @@ func TestPhase4ArchiveIdempotent(t *testing.T) {
 
 	// Archive again (idempotent).
 	archiveResp2, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/archive", sessionID),
+		fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/archive", sessionID),
 		"application/json",
 		strings.NewReader(`{}`),
 	)
@@ -771,7 +1028,7 @@ func TestPhase4DeleteSessionWithTasks(t *testing.T) {
 
 	// Create a session and send messages (which creates tasks internally).
 	createResp, err := http.Post(
-		"http://127.0.0.1:8080/api/sessions",
+		"http://127.0.0.1:18080/api/sessions",
 		"application/json",
 		strings.NewReader(fmt.Sprintf(`{"workspace_id":"%s","client_type":"cli"}`, wsID)),
 	)
@@ -792,7 +1049,7 @@ func TestPhase4DeleteSessionWithTasks(t *testing.T) {
 	// Send multiple messages to generate turns + internal tasks.
 	for i := 0; i < 3; i++ {
 		resp, err := http.Post(
-			fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s/messages", sessionID),
+			fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s/messages", sessionID),
 			"application/json",
 			strings.NewReader(fmt.Sprintf(`{"message":"Message %d for cleanup test."}`, i+1)),
 		)
@@ -823,7 +1080,7 @@ func TestPhase4DeleteSessionWithTasks(t *testing.T) {
 	t.Logf("Found %d task files associated with session %s before delete", beforeCount, sessionID[:8])
 
 	// Delete the session.
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:8080/api/sessions/%s", sessionID), nil)
+	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:18080/api/sessions/%s", sessionID), nil)
 	deleteResp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("DELETE /api/sessions/%s: %v", sessionID, err)

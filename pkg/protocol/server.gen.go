@@ -637,8 +637,11 @@ type AgentResponse struct {
 	TaskCreated *bool `json:"task_created,omitempty"`
 
 	// TaskId ID of newly created task (if task_created is true)
-	TaskId     *openapi_types.UUID `json:"task_id,omitempty"`
-	TokenUsage *TokenUsage         `json:"token_usage,omitempty"`
+	TaskId *openapi_types.UUID `json:"task_id,omitempty"`
+
+	// ThinkingContent Thinking or reasoning content from the LLM (if available)
+	ThinkingContent *string     `json:"thinking_content,omitempty"`
+	TokenUsage      *TokenUsage `json:"token_usage,omitempty"`
 
 	// ToolsUsed List of tool names invoked
 	ToolsUsed *[]string `json:"tools_used,omitempty"`
@@ -1304,9 +1307,19 @@ type TaskCreateRequestPriority string
 
 // TokenUsage defines model for TokenUsage.
 type TokenUsage struct {
-	CompletionTokens *int `json:"completion_tokens,omitempty"`
-	PromptTokens     *int `json:"prompt_tokens,omitempty"`
-	TotalTokens      *int `json:"total_tokens,omitempty"`
+	CacheN              *int     `json:"cache_n,omitempty"`
+	CachedTokens        *int     `json:"cached_tokens,omitempty"`
+	CompletionTokens    *int     `json:"completion_tokens,omitempty"`
+	PredictedMs         *float64 `json:"predicted_ms,omitempty"`
+	PredictedN          *int     `json:"predicted_n,omitempty"`
+	PredictedPerSecond  *float64 `json:"predicted_per_second,omitempty"`
+	PredictedPerTokenMs *float64 `json:"predicted_per_token_ms,omitempty"`
+	PromptMs            *float64 `json:"prompt_ms,omitempty"`
+	PromptN             *int     `json:"prompt_n,omitempty"`
+	PromptPerSecond     *float64 `json:"prompt_per_second,omitempty"`
+	PromptPerTokenMs    *float64 `json:"prompt_per_token_ms,omitempty"`
+	PromptTokens        *int     `json:"prompt_tokens,omitempty"`
+	TotalTokens         *int     `json:"total_tokens,omitempty"`
 }
 
 // VerifyResponse defines model for VerifyResponse.

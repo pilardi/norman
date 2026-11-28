@@ -246,7 +246,8 @@ func DefaultConfigPath() string {
 	return ExpandUserPath("~/.norman/config.yaml")
 }
 
-// LoadDefault reads from the standard config path (~/.norman/config.yaml).
+// LoadDefault reads from the standard config path (~/.norman/config.yaml) or
+// $NORMAN_BASE_DIR/config.yaml if NORMAN_BASE_DIR is set.
 // If the file does not exist, returns DefaultConfig() instead of an error.
 // Also loads .env files and applies NORMAN_* environment variable overrides.
 //
@@ -262,8 +263,11 @@ func LoadDefault() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "[config] WARNING: failed to load .env files: %v\n", err)
 	}
 
-	// Create config dir under BaseDir (uses default fallback if not set).
-	normanHome := ExpandUserPath("~/.norman")
+	// Determine config path: use NORMAN_BASE_DIR if set, otherwise fallback to ~/.norman/config.yaml.
+	normanHome := os.Getenv("NORMAN_BASE_DIR")
+	if normanHome == "" {
+		normanHome = ExpandUserPath("~/.norman")
+	}
 	configPath := filepath.Join(normanHome, "config.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return nil, fmt.Errorf("create config dir: %w", err)

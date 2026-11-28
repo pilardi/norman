@@ -81,6 +81,17 @@ type Usage struct {
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
 	CachedTokens     int `json:"cached_tokens,omitempty"`
+
+	// Timing fields from providers (llama.cpp, unsloth, etc.)
+	PromptN           int     `json:"prompt_n,omitempty"`
+	PredictN          int     `json:"predicted_n,omitempty"`
+	PromptMS          float64 `json:"prompt_ms,omitempty"`
+	PredictMS         float64 `json:"predicted_ms,omitempty"`
+	PromptPerTokenMS  float64 `json:"prompt_per_token_ms,omitempty"`
+	PredictPerTokenMS float64 `json:"predicted_per_token_ms,omitempty"`
+	PromptPerSecond   float64 `json:"prompt_per_second,omitempty"`
+	PredictPerSecond  float64 `json:"predicted_per_second,omitempty"`
+	CacheN            int     `json:"cache_n,omitempty"`
 }
 
 // LLM provides text completion with optional tool-calling support.
